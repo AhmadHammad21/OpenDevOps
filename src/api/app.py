@@ -8,11 +8,31 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
+from loguru import logger
 from pydantic import BaseModel
 
 from agent.core import get_agent
 
-logger = logging.getLogger(__name__)
+
+class _InterceptHandler(logging.Handler):
+    """Forward stdlib logging records to loguru."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = str(record.levelno)
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back  # type: ignore[assignment]
+            depth += 1
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+# Route all stdlib logging (tools, LangChain, uvicorn access) through loguru
+logging.basicConfig(handlers=[_InterceptHandler()], level=logging.INFO, force=True)
+for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
+    logging.getLogger(_name).handlers = [_InterceptHandler()]
 
 app = FastAPI(title="OpenDevOps Agent", version="0.1.0")
 
