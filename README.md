@@ -34,6 +34,24 @@ devops-agent ask "why would a Lambda function suddenly start throttling?"
 devops-agent report
 ```
 
+## AWS Profile Setup
+
+Create a local AWS profile using your access key and secret:
+
+```bash
+aws configure --profile devops-agent-readonly
+# AWS Access Key ID:     your_key_id
+# AWS Secret Access Key: your_secret_key
+# Default region:        us-east-1
+# Default output format: json
+```
+
+Verify it works:
+
+```bash
+aws sts get-caller-identity --profile devops-agent-readonly
+```
+
 ## AWS IAM Setup
 
 Attach `iam-policy.json` to the IAM user or role your agent uses. It grants read-only access

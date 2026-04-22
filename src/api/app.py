@@ -1,4 +1,4 @@
-"""FastAPI app — chat endpoint with per-session message history."""
+"""FastAPI app — chat endpoint using DeepAgents with per-session LangGraph threads."""
 
 import json
 import logging
@@ -9,34 +9,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from agent.config import settings
-from agent.prompts import SYSTEM_PROMPT
-from api.sessions import append_messages, clear_session, get_history
-from openai import OpenAI
-from tools.base import BaseTool
-from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS
-from tools.cloudwatch import ALL_CLOUDWATCH_TOOLS
-from tools.ec2 import ALL_EC2_TOOLS
-from tools.ecs import ALL_ECS_TOOLS
-from tools.iam import ALL_IAM_TOOLS
-from tools.lambda_ import ALL_LAMBDA_TOOLS
-from tools.rds import ALL_RDS_TOOLS
+from agent.core import get_agent
+
+
+def _field(obj: Any, key: str, default: Any = None) -> Any:
+    """Read a field from either a dict or a typed object (e.g. ToolCallChunk)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OpenDevOps Agent", version="0.1.0")
-
-ALL_TOOLS: list[BaseTool] = (
-    ALL_CLOUDWATCH_TOOLS
-    + ALL_CLOUDTRAIL_TOOLS
-    + ALL_ECS_TOOLS
-    + ALL_LAMBDA_TOOLS
-    + ALL_EC2_TOOLS
-    + ALL_RDS_TOOLS
-    + ALL_IAM_TOOLS
-)
-_TOOL_MAP: dict[str, BaseTool] = {t.name: t for t in ALL_TOOLS}
-_TOOLS_SCHEMA = [t.as_openai_tool() for t in ALL_TOOLS]
 
 _STATIC = Path(__file__).parent.parent.parent / "frontend"
 
@@ -46,108 +30,87 @@ class ChatRequest(BaseModel):
     message: str
 
 
-def _openai_client() -> OpenAI:
-    return OpenAI(api_key=settings.openrouter_api_key, base_url=settings.openrouter_base_url)
-
-
-def _run_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
-    tool = _TOOL_MAP.get(name)
-    if not tool:
-        return {"error": f"Unknown tool: {name}"}
-    return tool.run(**args)
-
-
 async def _stream_chat(session_id: str, user_message: str):
-    """Run the ReAct loop and stream tokens back as SSE."""
-    client = _openai_client()
-    history = get_history(session_id)
+    """Stream SSE events to the frontend.
 
-    if not history:
-        append_messages(session_id, {"role": "system", "content": SYSTEM_PROMPT})
-        history = get_history(session_id)
+    stream_mode='messages' yields (BaseMessageChunk, metadata) tuples.
+    We buffer tool call args from AIMessageChunks by tool_call_id so each
+    tool event includes {tool, args, result} — the shape addCall() expects.
+    """
+    agent = get_agent()
+    config = {"configurable": {"thread_id": session_id}}
 
-    append_messages(session_id, {"role": "user", "content": user_message})
-    history = get_history(session_id)
+    # Accumulate partial tool_call_chunks: index → {id, name, args_str}
+    tc_accum: dict[int, dict[str, Any]] = {}
+    # Finalized tool calls keyed by tool_call_id
+    pending_calls: dict[str, dict[str, Any]] = {}
 
-    tool_calls_made = 0
+    try:
+        async for chunk, _meta in agent.astream(
+            {"messages": [{"role": "user", "content": user_message}]},
+            config=config,
+            stream_mode="messages",
+        ):
+            # ── Accumulate streaming tool call fragments from AIMessageChunk ──
+            # tool_call_chunks may be dicts or typed ToolCallChunk objects
+            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                idx   = _field(tcc, "index", 0)
+                tc_id = _field(tcc, "id")
+                name  = _field(tcc, "name") or ""
+                args  = _field(tcc, "args") or ""
+                if idx not in tc_accum:
+                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                if tc_id:
+                    tc_accum[idx]["id"] = tc_id
+                if name:
+                    tc_accum[idx]["name"] += name
+                if args:
+                    tc_accum[idx]["args_str"] += args
 
-    while tool_calls_made <= settings.max_tool_calls:
-        # Stream the LLM response
-        stream = client.chat.completions.create(
-            model=settings.openrouter_model,
-            messages=history,
-            tools=_TOOLS_SCHEMA,
-            tool_choice="auto",
-            stream=True,
-        )
+            # ── Complete tool_calls on a final AIMessage (not a chunk) ──
+            for tc in getattr(chunk, "tool_calls", []) or []:
+                tc_id = _field(tc, "id") or ""
+                if tc_id:
+                    pending_calls[tc_id] = {
+                        "tool": _field(tc, "name") or "",
+                        "args": _field(tc, "args") or {},
+                    }
 
-        full_content = ""
-        pending_tool_calls: list[dict[str, Any]] = []
-        finish_reason = None
+            # ── Stream text tokens ──
+            content = getattr(chunk, "content", "")
+            if content and isinstance(content, str):
+                # Skip ToolMessages (they have tool_call_id)
+                if not getattr(chunk, "tool_call_id", None):
+                    yield f"data: {json.dumps({'type': 'token', 'text': content})}\n\n"
 
-        for chunk in stream:
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if delta is None:
-                continue
+            # ── Tool result (ToolMessage) ──
+            tc_id = getattr(chunk, "tool_call_id", None)
+            if tc_id:
+                # Flush any accumulated chunks into pending_calls
+                for entry in tc_accum.values():
+                    eid = entry["id"]
+                    if eid and eid not in pending_calls:
+                        try:
+                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
+                        except json.JSONDecodeError:
+                            eargs = {}
+                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                tc_accum.clear()
 
-            finish_reason = chunk.choices[0].finish_reason or finish_reason
+                call_info = pending_calls.pop(
+                    tc_id,
+                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                )
+                try:
+                    result = json.loads(content)
+                except (json.JSONDecodeError, TypeError):
+                    result = {"raw": str(content)[:500]}
 
-            # Stream text tokens to the client
-            if delta.content:
-                full_content += delta.content
-                yield f"data: {json.dumps({'type': 'token', 'text': delta.content})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': call_info['tool'], 'args': call_info['args'], 'result': result})}\n\n"
 
-            # Accumulate tool call chunks
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    while len(pending_tool_calls) <= idx:
-                        pending_tool_calls.append({"id": "", "name": "", "arguments": ""})
-                    if tc.id:
-                        pending_tool_calls[idx]["id"] = tc.id
-                    if tc.function:
-                        if tc.function.name:
-                            pending_tool_calls[idx]["name"] += tc.function.name
-                        if tc.function.arguments:
-                            pending_tool_calls[idx]["arguments"] += tc.function.arguments
-
-        # No tool calls — final answer
-        if not pending_tool_calls or finish_reason == "stop":
-            assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_content}
-            append_messages(session_id, assistant_msg)
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-            return
-
-        # Build assistant message with tool_calls for the next turn
-        tool_call_objs = [
-            {
-                "id": tc["id"],
-                "type": "function",
-                "function": {"name": tc["name"], "arguments": tc["arguments"]},
-            }
-            for tc in pending_tool_calls
-        ]
-        assistant_msg = {"role": "assistant", "content": full_content or None, "tool_calls": tool_call_objs}
-        append_messages(session_id, assistant_msg)
-
-        # Execute each tool and append results
-        tool_results = []
-        for tc in pending_tool_calls:
-            try:
-                args = json.loads(tc["arguments"])
-            except json.JSONDecodeError:
-                args = {}
-
-            result = _run_tool(tc["name"], args)
-            tool_calls_made += 1
-
-            yield f"data: {json.dumps({'type': 'tool_call', 'tool': tc['name'], 'args': args, 'result': result})}\n\n"
-
-            tool_results.append(
-                {"role": "tool", "tool_call_id": tc["id"], "content": json.dumps(result)}
-            )
-
-        append_messages(session_id, *tool_results)
+    except Exception as e:
+        logger.error("stream_chat error: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -171,5 +134,4 @@ async def chat(req: ChatRequest):
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
-    clear_session(session_id)
     return {"cleared": session_id}
