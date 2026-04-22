@@ -115,15 +115,44 @@
       border-bottom-left-radius: 3px;
     }
 
+    /* ── Meta row: tool calls + usage side by side ── */
+    .meta-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-left: 40px;
+      max-width: 780px;
+    }
+
     /* ── Tool calls collapsible ── */
     .tool-calls-box {
-      max-width: 680px;
-      margin-left: 40px;
+      flex: 1;
+      min-width: 0;
       border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
       font-size: 12px;
     }
+
+    /* ── Usage pill ── */
+    .usage-pill {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 13px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .usage-pill .u-stat { display: flex; align-items: center; gap: 4px; }
+    .usage-pill .u-label { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .usage-pill .u-val   { color: var(--text); font-weight: 500; }
+    .usage-divider { width: 1px; height: 14px; background: var(--border); }
 
     .tc-header {
       display: flex; align-items: center; gap: 8px;
@@ -345,6 +374,23 @@
     turn.className = 'turn agent';
     messagesEl.appendChild(turn);
 
+    // ── Bubble (shown first) ──
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    turn.appendChild(row);
+
+    // ── Meta row: tool calls + usage (shown below bubble) ──
+    const metaRow = document.createElement('div');
+    metaRow.className = 'meta-row';
+    turn.appendChild(metaRow);
+
     // Tool-calls collapsible box
     const box = document.createElement('div');
     box.className = 'tool-calls-box';
@@ -362,27 +408,19 @@
 
     const tcBody = document.createElement('div');
     tcBody.className = 'tc-body';
-
     const spinner = document.createElement('div');
     spinner.className = 'tc-spinner';
     spinner.innerHTML = `<div class="spinner-dots"><span></span><span></span><span></span></div>Running tools…`;
     tcBody.appendChild(spinner);
-
     box.appendChild(tcHeader);
     box.appendChild(tcBody);
-    turn.appendChild(box);
+    metaRow.appendChild(box);
 
-    // Bubble
-    const row = document.createElement('div');
-    row.className = 'msg-row';
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-    avatar.textContent = '🤖';
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    row.appendChild(avatar);
-    row.appendChild(bubble);
-    turn.appendChild(row);
+    // Usage pill (hidden until done)
+    const usagePill = document.createElement('div');
+    usagePill.className = 'usage-pill';
+    usagePill.style.display = 'none';
+    metaRow.appendChild(usagePill);
 
     const countEl = tcHeader.querySelector('.tc-count');
     let callCount = 0;
@@ -392,7 +430,6 @@
       addCall(toolName, args, result) {
         callCount++;
         countEl.textContent = callCount;
-
         const item = document.createElement('div');
         item.className = 'tc-item';
         item.innerHTML = `
@@ -410,13 +447,29 @@
         tcBody.insertBefore(item, spinner);
         scrollBottom();
       },
-      finish() {
+      finish(usage) {
         spinner.remove();
         if (callCount === 0) {
-          box.remove(); // no tools were called, hide the box entirely
+          box.remove();
         } else {
           box.classList.add('open');
         }
+
+        // Render usage pill
+        if (usage) {
+          const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+          const secs = (usage.latency_ms / 1000).toFixed(1) + 's';
+          let inner = `<div class="u-stat"><span class="u-label">latency</span><span class="u-val">${secs}</span></div>`;
+          if (usage.input_tokens != null) {
+            inner += `<div class="usage-divider"></div>
+              <div class="u-stat"><span class="u-label">in</span><span class="u-val">${fmt(usage.input_tokens)}</span></div>
+              <div class="usage-divider"></div>
+              <div class="u-stat"><span class="u-label">out</span><span class="u-val">${fmt(usage.output_tokens)}</span></div>`;
+          }
+          usagePill.innerHTML = inner;
+          usagePill.style.display = 'flex';
+        }
+        scrollBottom();
       }
     };
   }
@@ -466,7 +519,7 @@
           } else if (payload.type === 'tool_call') {
             addCall(payload.tool, payload.args, payload.result);
           } else if (payload.type === 'done') {
-            finish();
+            finish(payload.usage);
           }
         }
       }

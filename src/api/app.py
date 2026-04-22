@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +11,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from agent.core import get_agent
-
-
-def _field(obj: Any, key: str, default: Any = None) -> Any:
-    """Read a field from either a dict or a typed object (e.g. ToolCallChunk)."""
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +24,28 @@ class ChatRequest(BaseModel):
     message: str
 
 
+def _field(obj: Any, key: str, default: Any = None) -> Any:
+    """Read a field from either a dict or a typed object (e.g. ToolCallChunk)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 async def _stream_chat(session_id: str, user_message: str):
     """Stream SSE events to the frontend.
 
     stream_mode='messages' yields (BaseMessageChunk, metadata) tuples.
-    We buffer tool call args from AIMessageChunks by tool_call_id so each
-    tool event includes {tool, args, result} — the shape addCall() expects.
+    Tool call args are buffered by tool_call_id (accumulated from
+    tool_call_chunks) so each tool event has {tool, args, result}.
+    Token usage and latency are sent in the final 'done' event.
     """
     agent = get_agent()
     config = {"configurable": {"thread_id": session_id}}
 
-    # Accumulate partial tool_call_chunks: index → {id, name, args_str}
     tc_accum: dict[int, dict[str, Any]] = {}
-    # Finalized tool calls keyed by tool_call_id
     pending_calls: dict[str, dict[str, Any]] = {}
+    usage_meta: Any = None
+    start = time.time()
 
     try:
         async for chunk, _meta in agent.astream(
@@ -51,9 +53,12 @@ async def _stream_chat(session_id: str, user_message: str):
             config=config,
             stream_mode="messages",
         ):
-            # ── Accumulate tool_call_chunks (args arrive as JSON fragments) ──
-            # tool_calls on AIMessageChunk always has args={} on the first chunk,
-            # so we ignore it and rely solely on tool_call_chunks for correct args.
+            # ── Capture token usage from the last chunk that has it ──
+            um = getattr(chunk, "usage_metadata", None)
+            if um:
+                usage_meta = um
+
+            # ── Accumulate tool_call_chunks (args stream as JSON fragments) ──
             for tcc in getattr(chunk, "tool_call_chunks", []) or []:
                 idx   = _field(tcc, "index", 0)
                 tc_id = _field(tcc, "id")
@@ -71,14 +76,12 @@ async def _stream_chat(session_id: str, user_message: str):
             # ── Stream text tokens ──
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):
-                # Skip ToolMessages (they have tool_call_id)
                 if not getattr(chunk, "tool_call_id", None):
                     yield f"data: {json.dumps({'type': 'token', 'text': content})}\n\n"
 
             # ── Tool result (ToolMessage) ──
             tc_id = getattr(chunk, "tool_call_id", None)
             if tc_id:
-                # Flush any accumulated chunks into pending_calls
                 for entry in tc_accum.values():
                     eid = entry["id"]
                     if eid:
@@ -111,7 +114,12 @@ async def _stream_chat(session_id: str, user_message: str):
         logger.error("stream_chat error: %s", e)
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+    usage: dict[str, Any] = {"latency_ms": int((time.time() - start) * 1000)}
+    if usage_meta:
+        usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
+        usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
+
+    yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
 
 
 @app.get("/", response_class=HTMLResponse)
