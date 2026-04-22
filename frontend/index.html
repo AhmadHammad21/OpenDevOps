@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenDevOps Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #111827;
+      --surface:    #1f2937;
+      --surface2:   #273344;
+      --border:     #374151;
+      --border2:    #4b5563;
+      --text:       #f9fafb;
+      --text-dim:   #9ca3af;
+      --text-faint: #6b7280;
+      --emerald:    #10b981;
+      --emerald-dim:#065f46;
+      --blue:       #3b82f6;
+      --blue-dim:   #1e3a5f;
+      --amber:      #f59e0b;
+      --red:        #f87171;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .logo h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+    .logo .badge {
+      font-size: 10px; color: var(--emerald);
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 4px; padding: 1px 6px; font-weight: 500;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    #session-label {
+      font-size: 11px; color: var(--text-faint);
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    #clear-btn {
+      font-size: 12px; padding: 5px 12px;
+      background: transparent; color: var(--text-dim);
+      border: 1px solid var(--border); border-radius: 6px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    #clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+    /* ── Messages ── */
+    #messages {
+      flex: 1; overflow-y: auto;
+      padding: 28px 24px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+
+    .turn { display: flex; flex-direction: column; gap: 6px; }
+    .turn.user  { align-items: flex-end; }
+    .turn.agent { align-items: flex-start; }
+
+    .msg-row {
+      display: flex; gap: 10px; align-items: flex-start; max-width: 780px;
+    }
+    .turn.user  .msg-row { flex-direction: row-reverse; }
+    .turn.agent .msg-row { flex-direction: row; }
+
+    .avatar {
+      width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0; margin-top: 1px;
+    }
+    .turn.user  .avatar { background: var(--blue-dim); }
+    .turn.agent .avatar { background: var(--emerald-dim); }
+
+    .bubble {
+      padding: 11px 15px; border-radius: 12px;
+      font-size: 14px; line-height: 1.65;
+      white-space: pre-wrap; word-break: break-word; max-width: 680px;
+    }
+    .turn.user .bubble {
+      background: var(--blue-dim);
+      border: 1px solid #2563eb44;
+      border-bottom-right-radius: 3px;
+    }
+    .turn.agent .bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 3px;
+    }
+
+    /* ── Tool calls collapsible ── */
+    .tool-calls-box {
+      max-width: 680px;
+      margin-left: 40px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+
+    .tc-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 12px;
+      background: var(--surface2);
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+    }
+    .tc-header:hover { background: var(--border); }
+
+    .tc-header .tc-count { color: var(--emerald); font-weight: 600; font-family: "SF Mono","Fira Code",monospace; }
+    .tc-header .tc-label { color: var(--text-dim); }
+    .tc-chevron { margin-left: auto; color: var(--text-faint); transition: transform 0.2s; font-size: 10px; }
+    .tool-calls-box.open .tc-chevron { transform: rotate(180deg); }
+
+    .tc-body { display: none; flex-direction: column; }
+    .tool-calls-box.open .tc-body { display: flex; }
+
+    .tc-item {
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 7px;
+    }
+
+    .tc-name {
+      font-family: "SF Mono","Fira Code",monospace;
+      color: var(--amber); font-weight: 600; font-size: 12px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); }
+
+    .tc-section {
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .tc-section-label {
+      font-size: 10px; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-faint);
+    }
+    .tc-json {
+      font-family: "SF Mono","Fira Code",monospace;
+      font-size: 11.5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 7px 10px;
+      color: var(--text-dim);
+      white-space: pre;
+      max-height: 200px;
+      overflow: auto;
+      line-height: 1.5;
+    }
+
+    .tc-spinner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      color: var(--text-faint); font-size: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .spinner-dots span {
+      display: inline-block; width: 5px; height: 5px;
+      border-radius: 50%; background: var(--emerald);
+      margin: 0 1px; animation: bounce 1s infinite;
+    }
+    .spinner-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .spinner-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce {
+      0%,80%,100% { transform: translateY(0); opacity: 0.4; }
+      40%          { transform: translateY(-4px); opacity: 1; }
+    }
+
+    /* ── Input ── */
+    #input-area {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; gap: 10px; align-items: flex-end;
+      flex-shrink: 0;
+    }
+    #input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 14px;
+      padding: 10px 14px; resize: none; outline: none;
+      min-height: 42px; max-height: 160px; line-height: 1.5;
+      font-family: inherit; transition: border-color 0.15s;
+    }
+    #input:focus { border-color: var(--emerald); }
+    #input::placeholder { color: var(--text-faint); }
+
+    #send-btn {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: var(--emerald); border: none;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; transition: background 0.15s;
+    }
+    #send-btn:hover { background: #059669; }
+    #send-btn:disabled { background: var(--border); cursor: not-allowed; }
+    #send-btn svg { width: 17px; height: 17px; fill: white; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    .es-icon {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      border-radius: 14px; display: flex; align-items: center;
+      justify-content: center; font-size: 24px;
+    }
+    .empty-state h2 { font-size: 20px; color: var(--text); font-weight: 600; }
+    .empty-state p { font-size: 13px; color: var(--text-dim); text-align: center; max-width: 400px; line-height: 1.6; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+    .chip {
+      font-size: 12px; padding: 6px 13px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; cursor: pointer; color: var(--text-dim);
+      transition: all 0.15s;
+    }
+    .chip:hover { color: var(--emerald); border-color: var(--emerald); background: rgba(16,185,129,0.05); }
+
+    /* scrollbars */
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .tc-json::-webkit-scrollbar { width: 3px; height: 3px; }
+    .tc-json::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <h1>OpenDevOps Agent</h1>
+    <span class="badge">BETA</span>
+  </div>
+  <div class="header-right">
+    <span id="session-label"></span>
+    <button id="clear-btn" onclick="clearSession()">New session</button>
+  </div>
+</header>
+
+<div id="messages">
+  <div class="empty-state" id="empty-state">
+    <div class="es-icon">⚡</div>
+    <h2>OpenDevOps Agent</h2>
+    <p>Ask about your AWS infrastructure or describe an incident — I'll investigate using your live AWS data.</p>
+    <div class="chips">
+      <span class="chip" onclick="useChip(this)">Why is my Lambda throttling?</span>
+      <span class="chip" onclick="useChip(this)">Show alarms in ALARM state</span>
+      <span class="chip" onclick="useChip(this)">Any deployments in the last 2 hours?</span>
+      <span class="chip" onclick="useChip(this)">High error rate on payment service</span>
+    </div>
+  </div>
+</div>
+
+<div id="input-area">
+  <textarea id="input" placeholder="Describe an incident or ask about your AWS environment…" rows="1"></textarea>
+  <button id="send-btn" onclick="sendMessage()">
+    <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+  </button>
+</div>
+
+<script>
+  // ── Session ──────────────────────────────────────────────────────────────
+  let sessionId = localStorage.getItem('devops-session-id');
+  if (!sessionId) { sessionId = crypto.randomUUID(); localStorage.setItem('devops-session-id', sessionId); }
+  document.getElementById('session-label').textContent = sessionId.slice(0, 8);
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl    = document.getElementById('input');
+  const sendBtn    = document.getElementById('send-btn');
+
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  });
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const scrollBottom = () => messagesEl.scrollTop = messagesEl.scrollHeight;
+  const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fmtJson = o => { try { return JSON.stringify(o, null, 2); } catch { return String(o); } };
+
+  function hideEmpty() {
+    const es = document.getElementById('empty-state');
+    if (es) es.remove();
+  }
+
+  function useChip(el) { inputEl.value = el.textContent.trim(); sendMessage(); }
+
+  // ── DOM builders ─────────────────────────────────────────────────────────
+  function addUserTurn(text) {
+    hideEmpty();
+    const turn = document.createElement('div');
+    turn.className = 'turn user';
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '👤';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    turn.appendChild(row);
+    messagesEl.appendChild(turn);
+    scrollBottom();
+  }
+
+  function addAgentTurn() {
+    hideEmpty();
+    const turn = document.createElement('div');
+    turn.className = 'turn agent';
+    messagesEl.appendChild(turn);
+
+    // Tool-calls collapsible box
+    const box = document.createElement('div');
+    box.className = 'tool-calls-box';
+
+    const tcHeader = document.createElement('div');
+    tcHeader.className = 'tc-header';
+    tcHeader.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+      </svg>
+      <span class="tc-count">0</span>
+      <span class="tc-label">tool calls</span>
+      <span class="tc-chevron">▼</span>`;
+    tcHeader.onclick = () => box.classList.toggle('open');
+
+    const tcBody = document.createElement('div');
+    tcBody.className = 'tc-body';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'tc-spinner';
+    spinner.innerHTML = `<div class="spinner-dots"><span></span><span></span><span></span></div>Running tools…`;
+    tcBody.appendChild(spinner);
+
+    box.appendChild(tcHeader);
+    box.appendChild(tcBody);
+    turn.appendChild(box);
+
+    // Bubble
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    turn.appendChild(row);
+
+    const countEl = tcHeader.querySelector('.tc-count');
+    let callCount = 0;
+
+    return {
+      bubble,
+      addCall(toolName, args, result) {
+        callCount++;
+        countEl.textContent = callCount;
+
+        const item = document.createElement('div');
+        item.className = 'tc-item';
+        item.innerHTML = `
+          <div class="tc-name">
+            <span class="tc-dot"></span>${toolName}
+          </div>
+          <div class="tc-section">
+            <div class="tc-section-label">Input</div>
+            <div class="tc-json">${escHtml(fmtJson(args))}</div>
+          </div>
+          <div class="tc-section">
+            <div class="tc-section-label">Output</div>
+            <div class="tc-json">${escHtml(fmtJson(result))}</div>
+          </div>`;
+        tcBody.insertBefore(item, spinner);
+        scrollBottom();
+      },
+      finish() {
+        spinner.remove();
+        if (callCount === 0) {
+          box.remove(); // no tools were called, hide the box entirely
+        } else {
+          box.classList.add('open');
+        }
+      }
+    };
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────────
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || sendBtn.disabled) return;
+
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    addUserTurn(text);
+    const { bubble, addCall, finish } = addAgentTurn();
+    let agentText = '';
+
+    try {
+      const resp = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message: text }),
+      });
+
+      if (!resp.ok) { bubble.textContent = 'Error: ' + resp.statusText; finish(); return; }
+
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let payload;
+          try { payload = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (payload.type === 'token') {
+            agentText += payload.text;
+            bubble.textContent = agentText;
+            scrollBottom();
+          } else if (payload.type === 'tool_call') {
+            addCall(payload.tool, payload.args, payload.result);
+          } else if (payload.type === 'done') {
+            finish();
+          }
+        }
+      }
+    } catch (err) {
+      bubble.textContent = 'Connection error: ' + err.message;
+      finish();
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  // ── Clear ─────────────────────────────────────────────────────────────────
+  async function clearSession() {
+    await fetch(`/sessions/${sessionId}`, { method: 'DELETE' });
+    sessionId = crypto.randomUUID();
+    localStorage.setItem('devops-session-id', sessionId);
+    document.getElementById('session-label').textContent = sessionId.slice(0, 8);
+    messagesEl.innerHTML = `
+      <div class="empty-state" id="empty-state">
+        <div class="es-icon">⚡</div>
+        <h2>OpenDevOps Agent</h2>
+        <p>Ask about your AWS infrastructure or describe an incident — I'll investigate using your live AWS data.</p>
+        <div class="chips">
+          <span class="chip" onclick="useChip(this)">Why is my Lambda throttling?</span>
+          <span class="chip" onclick="useChip(this)">Show alarms in ALARM state</span>
+          <span class="chip" onclick="useChip(this)">Any deployments in the last 2 hours?</span>
+          <span class="chip" onclick="useChip(this)">High error rate on payment service</span>
+        </div>
+      </div>`;
+  }
+</script>
+</body>
+</html>

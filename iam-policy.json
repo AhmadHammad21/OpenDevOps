@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OpenDevOpsAgentReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:Describe*",
+        "cloudwatch:Get*",
+        "cloudwatch:List*",
+        "logs:Describe*",
+        "logs:Get*",
+        "logs:Filter*",
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "cloudtrail:LookupEvents",
+        "cloudtrail:GetTrailStatus",
+        "ecs:Describe*",
+        "ecs:List*",
+        "ec2:Describe*",
+        "lambda:List*",
+        "lambda:Get*",
+        "rds:Describe*",
+        "iam:Get*",
+        "iam:List*",
+        "sts:GetCallerIdentity",
+        "ce:GetCostAndUsage",
+        "ce:GetAnomalies"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
