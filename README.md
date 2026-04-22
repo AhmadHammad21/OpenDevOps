@@ -7,7 +7,11 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
 - **18 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
-- **Web UI** — FastAPI backend with a chat interface that shows live tool calls (name, args, result) as they happen
+- **Web UI** — FastAPI backend with a chat interface that shows:
+  - Live tool calls (name, args, result) — collapsible, closed by default
+  - **Cost tracking card** — input/output tokens, per-component USD cost, total cost, latency — collapsible, closed by default
+  - Pricing map for `google/gemma-4-26b-a4b-it`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o` (extend as needed)
+- **Verbose server logging** via Loguru — every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
 - **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
 
