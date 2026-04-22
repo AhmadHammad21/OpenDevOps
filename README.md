@@ -3,6 +3,14 @@
 Open-source AWS DevOps Agent powered by OpenRouter LLMs. Investigates incidents, finds root causes,
 and gives actionable mitigation plans — without the AWS DevOps Agent price tag.
 
+## What's inside
+
+- **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
+- **18 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+- **Web UI** — FastAPI backend with a chat interface that shows live tool calls (name, args, result) as they happen
+- **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
+- **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
+
 ## Quick Start
 
 ### 1. Install dependencies
@@ -15,28 +23,10 @@ uv sync
 
 ```bash
 cp .env.example .env
-# Edit .env — add your OPENROUTER_API_KEY and AWS credentials
+# Edit .env — add your OPENROUTER_API_KEY and set AWS_PROFILE
 ```
 
-### 3. Run
-
-```bash
-# Investigate an incident
-devops-agent investigate "high error rate on my payment Lambda"
-
-# With specific alarm and service
-devops-agent investigate "latency spike" --alarm HighLatencyAlarm --service api-service
-
-# Freeform Q&A
-devops-agent ask "why would a Lambda function suddenly start throttling?"
-
-# Daily ops health report
-devops-agent report
-```
-
-## AWS Profile Setup
-
-Create a local AWS profile using your access key and secret:
+### 3. Set up AWS profile
 
 ```bash
 aws configure --profile devops-agent-readonly
@@ -44,12 +34,34 @@ aws configure --profile devops-agent-readonly
 # AWS Secret Access Key: your_secret_key
 # Default region:        us-east-1
 # Default output format: json
+
+# Verify
+aws sts get-caller-identity --profile devops-agent-readonly
 ```
 
-Verify it works:
+### 4. Run
+
+**Web UI**
 
 ```bash
-aws sts get-caller-identity --profile devops-agent-readonly
+uv run uvicorn src.api.app:app --reload
+# Open http://localhost:8000
+```
+
+**CLI**
+
+```bash
+# Investigate an incident
+uv run devops-agent investigate "high error rate on my payment Lambda"
+
+# With alarm and service hints
+uv run devops-agent investigate "latency spike" --alarm HighLatencyAlarm --service api-service
+
+# Freeform Q&A
+uv run devops-agent ask "why would a Lambda function suddenly start throttling?"
+
+# Daily ops health report
+uv run devops-agent report
 ```
 
 ## AWS IAM Setup
@@ -63,26 +75,17 @@ aws iam create-policy \
   --policy-document file://iam-policy.json
 ```
 
-## Development
-
-```bash
-# Run tests (no real AWS calls needed)
-uv run pytest
-
-# Lint + format
-uv run ruff check src/ tests/
-uv run ruff format src/ tests/
-```
-
 ## Project Structure
 
 ```
 src/
-├── agent/      # ReAct agent loop, models, prompts
-├── tools/      # AWS read-only tools (CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, IAM)
-├── cli/        # Typer CLI commands
+├── agent/         # DeepAgents setup, prompts, models, config
+├── tools/         # 18 read-only AWS tool functions
+├── api/           # FastAPI + SSE streaming endpoint
+├── cli/           # Typer CLI commands
 └── integrations/  # Future: Slack, PagerDuty
-tests/          # moto-mocked unit tests
+frontend/
+└── index.html     # Chat UI with live tool call inspector
 ```
 
 ## Configuration
@@ -91,7 +94,19 @@ tests/          # moto-mocked unit tests
 |---|---|---|
 | `OPENROUTER_API_KEY` | required | Your OpenRouter API key |
 | `OPENROUTER_MODEL` | `openai/gpt-4o` | Model to use (any OpenRouter model ID) |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter base URL |
 | `AWS_REGION` | `us-east-1` | AWS region |
-| `AWS_PROFILE` | none | AWS profile name |
+| `AWS_PROFILE` | none | AWS named profile (e.g. `devops-agent-readonly`) |
 | `MAX_TOOL_CALLS` | `20` | Hard cap on tool calls per investigation |
 | `INVESTIGATION_TIMEOUT` | `120` | Timeout in seconds |
+
+## Development
+
+```bash
+# Run tests
+uv run pytest
+
+# Lint + format
+uv run ruff check src/ tests/
+uv run ruff format src/ tests/
+```

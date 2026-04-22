@@ -51,8 +51,9 @@ async def _stream_chat(session_id: str, user_message: str):
             config=config,
             stream_mode="messages",
         ):
-            # ── Accumulate streaming tool call fragments from AIMessageChunk ──
-            # tool_call_chunks may be dicts or typed ToolCallChunk objects
+            # ── Accumulate tool_call_chunks (args arrive as JSON fragments) ──
+            # tool_calls on AIMessageChunk always has args={} on the first chunk,
+            # so we ignore it and rely solely on tool_call_chunks for correct args.
             for tcc in getattr(chunk, "tool_call_chunks", []) or []:
                 idx   = _field(tcc, "index", 0)
                 tc_id = _field(tcc, "id")
@@ -67,15 +68,6 @@ async def _stream_chat(session_id: str, user_message: str):
                 if args:
                     tc_accum[idx]["args_str"] += args
 
-            # ── Complete tool_calls on a final AIMessage (not a chunk) ──
-            for tc in getattr(chunk, "tool_calls", []) or []:
-                tc_id = _field(tc, "id") or ""
-                if tc_id:
-                    pending_calls[tc_id] = {
-                        "tool": _field(tc, "name") or "",
-                        "args": _field(tc, "args") or {},
-                    }
-
             # ── Stream text tokens ──
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):
@@ -89,7 +81,7 @@ async def _stream_chat(session_id: str, user_message: str):
                 # Flush any accumulated chunks into pending_calls
                 for entry in tc_accum.values():
                     eid = entry["id"]
-                    if eid and eid not in pending_calls:
+                    if eid:
                         try:
                             eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
                         except json.JSONDecodeError:
@@ -106,6 +98,13 @@ async def _stream_chat(session_id: str, user_message: str):
                 except (json.JSONDecodeError, TypeError):
                     result = {"raw": str(content)[:500]}
 
+                logger.info(
+                    "tool_call session=%s tool=%s args=%s result_keys=%s",
+                    session_id,
+                    call_info["tool"],
+                    call_info["args"],
+                    list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+                )
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': call_info['tool'], 'args': call_info['args'], 'result': result})}\n\n"
 
     except Exception as e:
