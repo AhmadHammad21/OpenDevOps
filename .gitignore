@@ -34,7 +34,7 @@ htmlcov/
 Thumbs.db
 
 # Claude Code internal
-CLAUDE.md
+# CLAUDE.md
 
 # Logs
 *.log
