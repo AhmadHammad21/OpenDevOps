@@ -134,25 +134,49 @@
       font-size: 12px;
     }
 
-    /* ── Usage pill ── */
-    .usage-pill {
+    /* ── Usage card (collapsible) ── */
+    .usage-box {
       flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 13px;
-      background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 8px;
-      font-size: 11.5px;
-      font-family: "SF Mono", "Fira Code", monospace;
-      color: var(--text-dim);
+      overflow: hidden;
+      font-size: 12px;
+      min-width: 160px;
+    }
+    .usage-header {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 12px;
+      background: var(--surface2);
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
       white-space: nowrap;
     }
-    .usage-pill .u-stat { display: flex; align-items: center; gap: 4px; }
-    .usage-pill .u-label { color: var(--text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
-    .usage-pill .u-val   { color: var(--text); font-weight: 500; }
-    .usage-divider { width: 1px; height: 14px; background: var(--border); }
+    .usage-header:hover { background: var(--border); }
+    .usage-header .uh-icon { font-size: 11px; }
+    .usage-header .uh-summary {
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--text-dim); font-size: 11.5px;
+    }
+    .usage-header .uh-summary b { color: var(--text); font-weight: 600; }
+    .usage-chevron { margin-left: auto; color: var(--text-faint); transition: transform 0.2s; font-size: 10px; }
+    .usage-box.open .usage-chevron { transform: rotate(180deg); }
+
+    .usage-body {
+      display: none; flex-direction: column; gap: 6px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .usage-box.open .usage-body { display: flex; }
+
+    .usage-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 20px;
+    }
+    .usage-row .uk { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+    .usage-row .uv { font-family: "SF Mono","Fira Code",monospace; font-size: 11.5px; color: var(--text); font-weight: 500; }
+    .usage-total { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
+    .usage-total .uv { color: var(--emerald); font-size: 12.5px; }
+    .usage-model { font-size: 10px; color: var(--text-faint); font-family: "SF Mono","Fira Code",monospace; margin-top: 2px; word-break: break-all; }
 
     .tc-header {
       display: flex; align-items: center; gap: 8px;
@@ -316,6 +340,26 @@
 </div>
 
 <script>
+  // ── Pricing ($/M tokens) ─────────────────────────────────────────────────
+  const PRICING = {
+    'google/gemma-4-26b-a4b-it':    { input: 0.07,  output: 0.35  },
+    'anthropic/claude-3.5-sonnet':  { input: 3.00,  output: 15.00 },
+    'openai/gpt-4o':                { input: 2.50,  output: 10.00 },
+  };
+
+  function calcCost(model, inputTok, outputTok) {
+    const p = PRICING[model];
+    if (!p || inputTok == null) return null;
+    const inCost  = (inputTok  / 1e6) * p.input;
+    const outCost = (outputTok / 1e6) * p.output;
+    return { inCost, outCost, total: inCost + outCost };
+  }
+
+  function fmtCost(n) {
+    if (n < 0.000001) return '< $0.000001';
+    return '$' + n.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+  }
+
   // ── Session ──────────────────────────────────────────────────────────────
   let sessionId = localStorage.getItem('devops-session-id');
   if (!sessionId) { sessionId = crypto.randomUUID(); localStorage.setItem('devops-session-id', sessionId); }
@@ -416,11 +460,11 @@
     box.appendChild(tcBody);
     metaRow.appendChild(box);
 
-    // Usage pill (hidden until done)
-    const usagePill = document.createElement('div');
-    usagePill.className = 'usage-pill';
-    usagePill.style.display = 'none';
-    metaRow.appendChild(usagePill);
+    // Usage card (hidden until done)
+    const usageBox = document.createElement('div');
+    usageBox.className = 'usage-box';
+    usageBox.style.display = 'none';
+    metaRow.appendChild(usageBox);
 
     const countEl = tcHeader.querySelector('.tc-count');
     let callCount = 0;
@@ -449,24 +493,31 @@
       },
       finish(usage) {
         spinner.remove();
-        if (callCount === 0) {
-          box.remove();
-        }
+        if (callCount === 0) box.remove();
 
-        // Render usage pill
-        if (usage) {
-          const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-          const secs = (usage.latency_ms / 1000).toFixed(1) + 's';
-          let inner = `<div class="u-stat"><span class="u-label">latency</span><span class="u-val">${secs}</span></div>`;
-          if (usage.input_tokens != null) {
-            inner += `<div class="usage-divider"></div>
-              <div class="u-stat"><span class="u-label">in</span><span class="u-val">${fmt(usage.input_tokens)}</span></div>
-              <div class="usage-divider"></div>
-              <div class="u-stat"><span class="u-label">out</span><span class="u-val">${fmt(usage.output_tokens)}</span></div>`;
-          }
-          usagePill.innerHTML = inner;
-          usagePill.style.display = 'flex';
-        }
+        if (!usage) { scrollBottom(); return; }
+
+        const secs   = (usage.latency_ms / 1000).toFixed(1) + 's';
+        const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n ?? '—');
+        const cost   = calcCost(usage.model, usage.input_tokens, usage.output_tokens);
+
+        // Header summary: "4.2s · $0.000246" (or just "4.2s" if no pricing)
+        const costSummary = cost ? ` · <b>${fmtCost(cost.total)}</b>` : '';
+        usageBox.innerHTML = `
+          <div class="usage-header">
+            <span class="uh-icon">⚡</span>
+            <span class="uh-summary"><b>${secs}</b>${costSummary}</span>
+            <span class="usage-chevron">▼</span>
+          </div>
+          <div class="usage-body">
+            <div class="usage-row"><span class="uk">Latency</span><span class="uv">${secs}</span></div>
+            <div class="usage-row"><span class="uk">Input tokens</span><span class="uv">${fmtTok(usage.input_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.inCost) + ')</span>' : ''}</span></div>
+            <div class="usage-row"><span class="uk">Output tokens</span><span class="uv">${fmtTok(usage.output_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.outCost) + ')</span>' : ''}</span></div>
+            ${cost ? `<div class="usage-row usage-total"><span class="uk">Total cost</span><span class="uv">${fmtCost(cost.total)}</span></div>` : ''}
+            <div class="usage-model">${usage.model || ''}</div>
+          </div>`;
+        usageBox.querySelector('.usage-header').onclick = () => usageBox.classList.toggle('open');
+        usageBox.style.display = 'block';
         scrollBottom();
       }
     };

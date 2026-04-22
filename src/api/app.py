@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from loguru import logger
 from pydantic import BaseModel
 
+from agent.config import settings
 from agent.core import get_agent
 
 
@@ -51,21 +52,37 @@ def _field(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+_SEP = "─" * 60
+
+
+def _sid(session_id: str) -> str:
+    return session_id[:8]
+
+
 async def _stream_chat(session_id: str, user_message: str):
-    """Stream SSE events to the frontend.
+    """Stream SSE events to the frontend."""
+    agent   = get_agent()
+    config  = {"configurable": {"thread_id": session_id}}
+    sid     = _sid(session_id)
 
-    stream_mode='messages' yields (BaseMessageChunk, metadata) tuples.
-    Tool call args are buffered by tool_call_id (accumulated from
-    tool_call_chunks) so each tool event has {tool, args, result}.
-    Token usage and latency are sent in the final 'done' event.
-    """
-    agent = get_agent()
-    config = {"configurable": {"thread_id": session_id}}
-
-    tc_accum: dict[int, dict[str, Any]] = {}
+    tc_accum: dict[int, dict[str, Any]]    = {}
     pending_calls: dict[str, dict[str, Any]] = {}
     usage_meta: Any = None
     start = time.time()
+
+    # Buffer agent text so we can log complete reasoning blocks
+    text_buf = ""
+
+    logger.info("{sep}", sep=_SEP)
+    logger.info("▶  [{sid}]  USER: {msg}", sid=sid, msg=user_message)
+    logger.info("{sep}", sep=_SEP)
+
+    def _flush_text_buf():
+        nonlocal text_buf
+        if text_buf.strip():
+            for line in text_buf.strip().splitlines():
+                logger.info("   [{sid}]  🤖  {line}", sid=sid, line=line)
+        text_buf = ""
 
     try:
         async for chunk, _meta in agent.astream(
@@ -73,12 +90,11 @@ async def _stream_chat(session_id: str, user_message: str):
             config=config,
             stream_mode="messages",
         ):
-            # ── Capture token usage from the last chunk that has it ──
             um = getattr(chunk, "usage_metadata", None)
             if um:
                 usage_meta = um
 
-            # ── Accumulate tool_call_chunks (args stream as JSON fragments) ──
+            # Accumulate tool_call_chunks
             for tcc in getattr(chunk, "tool_call_chunks", []) or []:
                 idx   = _field(tcc, "index", 0)
                 tc_id = _field(tcc, "id")
@@ -93,15 +109,18 @@ async def _stream_chat(session_id: str, user_message: str):
                 if args:
                     tc_accum[idx]["args_str"] += args
 
-            # ── Stream text tokens ──
+            # Stream text tokens — buffer for logging
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):
                 if not getattr(chunk, "tool_call_id", None):
+                    text_buf += content
                     yield f"data: {json.dumps({'type': 'token', 'text': content})}\n\n"
 
-            # ── Tool result (ToolMessage) ──
+            # Tool result (ToolMessage)
             tc_id = getattr(chunk, "tool_call_id", None)
             if tc_id:
+                _flush_text_buf()  # log any reasoning text before the tool result
+
                 for entry in tc_accum.values():
                     eid = entry["id"]
                     if eid:
@@ -122,22 +141,46 @@ async def _stream_chat(session_id: str, user_message: str):
                     result = {"raw": str(content)[:500]}
 
                 logger.info(
-                    "tool_call session=%s tool=%s args=%s result_keys=%s",
-                    session_id,
-                    call_info["tool"],
-                    call_info["args"],
-                    list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+                    "   [{sid}]  🔧  {tool}({args})",
+                    sid=sid, tool=call_info["tool"], args=call_info["args"],
                 )
+                if isinstance(result, dict) and "error" in result:
+                    logger.warning(
+                        "   [{sid}]  ⚠   error: {err}",
+                        sid=sid, err=result["error"],
+                    )
+                else:
+                    keys = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+                    count = result.get("count", result.get("events", result.get("functions", "")))
+                    logger.info(
+                        "   [{sid}]  ✓   keys={keys}  count={count}",
+                        sid=sid, keys=keys, count=count if isinstance(count, int) else "—",
+                    )
+
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': call_info['tool'], 'args': call_info['args'], 'result': result})}\n\n"
 
     except Exception as e:
-        logger.error("stream_chat error: %s", e)
+        logger.error("[{sid}]  stream error: {err}", sid=sid, err=e)
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
-    usage: dict[str, Any] = {"latency_ms": int((time.time() - start) * 1000)}
+    _flush_text_buf()  # log the final answer text
+
+    usage: dict[str, Any] = {
+        "latency_ms": int((time.time() - start) * 1000),
+        "model": settings.openrouter_model,
+    }
     if usage_meta:
         usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
         usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
+
+    logger.info(
+        "✓  [{sid}]  DONE  latency={lat}ms  in={inp}  out={out}",
+        sid=sid,
+        lat=usage["latency_ms"],
+        inp=usage.get("input_tokens", "?"),
+        out=usage.get("output_tokens", "?"),
+    )
+    logger.info("{sep}", sep=_SEP)
 
     yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
 
