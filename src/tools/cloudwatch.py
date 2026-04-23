@@ -1,6 +1,7 @@
 """CloudWatch tool: alarms, metrics, and log events."""
 
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -196,10 +197,76 @@ def describe_log_groups(prefix: str | None = None) -> dict:
         return {"error": str(e), "log_groups": []}
 
 
+def query_logs_insights(
+    log_group: str,
+    query: str,
+    hours: int = 1,
+    limit: int = 100,
+) -> dict:
+    """Run a CloudWatch Logs Insights structured query against a log group.
+
+    Supports the full Logs Insights query language: fields, filter, stats, sort, limit.
+    Example queries:
+      - 'fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 50'
+      - 'stats count(*) as errors by bin(5m) | sort errors desc'
+      - 'fields @timestamp, @message | filter @message like /WARN/ | limit 100'
+
+    Args:
+        log_group: CloudWatch log group name (e.g. /aws/lambda/my-fn).
+        query: Logs Insights query string.
+        hours: Time window to search. Default 1.
+        limit: Max results to return. Default 100.
+    """
+    try:
+        client = _logs_client()
+        end_ts = int(datetime.now(UTC).timestamp())
+        start_ts = int((datetime.now(UTC) - timedelta(hours=hours)).timestamp())
+
+        resp = client.start_query(
+            logGroupName=log_group,
+            startTime=start_ts,
+            endTime=end_ts,
+            queryString=query,
+            limit=limit,
+        )
+        query_id = resp["queryId"]
+
+        # Poll until complete — real AWS takes 1–30s; moto returns Complete immediately
+        deadline = time.time() + 30
+        status = ""
+        result_resp: dict = {}
+        while time.time() < deadline:
+            result_resp = client.get_query_results(queryId=query_id)
+            status = result_resp.get("status", "")
+            if status in ("Complete", "Failed", "Cancelled", "Timeout"):
+                break
+            time.sleep(1)
+
+        if status != "Complete":
+            return {"error": f"Query ended with status: {status}", "results": []}
+
+        rows = [
+            {field["field"]: field["value"] for field in record}
+            for record in result_resp.get("results", [])[:limit]
+        ]
+        stats = result_resp.get("statistics", {})
+        return {
+            "log_group": log_group,
+            "query": query,
+            "results": rows,
+            "count": len(rows),
+            "scanned_mb": round(stats.get("bytesScanned", 0) / 1e6, 3),
+        }
+    except (BotoCoreError, ClientError) as e:
+        logger.error("query_logs_insights failed: %s", e)
+        return {"error": str(e), "results": []}
+
+
 ALL_CLOUDWATCH_TOOLS = [
     get_alarms,
     get_alarm_history,
     get_metric_data,
     get_log_events,
     describe_log_groups,
+    query_logs_insights,
 ]
