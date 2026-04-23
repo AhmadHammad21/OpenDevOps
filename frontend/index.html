@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenDevOps Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -297,6 +298,56 @@
     }
     .chip:hover { color: var(--emerald); border-color: var(--emerald); background: rgba(16,185,129,0.05); }
 
+    /* ── Markdown inside agent bubble ── */
+    .bubble.agent-bubble { white-space: normal; }
+    .agent-bubble p { margin: 0 0 8px; }
+    .agent-bubble p:last-child { margin-bottom: 0; }
+    .agent-bubble h1, .agent-bubble h2, .agent-bubble h3,
+    .agent-bubble h4, .agent-bubble h5, .agent-bubble h6 {
+      font-weight: 600; margin: 12px 0 5px; line-height: 1.3;
+    }
+    .agent-bubble h1 { font-size: 16px; }
+    .agent-bubble h2 { font-size: 15px; }
+    .agent-bubble h3 { font-size: 14px; }
+    .agent-bubble h1:first-child, .agent-bubble h2:first-child,
+    .agent-bubble h3:first-child { margin-top: 0; }
+    .agent-bubble ul, .agent-bubble ol { padding-left: 20px; margin: 6px 0 8px; }
+    .agent-bubble li { margin: 3px 0; line-height: 1.6; }
+    .agent-bubble code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12.5px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    .agent-bubble pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .agent-bubble pre code {
+      background: none; border: none; padding: 0; font-size: 12px;
+    }
+    .agent-bubble blockquote {
+      border-left: 3px solid var(--emerald);
+      padding-left: 12px;
+      color: var(--text-dim);
+      margin: 8px 0;
+    }
+    .agent-bubble strong { font-weight: 600; color: var(--text); }
+    .agent-bubble em { font-style: italic; color: var(--text-dim); }
+    .agent-bubble a { color: var(--blue); text-decoration: none; }
+    .agent-bubble a:hover { text-decoration: underline; }
+    .agent-bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+    .agent-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+    .agent-bubble th, .agent-bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+    .agent-bubble th { background: var(--surface2); font-weight: 600; }
+    .agent-bubble tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
     /* scrollbars */
     #messages::-webkit-scrollbar { width: 4px; }
     #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -340,6 +391,10 @@
 </div>
 
 <script>
+  // ── Markdown ─────────────────────────────────────────────────────────────
+  marked.setOptions({ breaks: true, gfm: true });
+  const renderMd = text => marked.parse(text);
+
   // ── Pricing ($/M tokens) ─────────────────────────────────────────────────
   const PRICING = {
     'google/gemma-4-26b-a4b-it':    { input: 0.07,  output: 0.35  },
@@ -425,7 +480,7 @@
     avatar.className = 'avatar';
     avatar.textContent = '🤖';
     const bubble = document.createElement('div');
-    bubble.className = 'bubble';
+    bubble.className = 'bubble agent-bubble';
     row.appendChild(avatar);
     row.appendChild(bubble);
     turn.appendChild(row);
@@ -543,7 +598,7 @@
         body: JSON.stringify({ session_id: sessionId, message: text }),
       });
 
-      if (!resp.ok) { bubble.textContent = 'Error: ' + resp.statusText; finish(); return; }
+      if (!resp.ok) { bubble.textContent = 'Error: ' + resp.statusText; finish(null); return; }
 
       const reader  = resp.body.getReader();
       const decoder = new TextDecoder();
@@ -563,7 +618,7 @@
 
           if (payload.type === 'token') {
             agentText += payload.text;
-            bubble.textContent = agentText;
+            bubble.innerHTML = renderMd(agentText);
             scrollBottom();
           } else if (payload.type === 'tool_call') {
             addCall(payload.tool, payload.args, payload.result);
@@ -574,7 +629,7 @@
       }
     } catch (err) {
       bubble.textContent = 'Connection error: ' + err.message;
-      finish();
+      finish(null);
     } finally {
       sendBtn.disabled = false;
       inputEl.focus();
