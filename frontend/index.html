@@ -275,6 +275,8 @@
     #send-btn:hover { background: #059669; }
     #send-btn:disabled { background: var(--border); cursor: not-allowed; }
     #send-btn svg { width: 17px; height: 17px; fill: white; }
+    #send-btn.stopping { background: #dc2626; }
+    #send-btn.stopping:hover { background: #b91c1c; }
 
     /* ── Empty state ── */
     .empty-state {
@@ -386,7 +388,7 @@
 <div id="input-area">
   <textarea id="input" placeholder="Describe an incident or ask about your AWS environment…" rows="1"></textarea>
   <button id="send-btn" onclick="sendMessage()">
-    <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    <svg id="send-icon" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
   </button>
 </div>
 
@@ -578,14 +580,30 @@
     };
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────
+  // ── Send / Stop ───────────────────────────────────────────────────────────
+  const SEND_ICON = `<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>`;
+  const STOP_ICON = `<rect x="5" y="5" width="14" height="14" rx="2"/>`;
+
+  let activeController = null;
+
+  function stopMessage() {
+    if (activeController) activeController.abort();
+  }
+
+  function _setBusy(busy) {
+    document.getElementById('send-icon').innerHTML = busy ? STOP_ICON : SEND_ICON;
+    sendBtn.classList.toggle('stopping', busy);
+    sendBtn.onclick = busy ? stopMessage : sendMessage;
+  }
+
   async function sendMessage() {
     const text = inputEl.value.trim();
-    if (!text || sendBtn.disabled) return;
+    if (!text || activeController) return;
 
     inputEl.value = '';
     inputEl.style.height = 'auto';
-    sendBtn.disabled = true;
+    activeController = new AbortController();
+    _setBusy(true);
 
     addUserTurn(text);
     const { bubble, addCall, finish } = addAgentTurn();
@@ -596,6 +614,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, message: text }),
+        signal: activeController.signal,
       });
 
       if (!resp.ok) { bubble.textContent = 'Error: ' + resp.statusText; finish(null); return; }
@@ -628,10 +647,17 @@
         }
       }
     } catch (err) {
-      bubble.textContent = 'Connection error: ' + err.message;
-      finish(null);
+      if (err.name === 'AbortError') {
+        // User cancelled — show whatever partial text arrived, no error message
+        if (!agentText) bubble.textContent = '(cancelled)';
+        finish(null);
+      } else {
+        bubble.textContent = 'Connection error: ' + err.message;
+        finish(null);
+      }
     } finally {
-      sendBtn.disabled = false;
+      activeController = null;
+      _setBusy(false);
       inputEl.focus();
     }
   }
