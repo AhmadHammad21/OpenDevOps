@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,8 @@ from loguru import logger
 from pydantic import BaseModel
 
 from agent.config import settings
-from agent.core import get_agent
+from agent.core import get_agent, init_agent
+from agent.db import db
 
 
 class _InterceptHandler(logging.Handler):
@@ -36,7 +38,16 @@ logging.basicConfig(handlers=[_InterceptHandler()], level=logging.INFO, force=Tr
 for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
     logging.getLogger(_name).handlers = [_InterceptHandler()]
 
-app = FastAPI(title="OpenDevOps Agent", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    checkpointer = await db.init()
+    init_agent(checkpointer)
+    yield
+    await db.close()
+
+
+app = FastAPI(title="OpenDevOps Agent", version="0.1.0", lifespan=lifespan)
 
 _STATIC = Path(__file__).parent.parent.parent / "frontend"
 
@@ -60,9 +71,9 @@ _SEP = "─" * 60
 # ^thought$  — the word "thought" alone on its own line (artifact preamble before tool calls).
 #              Safe because real sentences never consist of just "thought" with nothing else.
 _CHANNEL_RE = re.compile(
-    r"<channel\|[^>]*>"        # <channel|thought>
+    r"<channel\|[^>]*>"           # <channel|thought>
     r"|<channel\|>[a-zA-Z_]*\s*"  # <channel|>thought
-    r"|^thought\s*$",          # bare "thought" on its own line
+    r"|^thought\s*$",             # bare "thought" on its own line
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -75,6 +86,63 @@ def _clean(text: str) -> str:
     return _CHANNEL_RE.sub("", text)
 
 
+# Pricing map ($/M tokens) — mirrors the frontend map
+_PRICING: dict[str, dict[str, float]] = {
+    "google/gemma-4-26b-a4b-it":   {"input": 0.07,  "output": 0.35},
+    "anthropic/claude-3.5-sonnet": {"input": 3.00,  "output": 15.00},
+    "openai/gpt-4o":               {"input": 2.50,  "output": 10.00},
+}
+
+
+def _calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
+    p = _PRICING.get(model)
+    if not p:
+        return None
+    return (input_tok / 1e6) * p["input"] + (output_tok / 1e6) * p["output"]
+
+
+async def _save_turn(
+    session_id: str,
+    user_message: str,
+    assistant_text: str,
+    tool_calls_log: list[dict[str, Any]],
+    usage: dict[str, Any],
+) -> None:
+    """Persist the full turn to Postgres. Errors are logged, never raised."""
+    try:
+        title = user_message[:80] if user_message else None
+        await db.upsert_session(session_id, usage.get("model", ""), settings.aws_region, title)
+
+        user_msg_id = await db.save_message(session_id, "user", user_message)
+        asst_msg_id = await db.save_message(
+            session_id, "assistant", assistant_text,
+            metadata={"model": usage.get("model"), "latency_ms": usage.get("latency_ms")},
+        )
+
+        for tc in tool_calls_log:
+            await db.save_tool_call(
+                session_id, asst_msg_id,
+                tc["tool"], tc["args"], tc["result"],
+            )
+
+        cost = _calc_cost(
+            usage.get("model", ""),
+            usage.get("input_tokens", 0),
+            usage.get("output_tokens", 0),
+        )
+        await db.save_usage_event(
+            session_id, asst_msg_id,
+            model=usage.get("model", ""),
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cost_usd=cost,
+            latency_ms=usage.get("latency_ms", 0),
+            tool_call_count=len(tool_calls_log),
+        )
+    except Exception as e:
+        logger.error("[{}]  DB save failed: {}", _sid(session_id), e)
+
+
 async def _stream_chat(session_id: str, user_message: str):
     """Stream SSE events to the frontend."""
     agent   = get_agent()
@@ -83,6 +151,7 @@ async def _stream_chat(session_id: str, user_message: str):
 
     tc_accum: dict[int, dict[str, Any]]    = {}
     pending_calls: dict[str, dict[str, Any]] = {}
+    tool_calls_log: list[dict[str, Any]]    = []
     usage_meta: Any = None
     start = time.time()
 
@@ -188,6 +257,7 @@ async def _stream_chat(session_id: str, user_message: str):
                         sid=sid, keys=keys, count=count if isinstance(count, int) else "—",
                     )
 
+                tool_calls_log.append({"tool": call_info["tool"], "args": call_info["args"], "result": result})
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': call_info['tool'], 'args': call_info['args'], 'result': result})}\n\n"
 
     except Exception as e:
@@ -212,6 +282,9 @@ async def _stream_chat(session_id: str, user_message: str):
         out=usage.get("output_tokens", "?"),
     )
     logger.info("{sep}", sep=_SEP)
+
+    # Persist turn to DB (non-blocking — errors are logged, not raised)
+    await _save_turn(session_id, user_message, clean_buf, tool_calls_log, usage)
 
     yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
 

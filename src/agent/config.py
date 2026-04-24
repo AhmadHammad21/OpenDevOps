@@ -15,5 +15,8 @@ class Settings(BaseSettings):
     investigation_timeout: int = 120
     log_level: str = "INFO"
 
+    # PostgreSQL connection string — if unset, falls back to in-memory checkpointer
+    database_url: str | None = None
+
 
 settings = Settings()

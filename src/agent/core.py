@@ -8,8 +8,6 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
-
 from agent.config import settings
 from agent.models import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
@@ -33,25 +31,28 @@ ALL_TOOLS = (
     + ALL_IAM_TOOLS
 )
 
-# Shared in-memory checkpointer for session continuity in the web API
-_checkpointer = MemorySaver()
 _agent = None
 
 
-def get_agent():
+def init_agent(checkpointer: Any) -> None:
+    """Create the agent with the given checkpointer. Called once during app startup."""
     global _agent
+    model = ChatOpenAI(
+        model=settings.openrouter_model,
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+    )
+    _agent = create_deep_agent(
+        model=model,
+        tools=ALL_TOOLS,
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+    )
+
+
+def get_agent() -> Any:
     if _agent is None:
-        model = ChatOpenAI(
-            model=settings.openrouter_model,
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
-        )
-        _agent = create_deep_agent(
-            model=model,
-            tools=ALL_TOOLS,
-            system_prompt=SYSTEM_PROMPT,
-            checkpointer=_checkpointer,
-        )
+        raise RuntimeError("Agent not initialised — call init_agent() first")
     return _agent
 
 
