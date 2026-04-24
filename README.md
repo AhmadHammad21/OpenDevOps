@@ -6,7 +6,8 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
-- **18 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+a- **19 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+  - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Web UI** — FastAPI backend with a chat interface that shows:
   - Live tool calls (name, args, result) — collapsible, closed by default

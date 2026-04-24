@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -54,9 +55,24 @@ def _field(obj: Any, key: str, default: Any = None) -> Any:
 
 _SEP = "─" * 60
 
+# Strip DeepAgents channel markers and lone artifact words the model leaks into output.
+# <channel|thought> / <channel|>thought  — DeepAgents routing syntax, never legitimate content.
+# ^thought$  — the word "thought" alone on its own line (artifact preamble before tool calls).
+#              Safe because real sentences never consist of just "thought" with nothing else.
+_CHANNEL_RE = re.compile(
+    r"<channel\|[^>]*>"        # <channel|thought>
+    r"|<channel\|>[a-zA-Z_]*\s*"  # <channel|>thought
+    r"|^thought\s*$",          # bare "thought" on its own line
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _sid(session_id: str) -> str:
     return session_id[:8]
+
+
+def _clean(text: str) -> str:
+    return _CHANNEL_RE.sub("", text)
 
 
 async def _stream_chat(session_id: str, user_message: str):
@@ -70,19 +86,30 @@ async def _stream_chat(session_id: str, user_message: str):
     usage_meta: Any = None
     start = time.time()
 
-    # Buffer agent text so we can log complete reasoning blocks
+    # text_buf: raw model output (logged as-is so you see exactly what the model emits)
+    # clean_buf: stripped version that is actually sent to the frontend
     text_buf = ""
+    clean_buf = ""
 
     logger.info("{sep}", sep=_SEP)
     logger.info("▶  [{sid}]  USER: {msg}", sid=sid, msg=user_message)
     logger.info("{sep}", sep=_SEP)
 
     def _flush_text_buf():
-        nonlocal text_buf
+        nonlocal text_buf, clean_buf
         if text_buf.strip():
-            for line in text_buf.strip().splitlines():
-                logger.info("   [{sid}]  🤖  {line}", sid=sid, line=line)
+            cleaned = _clean(text_buf).strip()
+            raw = text_buf.strip()
+            if cleaned != raw:
+                logger.debug(
+                    "   [{sid}]  ✂   stripped artifacts | raw={raw!r} → clean={clean!r}",
+                    sid=sid, raw=raw, clean=cleaned,
+                )
+            for line in (cleaned or raw).splitlines():
+                if line.strip():
+                    logger.info("   [{sid}]  🤖  {line}", sid=sid, line=line)
         text_buf = ""
+        clean_buf = ""
 
     try:
         async for chunk, _meta in agent.astream(
@@ -109,12 +136,16 @@ async def _stream_chat(session_id: str, user_message: str):
                 if args:
                     tc_accum[idx]["args_str"] += args
 
-            # Stream text tokens — buffer for logging
+            # Stream text tokens — buffer raw for logging, send only cleaned delta to frontend
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):
                 if not getattr(chunk, "tool_call_id", None):
                     text_buf += content
-                    yield f"data: {json.dumps({'type': 'token', 'text': content})}\n\n"
+                    new_clean = _clean(text_buf)
+                    delta = new_clean[len(clean_buf):]
+                    if delta:
+                        clean_buf = new_clean
+                        yield f"data: {json.dumps({'type': 'token', 'text': delta})}\n\n"
 
             # Tool result (ToolMessage)
             tc_id = getattr(chunk, "tool_call_id", None)
