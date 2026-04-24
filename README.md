@@ -6,7 +6,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
-a- **19 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+- **19 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Web UI** — FastAPI backend with a chat interface that shows:
@@ -45,7 +45,32 @@ aws configure --profile devops-agent-readonly
 aws sts get-caller-identity --profile devops-agent-readonly
 ```
 
-### 4. Run
+### 4. Set up the database (optional but recommended)
+
+Without a database the agent still works, using in-memory storage that resets on restart.
+For persistent conversation history across restarts, set up PostgreSQL:
+
+```bash
+# Start Postgres with Docker
+docker run -d --name opendevops-pg \
+  -e POSTGRES_DB=opendevops \
+  -e POSTGRES_USER=dev \
+  -e POSTGRES_PASSWORD=dev \
+  -p 5432:5432 \
+  postgres:16
+
+# Add to .env
+echo "DATABASE_URL=postgresql://dev:dev@localhost:5432/opendevops" >> .env
+
+# Create tables (safe to re-run)
+uv run python scripts/setup_db.py
+```
+
+The script creates all app tables (`sessions`, `messages`, `tool_calls`, `usage_events`, etc.)
+and the LangGraph checkpointer tables in one shot. See [`docs/schema.md`](docs/schema.md) for
+the full schema reference.
+
+### 5. Run
 
 **Web UI**
 
