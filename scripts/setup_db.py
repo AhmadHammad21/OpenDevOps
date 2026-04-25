@@ -62,17 +62,17 @@ def run_migration(database_url: str) -> None:
 # ── Async LangGraph checkpointer setup ───────────────────────────────────────
 
 async def run_checkpointer_setup(database_url: str) -> None:
-    from psycopg_pool import AsyncConnectionPool  # type: ignore
+    import psycopg  # type: ignore
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore
 
     _info("Setting up LangGraph checkpointer tables …")
-    pool = AsyncConnectionPool(conninfo=database_url, open=False)
-    await pool.open()
+    # autocommit=True required — CREATE INDEX CONCURRENTLY cannot run inside a transaction
+    conn = await psycopg.AsyncConnection.connect(database_url, autocommit=True)
     try:
-        checkpointer = AsyncPostgresSaver(pool)
+        checkpointer = AsyncPostgresSaver(conn)
         await checkpointer.setup()
     finally:
-        await pool.close()
+        await conn.close()
     _ok("LangGraph checkpointer tables ready")
 
 

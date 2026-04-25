@@ -30,13 +30,24 @@ class Database:
             return self._use_memory()
 
         try:
+            import psycopg  # type: ignore
             from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
             self._pool = AsyncConnectionPool(conninfo=settings.database_url, open=False)
             await self._pool.open()
             self._checkpointer = AsyncPostgresSaver(self._pool)
-            await self._checkpointer.setup()  # creates langgraph tables if missing
+
+            # CREATE INDEX CONCURRENTLY cannot run inside a transaction — use a
+            # dedicated autocommit connection just for the one-time setup call.
+            setup_conn = await psycopg.AsyncConnection.connect(
+                settings.database_url, autocommit=True
+            )
+            try:
+                await AsyncPostgresSaver(setup_conn).setup()
+            finally:
+                await setup_conn.close()
+
             logger.info("PostgreSQL connected — checkpointer ready")
             return self._checkpointer
 
