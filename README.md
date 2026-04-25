@@ -10,7 +10,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Web UI** — FastAPI backend with a chat interface that shows:
-  - **Session history sidebar** — lists all past conversations; click any to resume; new chat and delete buttons
+  - **Session history sidebar** — lists all past conversations; click any to resume with full tool call inspector and cost card restored; new chat and delete (soft) buttons
   - Live tool calls (name, args, result) — collapsible, closed by default
   - **Cost tracking card** — input/output tokens, per-component USD cost, total cost, latency — collapsible, closed by default
   - Pricing map for `google/gemma-4-26b-a4b-it`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o` (extend as needed)
@@ -18,7 +18,8 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **PostgreSQL persistence** (optional) — full conversation history and tool call logs stored in Postgres via psycopg3; falls back to in-memory when `DATABASE_URL` is unset
   - **LangGraph `AsyncPostgresSaver` checkpointer** — agent reasoning state persists across server restarts; resuming a session picks up the full conversation context, not just display messages
   - Schema: `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
-  - One-shot setup script: `uv run python scripts/setup_db.py`
+  - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
+  - One-shot setup script: `uv run python scripts/setup_db.py` (runs all migrations in order)
 - **Verbose server logging** via Loguru — every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
 - **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
@@ -158,6 +159,8 @@ docs/
 
 ### Medium-term
 - **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
+- **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
+- **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
 - **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
@@ -168,6 +171,8 @@ docs/
 - **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage
 - **Session / user feedback loop** — thumbs up/down on investigations, feed signals back to the agent and to an internal quality dashboard
 - **Slack integration** — post investigation results to a channel (`src/integrations/slack_webhook.py` stub ready)
+- **Telegram integration** — bot that accepts `/investigate` commands and streams findings back to a chat or group
+- **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
 - **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
 
 ## Development
