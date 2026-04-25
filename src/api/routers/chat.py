@@ -118,8 +118,9 @@ async def _stream_chat(session_id: str, user_message: str):
     usage_meta: Any = None
     start = time.time()
 
-    text_buf  = ""
-    clean_buf = ""
+    text_buf      = ""
+    clean_buf     = ""
+    response_text = ""  # full cleaned response — never cleared, used for DB persistence
 
     logger.info("{sep}", sep=_SEP)
     logger.info("▶  [{sid}]  USER: {msg}", sid=sid, msg=user_message)
@@ -173,6 +174,7 @@ async def _stream_chat(session_id: str, user_message: str):
                     delta = new_clean[len(clean_buf):]
                     if delta:
                         clean_buf = new_clean
+                        response_text += delta
                         yield f"data: {json.dumps({'type': 'token', 'text': delta})}\n\n"
 
             tc_id = getattr(chunk, "tool_call_id", None)
@@ -238,7 +240,7 @@ async def _stream_chat(session_id: str, user_message: str):
     )
     logger.info("{sep}", sep=_SEP)
 
-    await _save_turn(session_id, user_message, clean_buf, tool_calls_log, usage)
+    await _save_turn(session_id, user_message, response_text, tool_calls_log, usage)
 
     yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
 

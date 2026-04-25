@@ -623,7 +623,6 @@
   }
 
   async function switchSession(id) {
-    if (id === sessionId) return;
     sessionId = id;
     localStorage.setItem('devops-session-id', sessionId);
     document.getElementById('session-label').textContent = sessionId.slice(0, 8);
@@ -660,8 +659,23 @@
     document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
   }
 
-  // Load sidebar on start
-  loadSessions();
+  // Load sidebar and restore current session on start
+  async function init() {
+    await loadSessions();
+    try {
+      const res = await fetch(`/sessions/${sessionId}/messages`);
+      if (!res.ok) return;
+      const msgs = await res.json();
+      if (!msgs.length) return;
+      messagesEl.innerHTML = '';
+      for (const m of msgs) {
+        if (m.role === 'user') addUserTurn(m.content);
+        else if (m.role === 'assistant') addLoadedAgentTurn(m.content);
+      }
+      scrollBottom();
+    } catch {}
+  }
+  init();
 
   // ── DOM builders ─────────────────────────────────────────────────────────
   function addUserTurn(text) {
