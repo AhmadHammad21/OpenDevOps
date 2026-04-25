@@ -62,9 +62,13 @@ async def run_checkpointer_setup(database_url: str) -> None:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore
 
     _info("Setting up LangGraph checkpointer tables …")
-    async with await AsyncConnectionPool(conninfo=database_url, open=True) as pool:
+    pool = AsyncConnectionPool(conninfo=database_url, open=False)
+    await pool.open()
+    try:
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()
+    finally:
+        await pool.close()
     _ok("LangGraph checkpointer tables ready")
 
 
