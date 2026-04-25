@@ -201,9 +201,9 @@ class Database:
         )
 
     async def list_sessions(self) -> list[dict]:
-        """Return all sessions ordered by most recently active."""
+        """Return non-deleted sessions ordered by most recently active."""
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model FROM sessions ORDER BY last_active_at DESC"
+            "SELECT id, title, last_active_at, model FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC"
         )
         return [
             {
@@ -216,8 +216,15 @@ class Database:
         ]
 
     async def get_messages(self, session_id: str) -> list[dict]:
-        """Return messages enriched with tool_calls and usage per assistant message."""
+        """Return messages enriched with tool_calls and usage per assistant message.
+        Returns [] if the session is soft-deleted or does not exist."""
         uid = uuid.UUID(session_id)
+
+        session = await self._fetchrow(
+            "SELECT is_deleted FROM sessions WHERE id = %s", uid
+        )
+        if session is None or session.get("is_deleted"):
+            return []
 
         messages = await self._fetchall(
             "SELECT id, role, content, created_at FROM messages WHERE session_id = %s ORDER BY created_at ASC",
@@ -269,8 +276,11 @@ class Database:
         return result
 
     async def delete_session(self, session_id: str) -> None:
-        """Delete a session row (cascades to messages, tool_calls, usage_events via FK)."""
-        await self._exec("DELETE FROM sessions WHERE id = %s", uuid.UUID(session_id))
+        """Soft-delete a session — hidden from UI, data preserved for the cleanup job."""
+        await self._exec(
+            "UPDATE sessions SET is_deleted = TRUE, deleted_at = NOW() WHERE id = %s",
+            uuid.UUID(session_id),
+        )
 
     async def save_usage_event(
         self,

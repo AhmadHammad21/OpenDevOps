@@ -48,15 +48,16 @@ def _info(msg: str) -> None:
 def run_migration(database_url: str) -> None:
     import psycopg  # type: ignore
 
-    migration_file = Path(__file__).parent.parent / "migrations" / "001_initial.sql"
-    sql = migration_file.read_text(encoding="utf-8")
+    migrations_dir = Path(__file__).parent.parent / "migrations"
+    sql_files = sorted(migrations_dir.glob("*.sql"))
 
     _info(f"Connecting to {_mask_url(database_url)}")
     with psycopg.connect(database_url, autocommit=True) as conn:
         _ok("Connected")
-        _info("Running migrations/001_initial.sql …")
-        conn.execute(sql)
-        _ok("App tables created (IF NOT EXISTS — safe to re-run)")
+        for sql_file in sql_files:
+            _info(f"Running {sql_file.name} …")
+            conn.execute(sql_file.read_text(encoding="utf-8"))
+            _ok(f"{sql_file.name} applied")
 
 
 # ── Async LangGraph checkpointer setup ───────────────────────────────────────
