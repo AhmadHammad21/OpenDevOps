@@ -216,19 +216,57 @@ class Database:
         ]
 
     async def get_messages(self, session_id: str) -> list[dict]:
-        """Return messages for a session in chronological order."""
-        rows = await self._fetchall(
-            "SELECT role, content, created_at FROM messages WHERE session_id = %s ORDER BY created_at ASC",
-            uuid.UUID(session_id),
+        """Return messages enriched with tool_calls and usage per assistant message."""
+        uid = uuid.UUID(session_id)
+
+        messages = await self._fetchall(
+            "SELECT id, role, content, created_at FROM messages WHERE session_id = %s ORDER BY created_at ASC",
+            uid,
         )
-        return [
-            {
-                "role": r["role"],
-                "content": r["content"],
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        tool_calls = await self._fetchall(
+            "SELECT message_id, tool_name, args, result, error FROM tool_calls WHERE session_id = %s ORDER BY created_at ASC",
+            uid,
+        )
+        usage_rows = await self._fetchall(
+            "SELECT message_id, model, input_tokens, output_tokens, cost_usd, latency_ms FROM usage_events WHERE session_id = %s",
+            uid,
+        )
+
+        tc_by_msg: dict[str, list] = {}
+        for tc in tool_calls:
+            mid = str(tc["message_id"])
+            tc_by_msg.setdefault(mid, []).append({
+                "tool_name": tc["tool_name"],
+                "args": tc["args"],
+                "result": tc["result"],
+                "error": tc["error"],
+            })
+
+        usage_by_msg = {
+            str(u["message_id"]): {
+                "model": u["model"],
+                "input_tokens": u["input_tokens"],
+                "output_tokens": u["output_tokens"],
+                "cost_usd": float(u["cost_usd"]) if u["cost_usd"] is not None else None,
+                "latency_ms": u["latency_ms"],
             }
-            for r in rows
-        ]
+            for u in usage_rows
+        }
+
+        result = []
+        for msg in messages:
+            mid = str(msg["id"])
+            item: dict = {
+                "role": msg["role"],
+                "content": msg["content"],
+                "created_at": msg["created_at"].isoformat() if msg["created_at"] else None,
+            }
+            if msg["role"] == "assistant":
+                item["tool_calls"] = tc_by_msg.get(mid, [])
+                item["usage"] = usage_by_msg.get(mid)
+            result.append(item)
+
+        return result
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session row (cascades to messages, tool_calls, usage_events via FK)."""

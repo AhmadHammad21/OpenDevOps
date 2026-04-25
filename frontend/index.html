@@ -579,6 +579,32 @@
 
   function useChip(el) { inputEl.value = el.textContent.trim(); sendMessage(); }
 
+  // ── Shared usage box builder ───────────────────────────────────────────────
+  function _buildUsageBox(usage) {
+    const secs   = ((usage.latency_ms || 0) / 1000).toFixed(1) + 's';
+    const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n ?? '—');
+    const cost   = calcCost(usage.model, usage.input_tokens, usage.output_tokens);
+    const costSummary = cost ? ` · <b>${fmtCost(cost.total)}</b>` : '';
+
+    const box = document.createElement('div');
+    box.className = 'usage-box';
+    box.innerHTML = `
+      <div class="usage-header">
+        <span class="uh-icon">⚡</span>
+        <span class="uh-summary"><b>${secs}</b>${costSummary}</span>
+        <span class="usage-chevron">▼</span>
+      </div>
+      <div class="usage-body">
+        <div class="usage-row"><span class="uk">Latency</span><span class="uv">${secs}</span></div>
+        <div class="usage-row"><span class="uk">Input tokens</span><span class="uv">${fmtTok(usage.input_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.inCost) + ')</span>' : ''}</span></div>
+        <div class="usage-row"><span class="uk">Output tokens</span><span class="uv">${fmtTok(usage.output_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.outCost) + ')</span>' : ''}</span></div>
+        ${cost ? `<div class="usage-row usage-total"><span class="uk">Total cost</span><span class="uv">${fmtCost(cost.total)}</span></div>` : ''}
+        <div class="usage-model">${usage.model || ''}</div>
+      </div>`;
+    box.querySelector('.usage-header').onclick = () => box.classList.toggle('open');
+    return box;
+  }
+
   // ── Sidebar ───────────────────────────────────────────────────────────────
   async function loadSessions() {
     try {
@@ -639,7 +665,7 @@
       if (!msgs.length) { showEmpty(); return; }
       for (const m of msgs) {
         if (m.role === 'user') addUserTurn(m.content);
-        else if (m.role === 'assistant') addLoadedAgentTurn(m.content);
+        else if (m.role === 'assistant') addLoadedAgentTurn(m.content, m.tool_calls || [], m.usage || null);
       }
     } catch { showEmpty(); }
     scrollBottom();
@@ -670,7 +696,7 @@
       messagesEl.innerHTML = '';
       for (const m of msgs) {
         if (m.role === 'user') addUserTurn(m.content);
-        else if (m.role === 'assistant') addLoadedAgentTurn(m.content);
+        else if (m.role === 'assistant') addLoadedAgentTurn(m.content, m.tool_calls || [], m.usage || null);
       }
       scrollBottom();
     } catch {}
@@ -700,10 +726,11 @@
     scrollBottom();
   }
 
-  function addLoadedAgentTurn(content) {
+  function addLoadedAgentTurn(content, toolCalls = [], usage = null) {
     hideEmpty();
     const turn = document.createElement('div');
     turn.className = 'turn agent';
+
     const row = document.createElement('div');
     row.className = 'msg-row';
     const avatar = document.createElement('div');
@@ -715,6 +742,53 @@
     row.appendChild(avatar);
     row.appendChild(bubble);
     turn.appendChild(row);
+
+    if (toolCalls.length > 0 || usage) {
+      const metaRow = document.createElement('div');
+      metaRow.className = 'meta-row';
+      turn.appendChild(metaRow);
+
+      if (toolCalls.length > 0) {
+        const box = document.createElement('div');
+        box.className = 'tool-calls-box';
+
+        const tcHeader = document.createElement('div');
+        tcHeader.className = 'tc-header';
+        tcHeader.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+          </svg>
+          <span class="tc-count">${toolCalls.length}</span>
+          <span class="tc-label">tool calls</span>
+          <span class="tc-chevron">▼</span>`;
+        tcHeader.onclick = () => box.classList.toggle('open');
+
+        const tcBody = document.createElement('div');
+        tcBody.className = 'tc-body';
+        for (const tc of toolCalls) {
+          const item = document.createElement('div');
+          item.className = 'tc-item';
+          item.innerHTML = `
+            <div class="tc-name"><span class="tc-dot"></span>${escHtml(tc.tool_name)}</div>
+            <div class="tc-section">
+              <div class="tc-section-label">Input</div>
+              <div class="tc-json">${escHtml(fmtJson(tc.args))}</div>
+            </div>
+            <div class="tc-section">
+              <div class="tc-section-label">Output</div>
+              <div class="tc-json">${escHtml(fmtJson(tc.result))}</div>
+            </div>`;
+          tcBody.appendChild(item);
+        }
+
+        box.appendChild(tcHeader);
+        box.appendChild(tcBody);
+        metaRow.appendChild(box);
+      }
+
+      if (usage) metaRow.appendChild(_buildUsageBox(usage));
+    }
+
     messagesEl.appendChild(turn);
   }
 
@@ -763,11 +837,6 @@
     box.appendChild(tcBody);
     metaRow.appendChild(box);
 
-    const usageBox = document.createElement('div');
-    usageBox.className = 'usage-box';
-    usageBox.style.display = 'none';
-    metaRow.appendChild(usageBox);
-
     const countEl = tcHeader.querySelector('.tc-count');
     let callCount = 0;
 
@@ -793,30 +862,8 @@
       },
       finish(usage) {
         spinner.remove();
-        if (callCount === 0) box.remove();
-
         if (!usage) { scrollBottom(); return; }
-
-        const secs   = (usage.latency_ms / 1000).toFixed(1) + 's';
-        const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n ?? '—');
-        const cost   = calcCost(usage.model, usage.input_tokens, usage.output_tokens);
-        const costSummary = cost ? ` · <b>${fmtCost(cost.total)}</b>` : '';
-
-        usageBox.innerHTML = `
-          <div class="usage-header">
-            <span class="uh-icon">⚡</span>
-            <span class="uh-summary"><b>${secs}</b>${costSummary}</span>
-            <span class="usage-chevron">▼</span>
-          </div>
-          <div class="usage-body">
-            <div class="usage-row"><span class="uk">Latency</span><span class="uv">${secs}</span></div>
-            <div class="usage-row"><span class="uk">Input tokens</span><span class="uv">${fmtTok(usage.input_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.inCost) + ')</span>' : ''}</span></div>
-            <div class="usage-row"><span class="uk">Output tokens</span><span class="uv">${fmtTok(usage.output_tokens)}${cost ? ' <span style="color:var(--text-faint);font-size:10px">(' + fmtCost(cost.outCost) + ')</span>' : ''}</span></div>
-            ${cost ? `<div class="usage-row usage-total"><span class="uk">Total cost</span><span class="uv">${fmtCost(cost.total)}</span></div>` : ''}
-            <div class="usage-model">${usage.model || ''}</div>
-          </div>`;
-        usageBox.querySelector('.usage-header').onclick = () => usageBox.classList.toggle('open');
-        usageBox.style.display = 'block';
+        metaRow.appendChild(_buildUsageBox(usage));
         scrollBottom();
       }
     };
