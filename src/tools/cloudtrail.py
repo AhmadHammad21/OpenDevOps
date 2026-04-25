@@ -1,6 +1,6 @@
 """CloudTrail tool: API audit trail for recent changes."""
 
-import logging
+from loguru import logger
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,7 +9,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _ct_client() -> Any:
@@ -64,7 +63,7 @@ def lookup_cloudtrail_events(
             )
         return {"events": events, "count": len(events)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("lookup_cloudtrail_events failed: %s", e)
+        logger.error("lookup_cloudtrail_events failed: {}", e)
         return {"error": str(e), "events": []}
 
 

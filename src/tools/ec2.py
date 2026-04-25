@@ -1,6 +1,6 @@
 """EC2 tool: instance status and system health checks."""
 
-import logging
+from loguru import logger
 from typing import Any
 
 import boto3
@@ -8,7 +8,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _ec2_client() -> Any:
@@ -50,7 +49,7 @@ def describe_ec2_instances(filters: list[dict[str, Any]] | None = None) -> dict:
                     )
         return {"instances": instances, "count": len(instances)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("describe_ec2_instances failed: %s", e)
+        logger.error("describe_ec2_instances failed: {}", e)
         return {"error": str(e), "instances": []}
 
 
@@ -79,7 +78,7 @@ def get_ec2_system_status(instance_id: str) -> dict:
             ],
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_ec2_system_status failed: %s", e)
+        logger.error("get_ec2_system_status failed: {}", e)
         return {"error": str(e)}
 
 

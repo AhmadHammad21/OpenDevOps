@@ -20,7 +20,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - Schema: `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
   - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
   - One-shot setup script: `uv run python scripts/setup_db.py` (runs all migrations in order)
-- **Verbose server logging** via Loguru — every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
+- **Structured logging** via Loguru — used consistently across all modules (tools, agent, API, CLI); every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
 - **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
 
@@ -159,6 +159,7 @@ docs/
 
 ### Medium-term
 - **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
+- **Multi-provider LLM support** — plug in any OpenAI-compatible provider (Anthropic, OpenAI, LiteLLM, Ollama, local models) via a single config switch; provider-specific adapters where the API diverges
 - **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
 - **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set

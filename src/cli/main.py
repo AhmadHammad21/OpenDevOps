@@ -1,7 +1,7 @@
-import logging
+import sys
 
-import structlog
 import typer
+from loguru import logger
 from rich.console import Console
 
 from agent.config import settings
@@ -15,11 +15,8 @@ console = Console()
 
 
 def _setup_logging() -> None:
-    level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(level),
-        logger_factory=structlog.PrintLoggerFactory(),
-    )
+    logger.remove()
+    logger.add(sys.stderr, level=settings.log_level.upper())
 
 
 @app.callback()

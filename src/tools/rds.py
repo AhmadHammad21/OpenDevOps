@@ -1,6 +1,6 @@
 """RDS tool: DB instance status and events."""
 
-import logging
+from loguru import logger
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,7 +9,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _rds_client() -> Any:
@@ -38,7 +37,7 @@ def describe_rds_instances() -> dict:
                 )
         return {"instances": instances, "count": len(instances)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("describe_rds_instances failed: %s", e)
+        logger.error("describe_rds_instances failed: {}", e)
         return {"error": str(e), "instances": []}
 
 
@@ -71,7 +70,7 @@ def get_rds_events(hours: int = 24, db_identifier: str | None = None) -> dict:
                 )
         return {"events": events, "count": len(events)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_rds_events failed: %s", e)
+        logger.error("get_rds_events failed: {}", e)
         return {"error": str(e), "events": []}
 
 

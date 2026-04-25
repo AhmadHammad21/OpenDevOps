@@ -1,6 +1,6 @@
 """Lambda tool: function config, errors, and throttles."""
 
-import logging
+from loguru import logger
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,7 +9,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _lambda_client() -> Any:
@@ -41,7 +40,7 @@ def list_lambda_functions() -> dict:
                 )
         return {"functions": functions, "count": len(functions)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("list_lambda_functions failed: %s", e)
+        logger.error("list_lambda_functions failed: {}", e)
         return {"error": str(e), "functions": []}
 
 
@@ -68,7 +67,7 @@ def get_lambda_function_config(name: str) -> dict:
             "reserved_concurrency": resp.get("ReservedConcurrentExecutions"),
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_lambda_function_config failed: %s", e)
+        logger.error("get_lambda_function_config failed: {}", e)
         return {"error": str(e)}
 
 
@@ -119,7 +118,7 @@ def get_lambda_error_rate(name: str, hours: int = 3) -> dict:
             "throttles_by_period": throttles,
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_lambda_error_rate failed: %s", e)
+        logger.error("get_lambda_error_rate failed: {}", e)
         return {"error": str(e)}
 
 

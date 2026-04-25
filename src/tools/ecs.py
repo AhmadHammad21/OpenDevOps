@@ -1,6 +1,6 @@
 """ECS tool: services, tasks, and task logs."""
 
-import logging
+from loguru import logger
 from typing import Any
 
 import boto3
@@ -8,7 +8,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _ecs_client() -> Any:
@@ -53,7 +52,7 @@ def list_ecs_services(cluster: str) -> dict:
                 )
         return {"cluster": cluster, "services": services, "count": len(services)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("list_ecs_services failed: %s", e)
+        logger.error("list_ecs_services failed: {}", e)
         return {"error": str(e), "services": []}
 
 
@@ -97,7 +96,7 @@ def describe_ecs_service(cluster: str, service: str) -> dict:
             "events": events,
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("describe_ecs_service failed: %s", e)
+        logger.error("describe_ecs_service failed: {}", e)
         return {"error": str(e)}
 
 
@@ -121,7 +120,7 @@ def get_ecs_task_logs(cluster: str, task_id: str, log_group: str, limit: int = 1
         events = [{"message": e["message"].strip()} for e in resp.get("events", [])]
         return {"task_id": short_id, "log_group": log_group, "events": events, "count": len(events)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_ecs_task_logs failed: %s", e)
+        logger.error("get_ecs_task_logs failed: {}", e)
         return {"error": str(e), "events": []}
 
 

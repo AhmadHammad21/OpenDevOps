@@ -1,7 +1,6 @@
 """DeepAgents-based investigation agent."""
 
 import json
-import logging
 import re
 import uuid
 from typing import Any
@@ -11,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from agent.config import settings
 from agent.models import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
+from loguru import logger
 from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS
 from tools.cloudwatch import ALL_CLOUDWATCH_TOOLS
 from tools.ec2 import ALL_EC2_TOOLS
@@ -18,8 +18,6 @@ from tools.ecs import ALL_ECS_TOOLS
 from tools.iam import ALL_IAM_TOOLS
 from tools.lambda_ import ALL_LAMBDA_TOOLS
 from tools.rds import ALL_RDS_TOOLS
-
-logger = logging.getLogger(__name__)
 
 ALL_TOOLS = (
     ALL_CLOUDWATCH_TOOLS
@@ -102,7 +100,7 @@ class InvestigationAgent:
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
 
-        logger.info("investigation_started description=%s", investigation.description)
+        logger.info("investigation_started description={}", investigation.description)
 
         result = get_agent().invoke(
             {"messages": [{"role": "user", "content": user_msg}]},

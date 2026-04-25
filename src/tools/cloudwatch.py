@@ -1,6 +1,6 @@
 """CloudWatch tool: alarms, metrics, and log events."""
 
-import logging
+from loguru import logger
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -10,7 +10,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _cw_client() -> Any:
@@ -48,7 +47,7 @@ def get_alarms(state: str | None = None) -> dict:
                 )
         return {"alarms": alarms, "count": len(alarms)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_alarms failed: %s", e)
+        logger.error("get_alarms failed: {}", e)
         return {"error": str(e), "alarms": []}
 
 
@@ -77,7 +76,7 @@ def get_alarm_history(alarm_name: str, hours: int = 24) -> dict:
         ]
         return {"alarm_name": alarm_name, "history": history, "count": len(history)}
     except (BotoCoreError, ClientError, NotImplementedError) as e:
-        logger.error("get_alarm_history failed: %s", e)
+        logger.error("get_alarm_history failed: {}", e)
         return {"error": str(e), "history": []}
 
 
@@ -118,7 +117,7 @@ def get_metric_data(
         )
         return {"namespace": namespace, "metric": metric, "stat": stat, "datapoints": datapoints, "count": len(datapoints)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_metric_data failed: %s", e)
+        logger.error("get_metric_data failed: {}", e)
         return {"error": str(e), "datapoints": []}
 
 
@@ -165,7 +164,7 @@ def get_log_events(
         ]
         return {"log_group": log_group, "events": events, "count": len(events)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_log_events failed: %s", e)
+        logger.error("get_log_events failed: {}", e)
         return {"error": str(e), "events": []}
 
 
@@ -193,7 +192,7 @@ def describe_log_groups(prefix: str | None = None) -> dict:
                 )
         return {"log_groups": groups, "count": len(groups)}
     except (BotoCoreError, ClientError) as e:
-        logger.error("describe_log_groups failed: %s", e)
+        logger.error("describe_log_groups failed: {}", e)
         return {"error": str(e), "log_groups": []}
 
 
@@ -258,7 +257,7 @@ def query_logs_insights(
             "scanned_mb": round(stats.get("bytesScanned", 0) / 1e6, 3),
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("query_logs_insights failed: %s", e)
+        logger.error("query_logs_insights failed: {}", e)
         return {"error": str(e), "results": []}
 
 

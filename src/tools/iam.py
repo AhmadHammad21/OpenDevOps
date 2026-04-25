@@ -1,6 +1,6 @@
 """IAM tool: read-only role and policy inspection."""
 
-import logging
+from loguru import logger
 from typing import Any
 
 import boto3
@@ -8,7 +8,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from agent.config import settings
 
-logger = logging.getLogger(__name__)
 
 
 def _iam_client() -> Any:
@@ -32,7 +31,7 @@ def get_caller_identity() -> dict:
             "user_id": resp.get("UserId", ""),
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_caller_identity failed: %s", e)
+        logger.error("get_caller_identity failed: {}", e)
         return {"error": str(e)}
 
 
@@ -55,7 +54,7 @@ def get_iam_role_policies(role_name: str) -> dict:
             "inline_policy_names": inline.get("PolicyNames", []),
         }
     except (BotoCoreError, ClientError) as e:
-        logger.error("get_iam_role_policies failed: %s", e)
+        logger.error("get_iam_role_policies failed: {}", e)
         return {"error": str(e)}
 
 
