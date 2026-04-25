@@ -34,7 +34,13 @@ class Database:
             from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-            self._pool = AsyncConnectionPool(conninfo=settings.database_url, open=False)
+            # prepare_threshold=None disables psycopg3 auto-prepared statements,
+            # required for PgBouncer/Supabase connection poolers (transaction mode).
+            self._pool = AsyncConnectionPool(
+                conninfo=settings.database_url,
+                open=False,
+                kwargs={"prepare_threshold": None},
+            )
             await self._pool.open()
             self._checkpointer = AsyncPostgresSaver(self._pool)
 
