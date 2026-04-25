@@ -12,6 +12,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+# psycopg3 async requires SelectorEventLoop on Windows (ProactorEventLoop is the default)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # ── Make sure src/ is on the path when run from the repo root ────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 

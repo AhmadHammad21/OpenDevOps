@@ -59,6 +59,14 @@ class Database:
         return self._checkpointer
 
     # ── Low-level helpers ────────────────────────────────────────────────────
+    # psycopg3 uses %s placeholders (not $1/$2). Dicts are wrapped with Jsonb()
+    # so psycopg knows to serialise them as JSONB rather than text.
+
+    @staticmethod
+    def _jsonb(value: Any) -> Any:
+        """Wrap a dict/list in Jsonb so psycopg3 sends it as JSONB."""
+        from psycopg.types.json import Jsonb  # type: ignore
+        return Jsonb(value)
 
     async def _exec(self, query: str, *params: Any) -> None:
         """Execute a write query. No-op if pool is unavailable."""
@@ -100,7 +108,7 @@ class Database:
         await self._exec(
             """
             INSERT INTO sessions (id, title, model, aws_region)
-            VALUES ($1, $2, $3, $4)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = NOW(),
                 model = EXCLUDED.model
@@ -123,13 +131,13 @@ class Database:
         await self._exec(
             """
             INSERT INTO messages (id, session_id, role, content, metadata)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             uuid.UUID(msg_id),
             uuid.UUID(session_id),
             role,
             content,
-            metadata or {},
+            self._jsonb(metadata or {}),
         )
         return msg_id
 
@@ -147,13 +155,13 @@ class Database:
             """
             INSERT INTO tool_calls
                 (session_id, message_id, tool_name, args, result, error, duration_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             uuid.UUID(session_id),
             uuid.UUID(message_id) if message_id else None,
             tool_name,
-            args,
-            result,
+            self._jsonb(args),
+            self._jsonb(result),
             error,
             duration_ms,
         )
@@ -174,7 +182,7 @@ class Database:
             INSERT INTO usage_events
                 (session_id, message_id, model, input_tokens, output_tokens,
                  cost_usd, latency_ms, tool_call_count)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             uuid.UUID(session_id),
             uuid.UUID(message_id) if message_id else None,
