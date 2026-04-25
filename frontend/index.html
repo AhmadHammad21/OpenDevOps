@@ -748,43 +748,42 @@
       metaRow.className = 'meta-row';
       turn.appendChild(metaRow);
 
-      if (toolCalls.length > 0) {
-        const box = document.createElement('div');
-        box.className = 'tool-calls-box';
+      // Always show the tool calls box (even at 0) when the meta row is present
+      const box = document.createElement('div');
+      box.className = 'tool-calls-box';
 
-        const tcHeader = document.createElement('div');
-        tcHeader.className = 'tc-header';
-        tcHeader.innerHTML = `
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-          </svg>
-          <span class="tc-count">${toolCalls.length}</span>
-          <span class="tc-label">tool calls</span>
-          <span class="tc-chevron">▼</span>`;
-        tcHeader.onclick = () => box.classList.toggle('open');
+      const tcHeader = document.createElement('div');
+      tcHeader.className = 'tc-header';
+      tcHeader.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+        </svg>
+        <span class="tc-count">${toolCalls.length}</span>
+        <span class="tc-label">tool calls</span>
+        <span class="tc-chevron">▼</span>`;
+      tcHeader.onclick = () => box.classList.toggle('open');
 
-        const tcBody = document.createElement('div');
-        tcBody.className = 'tc-body';
-        for (const tc of toolCalls) {
-          const item = document.createElement('div');
-          item.className = 'tc-item';
-          item.innerHTML = `
-            <div class="tc-name"><span class="tc-dot"></span>${escHtml(tc.tool_name)}</div>
-            <div class="tc-section">
-              <div class="tc-section-label">Input</div>
-              <div class="tc-json">${escHtml(fmtJson(tc.args))}</div>
-            </div>
-            <div class="tc-section">
-              <div class="tc-section-label">Output</div>
-              <div class="tc-json">${escHtml(fmtJson(tc.result))}</div>
-            </div>`;
-          tcBody.appendChild(item);
-        }
-
-        box.appendChild(tcHeader);
-        box.appendChild(tcBody);
-        metaRow.appendChild(box);
+      const tcBody = document.createElement('div');
+      tcBody.className = 'tc-body';
+      for (const tc of toolCalls) {
+        const item = document.createElement('div');
+        item.className = 'tc-item';
+        item.innerHTML = `
+          <div class="tc-name"><span class="tc-dot"></span>${escHtml(tc.tool_name)}</div>
+          <div class="tc-section">
+            <div class="tc-section-label">Input</div>
+            <div class="tc-json">${escHtml(fmtJson(tc.args))}</div>
+          </div>
+          <div class="tc-section">
+            <div class="tc-section-label">Output</div>
+            <div class="tc-json">${escHtml(fmtJson(tc.result))}</div>
+          </div>`;
+        tcBody.appendChild(item);
       }
+
+      box.appendChild(tcHeader);
+      box.appendChild(tcBody);
+      metaRow.appendChild(box);
 
       if (usage) metaRow.appendChild(_buildUsageBox(usage));
     }
