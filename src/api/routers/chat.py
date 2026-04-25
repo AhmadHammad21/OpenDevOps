@@ -1,0 +1,254 @@
+"""Chat endpoint — SSE streaming with the LangGraph agent."""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from loguru import logger
+from pydantic import BaseModel
+
+from agent.config import settings
+from agent.core import get_agent
+from agent.db import db
+
+router = APIRouter(tags=["chat"])
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+
+def _field(obj: Any, key: str, default: Any = None) -> Any:
+    """Read a field from either a dict or a typed object (e.g. ToolCallChunk)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+_SEP = "─" * 60
+
+# Strip DeepAgents channel markers and lone artifact words the model leaks into output.
+_CHANNEL_RE = re.compile(
+    r"<channel\|[^>]*>"           # <channel|thought>
+    r"|<channel\|>[a-zA-Z_]*\s*"  # <channel|>thought
+    r"|^thought\s*$",             # bare "thought" on its own line
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Pricing map ($/M tokens)
+_PRICING: dict[str, dict[str, float]] = {
+    "google/gemma-4-26b-a4b-it":   {"input": 0.07,  "output": 0.35},
+    "anthropic/claude-3.5-sonnet": {"input": 3.00,  "output": 15.00},
+    "openai/gpt-4o":               {"input": 2.50,  "output": 10.00},
+}
+
+
+def _sid(session_id: str) -> str:
+    return session_id[:8]
+
+
+def _clean(text: str) -> str:
+    return _CHANNEL_RE.sub("", text)
+
+
+def _calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
+    p = _PRICING.get(model)
+    if not p:
+        return None
+    return (input_tok / 1e6) * p["input"] + (output_tok / 1e6) * p["output"]
+
+
+async def _save_turn(
+    session_id: str,
+    user_message: str,
+    assistant_text: str,
+    tool_calls_log: list[dict[str, Any]],
+    usage: dict[str, Any],
+) -> None:
+    """Persist the full turn to Postgres. Errors are logged, never raised."""
+    try:
+        title = user_message[:80] if user_message else None
+        await db.upsert_session(session_id, usage.get("model", ""), settings.aws_region, title)
+
+        user_msg_id = await db.save_message(session_id, "user", user_message)
+        asst_msg_id = await db.save_message(
+            session_id, "assistant", assistant_text,
+            metadata={"model": usage.get("model"), "latency_ms": usage.get("latency_ms")},
+        )
+
+        for tc in tool_calls_log:
+            await db.save_tool_call(
+                session_id, asst_msg_id,
+                tc["tool"], tc["args"], tc["result"],
+            )
+
+        cost = _calc_cost(
+            usage.get("model", ""),
+            usage.get("input_tokens", 0),
+            usage.get("output_tokens", 0),
+        )
+        await db.save_usage_event(
+            session_id, asst_msg_id,
+            model=usage.get("model", ""),
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cost_usd=cost,
+            latency_ms=usage.get("latency_ms", 0),
+            tool_call_count=len(tool_calls_log),
+        )
+    except Exception as e:
+        logger.error("[{}]  DB save failed: {}", _sid(session_id), e)
+
+
+async def _stream_chat(session_id: str, user_message: str):
+    """Stream SSE events to the frontend."""
+    agent   = get_agent()
+    config  = {"configurable": {"thread_id": session_id}}
+    sid     = _sid(session_id)
+
+    tc_accum: dict[int, dict[str, Any]]      = {}
+    pending_calls: dict[str, dict[str, Any]] = {}
+    tool_calls_log: list[dict[str, Any]]     = []
+    usage_meta: Any = None
+    start = time.time()
+
+    text_buf  = ""
+    clean_buf = ""
+
+    logger.info("{sep}", sep=_SEP)
+    logger.info("▶  [{sid}]  USER: {msg}", sid=sid, msg=user_message)
+    logger.info("{sep}", sep=_SEP)
+
+    def _flush_text_buf():
+        nonlocal text_buf, clean_buf
+        if text_buf.strip():
+            cleaned = _clean(text_buf).strip()
+            raw = text_buf.strip()
+            if cleaned != raw:
+                logger.debug(
+                    "   [{sid}]  ✂   stripped artifacts | raw={raw!r} → clean={clean!r}",
+                    sid=sid, raw=raw, clean=cleaned,
+                )
+            for line in (cleaned or raw).splitlines():
+                if line.strip():
+                    logger.info("   [{sid}]  🤖  {line}", sid=sid, line=line)
+        text_buf = ""
+        clean_buf = ""
+
+    try:
+        async for chunk, _meta in agent.astream(
+            {"messages": [{"role": "user", "content": user_message}]},
+            config=config,
+            stream_mode="messages",
+        ):
+            um = getattr(chunk, "usage_metadata", None)
+            if um:
+                usage_meta = um
+
+            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                idx   = _field(tcc, "index", 0)
+                tc_id = _field(tcc, "id")
+                name  = _field(tcc, "name") or ""
+                args  = _field(tcc, "args") or ""
+                if idx not in tc_accum:
+                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                if tc_id:
+                    tc_accum[idx]["id"] = tc_id
+                if name:
+                    tc_accum[idx]["name"] += name
+                if args:
+                    tc_accum[idx]["args_str"] += args
+
+            content = getattr(chunk, "content", "")
+            if content and isinstance(content, str):
+                if not getattr(chunk, "tool_call_id", None):
+                    text_buf += content
+                    new_clean = _clean(text_buf)
+                    delta = new_clean[len(clean_buf):]
+                    if delta:
+                        clean_buf = new_clean
+                        yield f"data: {json.dumps({'type': 'token', 'text': delta})}\n\n"
+
+            tc_id = getattr(chunk, "tool_call_id", None)
+            if tc_id:
+                _flush_text_buf()
+
+                for entry in tc_accum.values():
+                    eid = entry["id"]
+                    if eid:
+                        try:
+                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
+                        except json.JSONDecodeError:
+                            eargs = {}
+                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                tc_accum.clear()
+
+                call_info = pending_calls.pop(
+                    tc_id,
+                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                )
+                try:
+                    result = json.loads(content)
+                except (json.JSONDecodeError, TypeError):
+                    result = {"raw": str(content)[:500]}
+
+                logger.info(
+                    "   [{sid}]  🔧  {tool}({args})",
+                    sid=sid, tool=call_info["tool"], args=call_info["args"],
+                )
+                if isinstance(result, dict) and "error" in result:
+                    logger.warning("   [{sid}]  ⚠   error: {err}", sid=sid, err=result["error"])
+                else:
+                    keys  = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+                    count = result.get("count", result.get("events", result.get("functions", "")))
+                    logger.info(
+                        "   [{sid}]  ✓   keys={keys}  count={count}",
+                        sid=sid, keys=keys, count=count if isinstance(count, int) else "—",
+                    )
+
+                tool_calls_log.append({"tool": call_info["tool"], "args": call_info["args"], "result": result})
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': call_info['tool'], 'args': call_info['args'], 'result': result})}\n\n"
+
+    except Exception as e:
+        logger.error("[{sid}]  stream error: {err}", sid=sid, err=e)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    _flush_text_buf()
+
+    usage: dict[str, Any] = {
+        "latency_ms": int((time.time() - start) * 1000),
+        "model": settings.openrouter_model,
+    }
+    if usage_meta:
+        usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
+        usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
+
+    logger.info(
+        "✓  [{sid}]  DONE  latency={lat}ms  in={inp}  out={out}",
+        sid=sid,
+        lat=usage["latency_ms"],
+        inp=usage.get("input_tokens", "?"),
+        out=usage.get("output_tokens", "?"),
+    )
+    logger.info("{sep}", sep=_SEP)
+
+    await _save_turn(session_id, user_message, clean_buf, tool_calls_log, usage)
+
+    yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
+
+
+@router.post("/chat")
+async def chat(req: ChatRequest):
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    return StreamingResponse(
+        _stream_chat(req.session_id, req.message.strip()),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

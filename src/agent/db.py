@@ -89,6 +89,23 @@ class Database:
         except Exception as e:
             logger.error("DB write failed: {}", e)
 
+    async def _fetchall(self, query: str, *params: Any) -> list[dict]:
+        """Fetch all rows as a list of dicts. Returns [] if pool is unavailable."""
+        if self._pool is None:
+            return []
+        try:
+            async with self._pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(query, params)
+                    rows = await cur.fetchall()
+                    if not rows:
+                        return []
+                    cols = [desc[0] for desc in cur.description]
+                    return [dict(zip(cols, row)) for row in rows]
+        except Exception as e:
+            logger.error("DB read failed: {}", e)
+            return []
+
     async def _fetchrow(self, query: str, *params: Any) -> dict | None:
         """Fetch a single row as a dict. Returns None if pool is unavailable."""
         if self._pool is None:
@@ -176,6 +193,40 @@ class Database:
             error,
             duration_ms,
         )
+
+    async def list_sessions(self) -> list[dict]:
+        """Return all sessions ordered by most recently active."""
+        rows = await self._fetchall(
+            "SELECT id, title, last_active_at, model FROM sessions ORDER BY last_active_at DESC"
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "last_active_at": r["last_active_at"].isoformat() if r["last_active_at"] else None,
+                "model": r["model"],
+            }
+            for r in rows
+        ]
+
+    async def get_messages(self, session_id: str) -> list[dict]:
+        """Return messages for a session in chronological order."""
+        rows = await self._fetchall(
+            "SELECT role, content, created_at FROM messages WHERE session_id = %s ORDER BY created_at ASC",
+            uuid.UUID(session_id),
+        )
+        return [
+            {
+                "role": r["role"],
+                "content": r["content"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session row (cascades to messages, tool_calls, usage_events via FK)."""
+        await self._exec("DELETE FROM sessions WHERE id = %s", uuid.UUID(session_id))
 
     async def save_usage_event(
         self,
