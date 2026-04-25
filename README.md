@@ -10,9 +10,15 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Web UI** — FastAPI backend with a chat interface that shows:
+  - **Session history sidebar** — lists all past conversations; click any to resume; new chat and delete buttons
   - Live tool calls (name, args, result) — collapsible, closed by default
   - **Cost tracking card** — input/output tokens, per-component USD cost, total cost, latency — collapsible, closed by default
   - Pricing map for `google/gemma-4-26b-a4b-it`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o` (extend as needed)
+  - Stop button cancels an in-flight request mid-stream
+- **PostgreSQL persistence** (optional) — full conversation history and tool call logs stored in Postgres via psycopg3; falls back to in-memory when `DATABASE_URL` is unset
+  - **LangGraph `AsyncPostgresSaver` checkpointer** — agent reasoning state persists across server restarts; resuming a session picks up the full conversation context, not just display messages
+  - Schema: `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
+  - One-shot setup script: `uv run python scripts/setup_db.py`
 - **Verbose server logging** via Loguru — every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
 - **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
@@ -110,13 +116,23 @@ aws iam create-policy \
 
 ```
 src/
-├── agent/         # DeepAgents setup, prompts, models, config
-├── tools/         # 18 read-only AWS tool functions
-├── api/           # FastAPI + SSE streaming endpoint
-├── cli/           # Typer CLI commands
-└── integrations/  # Future: Slack, PagerDuty
+├── agent/             # DeepAgents setup, prompts, models, config, DB layer
+├── tools/             # 19 read-only AWS tool functions
+├── api/
+│   ├── app.py         # FastAPI app factory — mounts routers, serves frontend
+│   └── routers/
+│       ├── chat.py    # POST /chat — SSE streaming endpoint
+│       └── sessions.py# GET/DELETE /sessions — session history
+├── cli/               # Typer CLI commands
+└── integrations/      # Future: Slack, PagerDuty
 frontend/
-└── index.html     # Chat UI with live tool call inspector
+└── index.html         # Chat UI — sidebar, live tool calls, cost card
+migrations/
+└── 001_initial.sql    # App schema (sessions, messages, tool_calls, usage_events)
+scripts/
+└── setup_db.py        # One-shot DB setup (runs migrations + LangGraph checkpointer)
+docs/
+└── schema.md          # Full schema reference with ER diagram
 ```
 
 ## Configuration
