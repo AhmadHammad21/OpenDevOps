@@ -13,7 +13,6 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "python-dotenv>=1.0.0",
-    "structlog>=24.1.0",
     "loguru>=0.7.0",
     "fastapi>=0.111.0",
     "uvicorn>=0.30.0",
@@ -33,7 +32,9 @@ packages = ["src/agent", "src/tools", "src/cli", "src/integrations", "src/api"]
 
 [tool.uv]
 package = true
-dev-dependencies = [
+
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "moto[cloudwatch,logs,ec2,ecs,lambda,rds,iam,cloudtrail]>=5.0.0",
     "pytest-mock>=3.14.0",
