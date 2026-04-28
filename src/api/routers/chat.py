@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from typing import Any
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 from agent.config import settings
 from agent.core import get_agent
 from agent.db import db
+from api.streaming_labels import STREAMING_LABELS
 
 router = APIRouter(tags=["chat"])
 
@@ -47,6 +49,11 @@ _PRICING: dict[str, dict[str, float]] = {
     "anthropic/claude-3.5-sonnet": {"input": 3.00,  "output": 15.00},
     "openai/gpt-4o":               {"input": 2.50,  "output": 10.00},
 }
+
+
+def _pick_label(tool_name: str) -> str:
+    labels = STREAMING_LABELS.get(tool_name) or STREAMING_LABELS["default"]
+    return random.choice(labels)
 
 
 def _sid(session_id: str) -> str:
@@ -113,6 +120,7 @@ async def _stream_chat(session_id: str, user_message: str):
     sid     = _sid(session_id)
 
     tc_accum: dict[int, dict[str, Any]]      = {}
+    tc_labeled: set[int]                     = set()
     pending_calls: dict[str, dict[str, Any]] = {}
     tool_calls_log: list[dict[str, Any]]     = []
     usage_meta: Any = None
@@ -165,6 +173,12 @@ async def _stream_chat(session_id: str, user_message: str):
                     tc_accum[idx]["name"] += name
                 if args:
                     tc_accum[idx]["args_str"] += args
+
+                # Emit a contextual label the first time we know which tool is firing
+                if idx not in tc_labeled and tc_accum[idx]["name"]:
+                    tc_labeled.add(idx)
+                    label = _pick_label(tc_accum[idx]["name"])
+                    yield f"data: {json.dumps({'type': 'tool_status', 'label': label})}\n\n"
 
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):

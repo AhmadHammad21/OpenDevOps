@@ -151,30 +151,32 @@ docs/
 ## TODO / Roadmap
 
 ### Near-term
-- **Cache layer** — response caching for read-heavy AWS API calls (CloudWatch metrics, alarm state) to reduce latency and cost
-- **Schema / models layer** — move all Pydantic `BaseModel` definitions out of routers into a dedicated `src/api/models/` package
-- **Soft-deleted session cleanup job** — purge or archive sessions with `is_deleted = TRUE` older than 30 days
-- **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
-- **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
+- [ ] **Cache layer** — response caching for read-heavy AWS API calls (CloudWatch metrics, alarm state) to reduce latency and cost
+- [ ] **Schema / models layer** — move all Pydantic `BaseModel` definitions out of routers into a dedicated `src/api/models/` package
+- [ ] **Soft-deleted session cleanup job** — purge or archive sessions with `is_deleted = TRUE` older than 30 days
+- [ ] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
+- [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
 
 ### Medium-term
-- **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
-- **Multi-provider LLM support** — plug in any OpenAI-compatible provider (Anthropic, OpenAI, LiteLLM, Ollama, local models) via a single config switch; provider-specific adapters where the API diverges
-- **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
-- **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
-- **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
-- **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
-- **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
-- **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
-- **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
+- [ ] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
+- [ ] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
+- [ ] **Multi-provider LLM support** — plug in any OpenAI-compatible provider (Anthropic, OpenAI, LiteLLM, Ollama, local models) via a single config switch; provider-specific adapters where the API diverges
+- [ ] **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
+- [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
+- [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
+- [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
+- [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
+- [ ] **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
+- [x] **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
 
 ### Later
-- **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage
-- **Session / user feedback loop** — thumbs up/down on investigations, feed signals back to the agent and to an internal quality dashboard
-- **Slack integration** — post investigation results to a channel (`src/integrations/slack_webhook.py` stub ready)
-- **Telegram integration** — bot that accepts `/investigate` commands and streams findings back to a chat or group
-- **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
-- **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
+- [ ] **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage
+- [ ] **Session / user feedback loop** — thumbs up/down on investigations, feed signals back to the agent and to an internal quality dashboard
+- [ ] **Slack integration** — post investigation results to a channel (`src/integrations/slack_webhook.py` stub ready)
+- [ ] **Telegram integration** — bot that accepts `/investigate` commands and streams findings back to a chat or group
+- [ ] **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
+- [ ] **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
+- [ ] **Multi-cloud support** — extend tooling to GCP (Cloud Monitoring, Cloud Logging, GKE) and Azure (Monitor, Log Analytics, AKS); unified incident investigation across providers
 
 ## Development
 

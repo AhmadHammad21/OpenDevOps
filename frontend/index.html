@@ -354,6 +354,15 @@
       40%          { transform: translateY(-4px); opacity: 1; }
     }
 
+    /* ── Streaming status label (above the bubble) ── */
+    .stream-status {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 0 6px 40px; /* 40px = avatar (30px) + gap (10px) */
+      font-size: 12px;
+      color: var(--text-faint);
+      font-style: italic;
+    }
+
     /* ── Input ── */
     #input-area {
       padding: 14px 24px;
@@ -797,6 +806,12 @@
     turn.className = 'turn agent';
     messagesEl.appendChild(turn);
 
+    // ── Status label — sits above the bubble, visible during tool execution ──
+    const streamStatus = document.createElement('div');
+    streamStatus.className = 'stream-status';
+    streamStatus.innerHTML = `<div class="spinner-dots"><span></span><span></span><span></span></div><span class="spinner-label">On the case…</span>`;
+    turn.appendChild(streamStatus);
+
     const row = document.createElement('div');
     row.className = 'msg-row';
     const avatar = document.createElement('div');
@@ -830,7 +845,7 @@
     tcBody.className = 'tc-body';
     const spinner = document.createElement('div');
     spinner.className = 'tc-spinner';
-    spinner.innerHTML = `<div class="spinner-dots"><span></span><span></span><span></span></div>Running tools…`;
+    spinner.innerHTML = `<div class="spinner-dots"><span></span><span></span><span></span></div><span class="spinner-label">Running tools…</span>`;
     tcBody.appendChild(spinner);
     box.appendChild(tcHeader);
     box.appendChild(tcBody);
@@ -841,6 +856,13 @@
 
     return {
       bubble,
+      setLabel(label) {
+        const el = streamStatus.querySelector('.spinner-label');
+        if (el) el.textContent = label;
+      },
+      hideStatus() {
+        streamStatus.style.display = 'none';
+      },
       addCall(toolName, args, result) {
         callCount++;
         countEl.textContent = callCount;
@@ -860,6 +882,7 @@
         scrollBottom();
       },
       finish(usage) {
+        streamStatus.remove();
         spinner.remove();
         if (!usage) { scrollBottom(); return; }
         metaRow.appendChild(_buildUsageBox(usage));
@@ -894,8 +917,9 @@
     _setBusy(true);
 
     addUserTurn(text);
-    const { bubble, addCall, finish } = addAgentTurn();
+    const { bubble, addCall, finish, setLabel, hideStatus } = addAgentTurn();
     let agentText = '';
+    let statusVisible = true;
 
     try {
       const resp = await fetch('/chat', {
@@ -924,9 +948,12 @@
           try { payload = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (payload.type === 'token') {
+            if (statusVisible) { hideStatus(); statusVisible = false; }
             agentText += payload.text;
             bubble.innerHTML = renderMd(agentText);
             scrollBottom();
+          } else if (payload.type === 'tool_status') {
+            setLabel(payload.label);
           } else if (payload.type === 'tool_call') {
             addCall(payload.tool, payload.args, payload.result);
           } else if (payload.type === 'done') {
