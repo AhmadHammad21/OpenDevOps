@@ -113,7 +113,7 @@ async def _stream_chat(session_id: str, user_message: str):
     agent   = get_agent()
     config  = {
         "configurable": {"thread_id": session_id},
-        "recursion_limit": settings.max_tool_calls * 2 + 5,
+        "recursion_limit": settings.max_tool_calls * 3 + 15,
     }
     sid     = _sid(session_id)
 
@@ -227,7 +227,12 @@ async def _stream_chat(session_id: str, user_message: str):
 
     except Exception as e:
         logger.error("[{sid}]  stream error: {err}", sid=sid, err=e)
-        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        msg = (
+            "Investigation hit the tool call limit. The agent gathered partial data — try a more specific query or increase MAX_TOOL_CALLS."
+            if "recursion" in str(e).lower()
+            else str(e)
+        )
+        yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
     _flush_text_buf()
 

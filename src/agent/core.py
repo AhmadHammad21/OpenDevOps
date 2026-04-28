@@ -100,7 +100,7 @@ class InvestigationAgent:
         thread_id = str(uuid.uuid4())
         config = {
             "configurable": {"thread_id": thread_id},
-            "recursion_limit": settings.max_tool_calls * 2 + 5,
+            "recursion_limit": settings.max_tool_calls * 3 + 15,
         }
 
         logger.info("investigation_started description={}", investigation.description)

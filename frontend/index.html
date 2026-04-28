@@ -960,6 +960,11 @@
             addCall(payload.tool, payload.args, payload.result);
           } else if (payload.type === 'done') {
             finish(payload.usage);
+          } else if (payload.type === 'error') {
+            hideStatus();
+            statusVisible = false;
+            bubble.innerHTML = `<span style="color:var(--red,#e74c3c)">⚠ ${payload.message}</span>`;
+            finish(null);
           }
         }
       }
