@@ -151,9 +151,9 @@ docs/
 ## TODO / Roadmap
 
 ### Near-term
-- [ ] **Cache layer** — response caching for read-heavy AWS API calls (CloudWatch metrics, alarm state) to reduce latency and cost
+- [x] **Cache layer** — in-process TTL cache (`cachetools`) on all 19 AWS tool functions; 2-minute TTL, 256 entry max, AWS profile+region included in cache key
 - [x] **Schema / models layer** — centralized `src/models/` package for all Pydantic models: agent domain, memory state, and API request/response schemas
-- [ ] **Soft-deleted session cleanup job** — purge or archive sessions with `is_deleted = TRUE` older than 30 days
+- [ ] **Soft-deleted session cleanup job** — product version only; OSS users manage their own DB
 - [ ] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
 - [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
 
@@ -177,6 +177,13 @@ docs/
 - [ ] **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
 - [ ] **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
 - [ ] **Multi-cloud support** — extend tooling to GCP (Cloud Monitoring, Cloud Logging, GKE) and Azure (Monitor, Log Analytics, AKS); unified incident investigation across providers
+
+### Product (SaaS)
+- [ ] **Redis cache** — replace in-process `cachetools` with Redis; shared across workers, survives restarts, per-org cache namespacing to prevent data leakage between tenants
+- [ ] **Soft-deleted session cleanup** — scheduled job (Inngest or APScheduler) to purge `is_deleted = TRUE` sessions older than a configurable retention window (default 30 days); GDPR right-to-erasure compliance
+- [ ] **Auth & user roles** — `superadmin`, `admin`, `user`; JWT-based auth, role-based access control, org-scoped AWS credential management
+- [ ] **Per-org AWS credential store** — encrypted credential vault per organization; agents use org-scoped profiles instead of a single global `AWS_PROFILE`
+- [ ] **Billing & usage metering** — track token usage and tool calls per org/user; expose cost dashboards; integrate with Stripe for usage-based billing
 
 ## Development
 

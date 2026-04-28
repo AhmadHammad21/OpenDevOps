@@ -1,12 +1,14 @@
 """ECS tool: services, tasks, and task logs."""
 
-from loguru import logger
 from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from cachetools import cached
+from loguru import logger
 
 from agent.config import settings
+from tools._cache import _cache, tool_cache_key
 
 
 
@@ -20,6 +22,7 @@ def _logs_client() -> Any:
     return session.client("logs", region_name=settings.aws_region)
 
 
+@cached(_cache, key=tool_cache_key)
 def list_ecs_services(cluster: str) -> dict:
     """List ECS services in a cluster with their desired, running, and pending task counts.
 
@@ -56,6 +59,7 @@ def list_ecs_services(cluster: str) -> dict:
         return {"error": str(e), "services": []}
 
 
+@cached(_cache, key=tool_cache_key)
 def describe_ecs_service(cluster: str, service: str) -> dict:
     """Get detailed info about an ECS service including recent events and deployment status.
 
@@ -100,6 +104,7 @@ def describe_ecs_service(cluster: str, service: str) -> dict:
         return {"error": str(e)}
 
 
+@cached(_cache, key=tool_cache_key)
 def get_ecs_task_logs(cluster: str, task_id: str, log_group: str, limit: int = 100) -> dict:
     """Fetch stdout/stderr logs for a specific ECS task from CloudWatch Logs.
 
