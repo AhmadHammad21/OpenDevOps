@@ -98,7 +98,10 @@ class InvestigationAgent:
             user_msg += f"\nRegion: {investigation.region}"
 
         thread_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": settings.max_tool_calls * 2 + 5,
+        }
 
         logger.info("investigation_started description={}", investigation.description)
 

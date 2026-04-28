@@ -111,7 +111,10 @@ async def _save_turn(
 async def _stream_chat(session_id: str, user_message: str):
     """Stream SSE events to the frontend."""
     agent   = get_agent()
-    config  = {"configurable": {"thread_id": session_id}}
+    config  = {
+        "configurable": {"thread_id": session_id},
+        "recursion_limit": settings.max_tool_calls * 2 + 5,
+    }
     sid     = _sid(session_id)
 
     tc_accum: dict[int, dict[str, Any]]      = {}
