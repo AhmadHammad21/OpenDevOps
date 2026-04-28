@@ -5,11 +5,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -23,7 +23,7 @@ def _cw_client() -> Any:
     return session.client("cloudwatch", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def list_lambda_functions() -> dict:
     """List all Lambda functions in the region with their runtime, memory, and timeout."""
     try:
@@ -47,7 +47,7 @@ def list_lambda_functions() -> dict:
         return {"error": str(e), "functions": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_lambda_function_config(name: str) -> dict:
     """Get detailed configuration for a Lambda function: memory, timeout, env vars, layers, VPC.
 
@@ -75,7 +75,7 @@ def get_lambda_function_config(name: str) -> dict:
         return {"error": str(e)}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_lambda_error_rate(name: str, hours: int = 3) -> dict:
     """Get Lambda error count and throttle count from CloudWatch for a given time window.
 

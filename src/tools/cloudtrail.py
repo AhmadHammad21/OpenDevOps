@@ -5,11 +5,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -18,7 +18,7 @@ def _ct_client() -> Any:
     return session.client("cloudtrail", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def lookup_cloudtrail_events(
     hours: int = 2,
     resource_name: str | None = None,

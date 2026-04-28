@@ -4,11 +4,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -22,7 +22,7 @@ def _sts_client() -> Any:
     return session.client("sts", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_caller_identity() -> dict:
     """Return the current AWS caller identity: account ID, user/role ARN, and user ID."""
     try:
@@ -38,7 +38,7 @@ def get_caller_identity() -> dict:
         return {"error": str(e)}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_iam_role_policies(role_name: str) -> dict:
     """List policies attached to an IAM role.
 

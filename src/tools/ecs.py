@@ -4,11 +4,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -22,7 +22,40 @@ def _logs_client() -> Any:
     return session.client("logs", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
+def list_ecs_clusters() -> dict:
+    """List all ECS clusters in the region with their status and active service/task counts."""
+    try:
+        client = _ecs_client()
+        paginator = client.get_paginator("list_clusters")
+        arns: list[str] = []
+        for page in paginator.paginate():
+            arns.extend(page.get("clusterArns", []))
+
+        if not arns:
+            return {"clusters": [], "count": 0}
+
+        clusters = []
+        for i in range(0, len(arns), 100):
+            resp = client.describe_clusters(clusters=arns[i : i + 100])
+            for c in resp.get("clusters", []):
+                clusters.append(
+                    {
+                        "name": c["clusterName"],
+                        "arn": c["clusterArn"],
+                        "status": c.get("status", ""),
+                        "active_services": c.get("activeServicesCount", 0),
+                        "running_tasks": c.get("runningTasksCount", 0),
+                        "pending_tasks": c.get("pendingTasksCount", 0),
+                    }
+                )
+        return {"clusters": clusters, "count": len(clusters)}
+    except (BotoCoreError, ClientError) as e:
+        logger.error("list_ecs_clusters failed: {}", e)
+        return {"error": str(e), "clusters": []}
+
+
+@tool_cached
 def list_ecs_services(cluster: str) -> dict:
     """List ECS services in a cluster with their desired, running, and pending task counts.
 
@@ -59,7 +92,7 @@ def list_ecs_services(cluster: str) -> dict:
         return {"error": str(e), "services": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def describe_ecs_service(cluster: str, service: str) -> dict:
     """Get detailed info about an ECS service including recent events and deployment status.
 
@@ -104,7 +137,7 @@ def describe_ecs_service(cluster: str, service: str) -> dict:
         return {"error": str(e)}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_ecs_task_logs(cluster: str, task_id: str, log_group: str, limit: int = 100) -> dict:
     """Fetch stdout/stderr logs for a specific ECS task from CloudWatch Logs.
 
@@ -129,4 +162,4 @@ def get_ecs_task_logs(cluster: str, task_id: str, log_group: str, limit: int = 1
         return {"error": str(e), "events": []}
 
 
-ALL_ECS_TOOLS = [list_ecs_services, describe_ecs_service, get_ecs_task_logs]
+ALL_ECS_TOOLS = [list_ecs_clusters, list_ecs_services, describe_ecs_service, get_ecs_task_logs]

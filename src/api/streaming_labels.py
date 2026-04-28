@@ -56,6 +56,12 @@ STREAMING_LABELS: dict[str, list[str]] = {
     ],
 
     # ── ECS ───────────────────────────────────────────────────────────────────
+    "list_ecs_clusters": [
+        "Discovering ECS clusters…",
+        "Mapping the cluster landscape…",
+        "Rounding up clusters…",
+        "Finding where your services live…",
+    ],
     "list_ecs_services": [
         "Polling the cluster…",
         "Taking a head count in ECS…",

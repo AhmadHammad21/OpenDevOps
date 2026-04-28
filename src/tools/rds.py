@@ -5,11 +5,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -18,7 +18,7 @@ def _rds_client() -> Any:
     return session.client("rds", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def describe_rds_instances() -> dict:
     """List RDS DB instances with their status, engine, class, and multi-AZ configuration."""
     try:
@@ -44,7 +44,7 @@ def describe_rds_instances() -> dict:
         return {"error": str(e), "instances": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_rds_events(hours: int = 24, db_identifier: str | None = None) -> dict:
     """Fetch RDS events log for recent database activity, failovers, maintenance, and errors.
 

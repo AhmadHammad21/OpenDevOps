@@ -4,11 +4,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -17,7 +17,7 @@ def _ec2_client() -> Any:
     return session.client("ec2", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def describe_ec2_instances(filters: list[dict[str, Any]] | None = None) -> dict:
     """List EC2 instances with their state, type, and tags. Optionally filter by state or tag.
 
@@ -56,7 +56,7 @@ def describe_ec2_instances(filters: list[dict[str, Any]] | None = None) -> dict:
         return {"error": str(e), "instances": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_ec2_system_status(instance_id: str) -> dict:
     """Get EC2 instance status checks (system reachability and instance reachability).
 

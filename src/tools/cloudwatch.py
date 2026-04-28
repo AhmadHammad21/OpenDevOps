@@ -6,11 +6,11 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from cachetools import cached
+
 from loguru import logger
 
 from agent.config import settings
-from tools._cache import _cache, tool_cache_key
+from tools._cache import tool_cached
 
 
 
@@ -24,7 +24,7 @@ def _logs_client() -> Any:
     return session.client("logs", region_name=settings.aws_region)
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_alarms(state: str | None = None) -> dict:
     """List CloudWatch alarms, optionally filtered by state (OK, ALARM, INSUFFICIENT_DATA)."""
     try:
@@ -54,7 +54,7 @@ def get_alarms(state: str | None = None) -> dict:
         return {"error": str(e), "alarms": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_alarm_history(alarm_name: str, hours: int = 24) -> dict:
     """Fetch state-change history for a specific CloudWatch alarm.
 
@@ -84,7 +84,7 @@ def get_alarm_history(alarm_name: str, hours: int = 24) -> dict:
         return {"error": str(e), "history": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_metric_data(
     namespace: str,
     metric: str,
@@ -126,7 +126,7 @@ def get_metric_data(
         return {"error": str(e), "datapoints": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def get_log_events(
     log_group: str,
     log_stream: str | None = None,
@@ -174,7 +174,7 @@ def get_log_events(
         return {"error": str(e), "events": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def describe_log_groups(prefix: str | None = None) -> dict:
     """List CloudWatch log groups, optionally filtered by name prefix.
 
@@ -203,7 +203,7 @@ def describe_log_groups(prefix: str | None = None) -> dict:
         return {"error": str(e), "log_groups": []}
 
 
-@cached(_cache, key=tool_cache_key)
+@tool_cached
 def query_logs_insights(
     log_group: str,
     query: str,
