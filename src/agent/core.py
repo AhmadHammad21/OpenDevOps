@@ -8,7 +8,7 @@ from typing import Any
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
 from agent.config import settings
-from agent.models import Confidence, Investigation, InvestigationResult, RootCauseCategory
+from models.agent import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
 from loguru import logger
 from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS

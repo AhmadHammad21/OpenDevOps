@@ -1,3 +1,5 @@
+"""Agent domain models — investigation input, findings, and root cause output."""
+
 from enum import Enum
 from typing import Any
 

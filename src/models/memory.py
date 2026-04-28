@@ -1,3 +1,5 @@
+"""Agent state models — scratchpad tracking tool calls and reasoning during an investigation."""
+
 from typing import Any
 
 from pydantic import BaseModel, Field

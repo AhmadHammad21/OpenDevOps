@@ -152,7 +152,7 @@ docs/
 
 ### Near-term
 - [ ] **Cache layer** — response caching for read-heavy AWS API calls (CloudWatch metrics, alarm state) to reduce latency and cost
-- [ ] **Schema / models layer** — move all Pydantic `BaseModel` definitions out of routers into a dedicated `src/api/models/` package
+- [x] **Schema / models layer** — centralized `src/models/` package for all Pydantic models: agent domain, memory state, and API request/response schemas
 - [ ] **Soft-deleted session cleanup job** — purge or archive sessions with `is_deleted = TRUE` older than 30 days
 - [ ] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
 - [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards

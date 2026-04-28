@@ -11,19 +11,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
-from pydantic import BaseModel
 
 from agent.config import settings
 from agent.core import get_agent
 from agent.db import db
+from models.chat import ChatRequest
 from api.streaming_labels import STREAMING_LABELS
 
 router = APIRouter(tags=["chat"])
-
-
-class ChatRequest(BaseModel):
-    session_id: str
-    message: str
 
 
 def _field(obj: Any, key: str, default: Any = None) -> Any:

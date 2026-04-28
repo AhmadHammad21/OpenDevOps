@@ -9,7 +9,7 @@ from rich.table import Table
 from rich import print as rprint
 
 from agent.core import InvestigationAgent
-from agent.models import Confidence, Investigation
+from models.agent import Confidence, Investigation
 
 console = Console()
 
