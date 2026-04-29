@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from agent.core import init_agent
@@ -46,9 +47,21 @@ app = FastAPI(title="OpenDevOps Agent", version="0.1.0", lifespan=lifespan)
 app.include_router(chat.router)
 app.include_router(sessions.router)
 
-_STATIC = Path(__file__).parent.parent.parent / "frontend"
+_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+# Mount compiled JS/CSS assets from the Vite build
+if _DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return HTMLResponse(content=(_STATIC / "index.html").read_text(encoding="utf-8"))
+    path = _DIST / "index.html"
+    if not path.exists():
+        return HTMLResponse(
+            "<p style='font-family:sans-serif;padding:2rem'>"
+            "Frontend not built yet. Run: <code>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</code>"
+            "</p>",
+            status_code=503,
+        )
+    return HTMLResponse(content=path.read_text(encoding="utf-8"))
