@@ -53,16 +53,30 @@ def _clean(text: str) -> str:
     return _CHANNEL_RE.sub("", text)
 
 
+# Fallback pricing ($/M tokens) for models absent from LiteLLM's database.
+# Add entries here as needed — LiteLLM is always tried first.
+_FALLBACK_PRICING: dict[str, dict[str, float]] = {
+    "openrouter/google/gemma-4-26b-a4b-it":         {"input": 0.07,  "output": 0.35},
+    "openrouter/google/gemma-2-9b-it":              {"input": 0.06,  "output": 0.06},
+    "openrouter/meta-llama/llama-3.1-8b-instruct":  {"input": 0.055, "output": 0.055},
+    "openrouter/mistralai/mistral-7b-instruct":     {"input": 0.055, "output": 0.055},
+}
+
+
 def _calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
     try:
         import litellm
         info = litellm.model_cost.get(model)
-        if not info:
-            return None
-        return (
-            input_tok  * info.get("input_cost_per_token",  0)
-            + output_tok * info.get("output_cost_per_token", 0)
-        )
+        if info:
+            return (
+                input_tok  * info.get("input_cost_per_token",  0)
+                + output_tok * info.get("output_cost_per_token", 0)
+            )
+        # Fall back to manual table for models LiteLLM doesn't know about
+        fallback = _FALLBACK_PRICING.get(model)
+        if fallback:
+            return (input_tok / 1e6) * fallback["input"] + (output_tok / 1e6) * fallback["output"]
+        return None
     except Exception:
         return None
 
