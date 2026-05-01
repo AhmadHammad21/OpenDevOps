@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from tools.cloudwatch import GetAlarmsTool
+from tools.cloudwatch import get_alarms
 
 console = Console()
 
@@ -20,10 +20,9 @@ def report_cmd(
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
         progress.add_task("Fetching alarm states...", total=None)
-        alarms_tool = GetAlarmsTool()
-        all_alarms = alarms_tool.run()
-        alarm_alarms = alarms_tool.run(state="ALARM")
-        insuf_alarms = alarms_tool.run(state="INSUFFICIENT_DATA")
+        all_alarms   = get_alarms()
+        alarm_alarms = get_alarms(state="ALARM")
+        insuf_alarms = get_alarms(state="INSUFFICIENT_DATA")
 
     total = all_alarms.get("count", 0)
     firing = alarm_alarms.get("count", 0)
