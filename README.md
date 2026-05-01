@@ -140,13 +140,18 @@ docs/
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENROUTER_API_KEY` | required | Your OpenRouter API key |
-| `OPENROUTER_MODEL` | `openai/gpt-4o` | Model to use (any OpenRouter model ID) |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter base URL |
+| `LLM_MODEL` | `openrouter/openai/gpt-4o` | LiteLLM model string — `provider/model` format; see [docs/llm_providers.md](docs/llm_providers.md) |
+| `LLM_API_BASE` | none | Custom base URL for OpenAI-compatible endpoints (e.g. Ollama, vLLM) |
+| `LLM_API_KEY` | none | API key for custom endpoints; standard provider keys (e.g. `ANTHROPIC_API_KEY`) are read automatically |
+| `OPENROUTER_API_KEY` | none | Required when using any `openrouter/` model |
 | `AWS_REGION` | `us-east-1` | AWS region |
 | `AWS_PROFILE` | none | AWS named profile (e.g. `devops-agent-readonly`) |
 | `MAX_TOOL_CALLS` | `20` | Hard cap on tool calls per investigation |
 | `INVESTIGATION_TIMEOUT` | `120` | Timeout in seconds |
+| `SLACK_WEBHOOK_URL` | none | Slack incoming webhook URL; leave unset to disable notifications |
+| `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
+| `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |
+| `POLL_REINVESTIGATE_HOURS` | `1` | Cooldown period — skip re-investigating the same alarm within N hours |
 
 ## TODO / Roadmap
 
@@ -160,7 +165,7 @@ docs/
 ### Medium-term
 - [x] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
 - [x] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
-- [ ] **Multi-provider LLM support** — plug in any OpenAI-compatible provider (Anthropic, OpenAI, LiteLLM, Ollama, local models) via a single config switch; provider-specific adapters where the API diverges
+- [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
 - [ ] **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
