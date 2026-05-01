@@ -1,4 +1,5 @@
-import { Plus, X } from 'lucide-react';
+import { Plus, X, LayoutDashboard } from 'lucide-react';
+import { Link, useMatch } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
 import type { Session } from '../types';
 
@@ -10,10 +11,29 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
+function DashboardLink() {
+  const active = useMatch('/dashboard');
+  return (
+    <Link
+      to="/dashboard"
+      className={cn(
+        'w-full px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 border transition-colors',
+        active
+          ? 'text-gray-100 bg-gray-700/60 border-gray-600'
+          : 'text-gray-400 border-transparent hover:bg-gray-700/40 hover:text-gray-100',
+      )}
+    >
+      <LayoutDashboard size={14} />
+      Dashboard
+    </Link>
+  );
+}
+
 export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, onDelete }: Props) {
   return (
     <aside className="w-[260px] shrink-0 bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden">
-      <div className="p-3 border-b border-gray-700 shrink-0">
+      <div className="p-3 border-b border-gray-700 shrink-0 flex flex-col gap-1.5">
+        <DashboardLink />
         <button
           onClick={onNew}
           className="w-full px-3 py-2 rounded-lg text-emerald-400 text-sm font-medium flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/15 hover:border-emerald-500/35 transition-colors text-left"

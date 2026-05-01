@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useMatch } from 'react-router-dom
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ChatPage from './pages/ChatPage';
+import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import { fetchSessions, deleteSession as apiDeleteSession } from './lib/api';
@@ -61,6 +62,7 @@ export default function App() {
         <Routes>
           <Route path="/"                   element={<RedirectToSession />} />
           <Route path="/chat/:sessionId"    element={<ChatPage onSessionsChange={loadSessions} />} />
+          <Route path="/dashboard"           element={<DashboardPage />} />
           <Route path="/history"            element={<HistoryPage />} />
           <Route path="/settings"           element={<SettingsPage />} />
         </Routes>

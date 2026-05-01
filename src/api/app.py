@@ -11,7 +11,7 @@ from loguru import logger
 
 from agent.core import init_agent
 from agent.db import db
-from api.routers import chat, sessions
+from api.routers import chat, dashboard, sessions
 
 
 class _InterceptHandler(logging.Handler):
@@ -46,6 +46,7 @@ app = FastAPI(title="OpenDevOps Agent", version="0.1.0", lifespan=lifespan)
 
 app.include_router(chat.router)
 app.include_router(sessions.router)
+app.include_router(dashboard.router)
 
 _DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 

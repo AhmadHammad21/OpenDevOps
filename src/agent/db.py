@@ -275,6 +275,150 @@ class Database:
 
         return result
 
+    async def get_dashboard_stats(self) -> dict:
+        """Return aggregated stats for the dashboard in one round-trip per query."""
+        _SERVICE_MAP: dict[str, str] = {
+            "get_alarms": "CloudWatch", "get_alarm_history": "CloudWatch",
+            "get_metric_data": "CloudWatch", "get_log_events": "CloudWatch",
+            "describe_log_groups": "CloudWatch", "query_logs_insights": "CloudWatch",
+            "lookup_cloudtrail_events": "CloudTrail",
+            "list_ecs_clusters": "ECS", "list_ecs_services": "ECS",
+            "describe_ecs_service": "ECS", "get_ecs_task_logs": "ECS",
+            "list_lambda_functions": "Lambda", "get_lambda_function_config": "Lambda",
+            "get_lambda_error_rate": "Lambda",
+            "describe_ec2_instances": "EC2", "get_ec2_system_status": "EC2",
+            "describe_rds_instances": "RDS", "get_rds_events": "RDS",
+            "get_caller_identity": "IAM", "get_iam_role_policies": "IAM",
+            "submit_investigation": "Agent",
+        }
+
+        # ── Summary totals ────────────────────────────────────────────────────
+        summary_row = await self._fetchrow("""
+            SELECT
+                (SELECT COUNT(*) FROM sessions WHERE is_deleted = FALSE) AS total_sessions,
+                (SELECT COUNT(*) FROM messages m
+                    JOIN sessions s ON s.id = m.session_id
+                    WHERE s.is_deleted = FALSE AND m.role = 'user') AS total_queries,
+                (SELECT COUNT(*) FROM tool_calls tc
+                    JOIN sessions s ON s.id = tc.session_id
+                    WHERE s.is_deleted = FALSE) AS total_tool_calls,
+                (SELECT COUNT(*) FROM tool_calls tc
+                    JOIN sessions s ON s.id = tc.session_id
+                    WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL) AS total_tool_errors,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE) AS total_input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE) AS total_output_tokens,
+                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE) AS total_cost_usd,
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE) AS avg_latency_ms
+        """)
+        summary = summary_row or {}
+
+        # ── Activity: sessions created per day for last 14 days ───────────────
+        activity_rows = await self._fetchall("""
+            SELECT
+                DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
+                COUNT(*) AS sessions
+            FROM sessions
+            WHERE is_deleted = FALSE
+              AND last_active_at > NOW() - INTERVAL '14 days'
+            GROUP BY 1
+            ORDER BY 1
+        """)
+        activity = [
+            {"date": str(r["day"]), "sessions": int(r["sessions"])}
+            for r in activity_rows
+        ]
+
+        # ── Top tools ─────────────────────────────────────────────────────────
+        tool_rows = await self._fetchall("""
+            SELECT
+                tc.tool_name,
+                COUNT(*) AS call_count,
+                COUNT(*) FILTER (WHERE tc.error IS NOT NULL) AS error_count
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE
+            GROUP BY tc.tool_name
+            ORDER BY call_count DESC
+            LIMIT 12
+        """)
+        top_tools = [
+            {
+                "tool": r["tool_name"],
+                "count": int(r["call_count"]),
+                "errors": int(r["error_count"]),
+            }
+            for r in tool_rows
+        ]
+
+        # ── Service breakdown (derived from top tools) ────────────────────────
+        service_totals: dict[str, int] = {}
+        for t in top_tools:
+            svc = _SERVICE_MAP.get(t["tool"], "Other")
+            service_totals[svc] = service_totals.get(svc, 0) + t["count"]
+        total_calls = sum(service_totals.values()) or 1
+        service_breakdown = sorted(
+            [
+                {"service": svc, "calls": cnt, "pct": round(cnt / total_calls * 100, 1)}
+                for svc, cnt in service_totals.items()
+            ],
+            key=lambda x: x["calls"],
+            reverse=True,
+        )
+
+        # ── Recent sessions with per-session stats ────────────────────────────
+        recent_rows = await self._fetchall("""
+            SELECT
+                s.id, s.title, s.last_active_at, s.model,
+                COUNT(DISTINCT m.id) FILTER (WHERE m.role = 'user') AS query_count,
+                COUNT(DISTINCT tc.id)                                AS tool_count,
+                COALESCE(SUM(ue.cost_usd), 0)                       AS cost_usd
+            FROM sessions s
+            LEFT JOIN messages     m  ON m.session_id  = s.id
+            LEFT JOIN tool_calls   tc ON tc.session_id = s.id
+            LEFT JOIN usage_events ue ON ue.session_id = s.id
+            WHERE s.is_deleted = FALSE
+            GROUP BY s.id, s.title, s.last_active_at, s.model
+            ORDER BY s.last_active_at DESC
+            LIMIT 6
+        """)
+        recent_sessions = [
+            {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "last_active_at": r["last_active_at"].isoformat() if r["last_active_at"] else None,
+                "model": r["model"],
+                "query_count": int(r["query_count"] or 0),
+                "tool_count": int(r["tool_count"] or 0),
+                "cost_usd": float(r["cost_usd"] or 0),
+            }
+            for r in recent_rows
+        ]
+
+        return {
+            "summary": {
+                "total_sessions":    int(summary.get("total_sessions", 0) or 0),
+                "total_queries":     int(summary.get("total_queries", 0) or 0),
+                "total_tool_calls":  int(summary.get("total_tool_calls", 0) or 0),
+                "total_tool_errors": int(summary.get("total_tool_errors", 0) or 0),
+                "total_input_tokens":  int(summary.get("total_input_tokens", 0) or 0),
+                "total_output_tokens": int(summary.get("total_output_tokens", 0) or 0),
+                "total_cost_usd":    float(summary.get("total_cost_usd", 0) or 0),
+                "avg_latency_ms":    round(float(summary.get("avg_latency_ms", 0) or 0)),
+            },
+            "activity": activity,
+            "top_tools": top_tools,
+            "service_breakdown": service_breakdown,
+            "recent_sessions": recent_sessions,
+        }
+
     async def delete_session(self, session_id: str) -> None:
         """Soft-delete a session — hidden from UI, data preserved for the cleanup job."""
         await self._exec(
