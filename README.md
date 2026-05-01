@@ -168,11 +168,11 @@ docs/
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
 - [ ] **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
 - [x] **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
+- [x] **Slack notifications** — reactive: posts a color-coded Block Kit message to a Slack webhook after every investigation; proactive: background poller checks CloudWatch alarms and Lambda error rates on a configurable interval, auto-investigates new anomalies, and posts findings without any human trigger; set `SLACK_WEBHOOK_URL` and `POLL_INTERVAL_MINUTES` in `.env` to enable
 
 ### Later
 - [ ] **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage
 - [ ] **Session / user feedback loop** — thumbs up/down on investigations, feed signals back to the agent and to an internal quality dashboard
-- [ ] **Slack integration** — post investigation results to a channel (`src/integrations/slack_webhook.py` stub ready)
 - [ ] **Telegram integration** — bot that accepts `/investigate` commands and streams findings back to a chat or group
 - [ ] **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
 - [ ] **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
