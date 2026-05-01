@@ -5,28 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const PRICING: Record<string, { input: number; output: number }> = {
-  'google/gemma-4-26b-a4b-it':   { input: 0.07,  output: 0.35  },
-  'anthropic/claude-3.5-sonnet': { input: 3.00,  output: 15.00 },
-  'openai/gpt-4o':               { input: 2.50,  output: 10.00 },
-};
-
 export interface CostBreakdown {
-  inCost: number;
-  outCost: number;
+  inCost: number | null;
+  outCost: number | null;
   total: number;
 }
 
 export function calcCost(
-  model: string,
-  inputTok?: number,
-  outputTok?: number,
+  costUsd?: number,
 ): CostBreakdown | null {
-  const p = PRICING[model];
-  if (!p || inputTok == null) return null;
-  const inCost  = (inputTok          / 1e6) * p.input;
-  const outCost = ((outputTok ?? 0)  / 1e6) * p.output;
-  return { inCost, outCost, total: inCost + outCost };
+  if (costUsd == null) return null;
+  return { inCost: null, outCost: null, total: costUsd };
 }
 
 export function fmtCost(n: number): string {

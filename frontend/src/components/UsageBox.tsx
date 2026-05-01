@@ -10,7 +10,7 @@ interface Props {
 export default function UsageBox({ usage }: Props) {
   const [open, setOpen] = useState(false);
   const secs = ((usage.latency_ms ?? 0) / 1000).toFixed(1) + 's';
-  const cost = calcCost(usage.model, usage.input_tokens, usage.output_tokens);
+  const cost = calcCost(usage.cost_usd);
 
   return (
     <div className="shrink-0 border border-gray-700 rounded-lg overflow-hidden text-xs min-w-[150px]">
@@ -33,8 +33,8 @@ export default function UsageBox({ usage }: Props) {
         <div className="flex flex-col gap-1.5 p-3 border-t border-gray-700 bg-gray-900">
           {[
             { label: 'Latency',       value: secs },
-            { label: 'Input tokens',  value: fmtTok(usage.input_tokens),  extra: cost ? fmtCost(cost.inCost)  : null },
-            { label: 'Output tokens', value: fmtTok(usage.output_tokens), extra: cost ? fmtCost(cost.outCost) : null },
+            { label: 'Input tokens',  value: fmtTok(usage.input_tokens),  extra: null },
+            { label: 'Output tokens', value: fmtTok(usage.output_tokens), extra: null },
           ].map(row => (
             <div key={row.label} className="flex justify-between items-center gap-4">
               <span className="text-[10px] uppercase tracking-widest text-gray-500">{row.label}</span>

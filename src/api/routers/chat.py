@@ -256,6 +256,13 @@ async def _stream_chat(session_id: str, user_message: str):
     if usage_meta:
         usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
         usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
+    cost = _calc_cost(
+        usage["model"],
+        usage.get("input_tokens", 0),
+        usage.get("output_tokens", 0),
+    )
+    if cost is not None:
+        usage["cost_usd"] = cost
 
     logger.info(
         "✓  [{sid}]  DONE  latency={lat}ms  in={inp}  out={out}",
