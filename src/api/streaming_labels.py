@@ -144,6 +144,14 @@ STREAMING_LABELS: dict[str, list[str]] = {
         "Untangling IAM…",
     ],
 
+    # ── Final answer ─────────────────────────────────────────────────────────
+    "submit_investigation": [
+        "Filing the incident report…",
+        "Wrapping up the investigation…",
+        "Sealing the findings…",
+        "Writing the post-mortem…",
+    ],
+
     # ── Generic phases ────────────────────────────────────────────────────────
     "reasoning": [
         "Connecting the dots…",

@@ -15,6 +15,7 @@ from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS
 from tools.cloudwatch import ALL_CLOUDWATCH_TOOLS
 from tools.ec2 import ALL_EC2_TOOLS
 from tools.ecs import ALL_ECS_TOOLS
+from tools.final_answer import ALL_FINAL_ANSWER_TOOLS
 from tools.iam import ALL_IAM_TOOLS
 from tools.lambda_ import ALL_LAMBDA_TOOLS
 from tools.rds import ALL_RDS_TOOLS
@@ -27,6 +28,7 @@ ALL_TOOLS = (
     + ALL_EC2_TOOLS
     + ALL_RDS_TOOLS
     + ALL_IAM_TOOLS
+    + ALL_FINAL_ANSWER_TOOLS
 )
 
 _agent = None
