@@ -148,7 +148,7 @@ async def list_sessions(limit: int = 10) -> str:
     from agent.db import db
 
     limit = min(limit, 50)
-    sessions = await db.list_sessions(limit=limit)
+    sessions = (await db.list_sessions())[:limit]
     if not sessions:
         return "No sessions found."
     lines = ["## Recent Sessions", ""]
