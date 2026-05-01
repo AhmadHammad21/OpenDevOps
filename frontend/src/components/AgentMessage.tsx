@@ -38,7 +38,7 @@ export default function AgentMessage({ message }: Props) {
       </div>
 
       {showMeta && (
-        <div className="flex items-start gap-2 ml-10 max-w-[780px] w-full">
+        <div className="flex items-start gap-2 ml-10">
           <ToolCallsBox calls={message.toolCalls} streaming={message.streaming} />
           {message.usage && <UsageBox usage={message.usage} />}
         </div>

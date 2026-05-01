@@ -12,7 +12,7 @@ export default function ToolCallsBox({ calls, streaming }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex-1 min-w-0 border border-gray-700 rounded-lg overflow-hidden text-xs">
+    <div className="shrink-0 border border-gray-700 rounded-lg overflow-hidden text-xs">
       <div
         className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 cursor-pointer hover:bg-gray-700/80 transition-colors select-none"
         onClick={() => setOpen(o => !o)}
