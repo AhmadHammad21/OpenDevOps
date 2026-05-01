@@ -54,8 +54,7 @@ if _DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
+def _serve_index() -> HTMLResponse:
     path = _DIST / "index.html"
     if not path.exists():
         return HTMLResponse(
@@ -65,3 +64,14 @@ async def index():
             status_code=503,
         )
     return HTMLResponse(content=path.read_text(encoding="utf-8"))
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return _serve_index()
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def spa_fallback(full_path: str):
+    """Serve index.html for all client-side routes so React Router works on refresh."""
+    return _serve_index()

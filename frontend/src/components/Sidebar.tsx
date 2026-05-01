@@ -1,4 +1,5 @@
-import { relativeTime } from '../lib/utils';
+import { Plus, X } from 'lucide-react';
+import { cn, relativeTime } from '../lib/utils';
 import type { Session } from '../types';
 
 interface Props {
@@ -11,33 +12,46 @@ interface Props {
 
 export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, onDelete }: Props) {
   return (
-    <aside id="sidebar">
-      <div className="sidebar-header">
-        <button id="new-chat-btn" onClick={onNew}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+    <aside className="w-[260px] shrink-0 bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden">
+      <div className="p-3 border-b border-gray-700 shrink-0">
+        <button
+          onClick={onNew}
+          className="w-full px-3 py-2 rounded-lg text-emerald-400 text-sm font-medium flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/15 hover:border-emerald-500/35 transition-colors text-left"
+        >
+          <Plus size={14} />
           New chat
         </button>
       </div>
-      <div id="session-list">
+
+      <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-px">
         {sessions.length === 0 ? (
-          <div className="sessions-empty">No past sessions yet.<br />Start a conversation to save it.</div>
+          <p className="px-3 py-6 text-xs text-gray-500 text-center leading-relaxed">
+            No past sessions yet.<br />Start a conversation to save it.
+          </p>
         ) : (
           sessions.map(s => (
             <div
               key={s.id}
-              className={`session-item${s.id === currentSessionId ? ' active' : ''}`}
               onClick={() => onSwitch(s.id)}
+              className={cn(
+                'px-2.5 py-2 rounded-lg cursor-pointer flex flex-col gap-0.5 relative border transition-colors group',
+                s.id === currentSessionId
+                  ? 'bg-gray-700/60 border-gray-600'
+                  : 'border-transparent hover:bg-gray-700/40',
+              )}
             >
-              <div className="si-title">{s.title ?? 'Untitled session'}</div>
-              <div className="si-meta">{s.last_active_at ? relativeTime(s.last_active_at) : ''}</div>
+              <div className="text-sm text-gray-100 truncate pr-6">
+                {s.title ?? 'Untitled session'}
+              </div>
+              <div className="text-xs text-gray-500">
+                {s.last_active_at ? relativeTime(s.last_active_at) : ''}
+              </div>
               <button
-                className="si-del"
                 title="Delete session"
                 onClick={e => { e.stopPropagation(); onDelete(s.id); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all p-1 rounded"
               >
-                ×
+                <X size={13} />
               </button>
             </div>
           ))

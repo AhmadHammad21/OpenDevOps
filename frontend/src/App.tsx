@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import { toast } from 'sonner';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import EmptyState from './components/EmptyState';
 import UserMessage from './components/UserMessage';
 import AgentMessage from './components/AgentMessage';
 import InputArea from './components/InputArea';
+import HistoryPage from './pages/HistoryPage';
+import SettingsPage from './pages/SettingsPage';
 import { fetchSessions, fetchMessages, deleteSession as apiDeleteSession } from './lib/api';
 import type { Message, AgentMessage as AgentMsg, Session, MessageRecord } from './types';
 
@@ -39,38 +43,64 @@ function recordsToMessages(records: MessageRecord[]): Message[] {
   });
 }
 
+function ChatView({
+  sessionId,
+  messages,
+  busy,
+  onSend,
+  onStop,
+}: {
+  sessionId: string;
+  messages: Message[];
+  busy: boolean;
+  onSend: (text: string) => void;
+  onStop: () => void;
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto px-6 py-7 flex flex-col gap-5">
+        {messages.length === 0 ? (
+          <EmptyState onChip={onSend} />
+        ) : (
+          messages.map(m =>
+            m.role === 'user'
+              ? <UserMessage  key={m.id} content={m.content} />
+              : <AgentMessage key={m.id} message={m} />
+          )
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <InputArea busy={busy} onSend={onSend} onStop={onStop} />
+    </>
+  );
+}
+
 export default function App() {
-  const [sessionId, setSessionId]   = useState<string>(getStoredSessionId);
-  const [messages,  setMessages]    = useState<Message[]>([]);
-  const [busy,      setBusy]        = useState(false);
-  const [sessions,  setSessions]    = useState<Session[]>([]);
-  const abortRef                    = useRef<AbortController | null>(null);
-  const bottomRef                   = useRef<HTMLDivElement>(null);
+  const [sessionId, setSessionId] = useState<string>(getStoredSessionId);
+  const [messages,  setMessages]  = useState<Message[]>([]);
+  const [busy,      setBusy]      = useState(false);
+  const [sessions,  setSessions]  = useState<Session[]>([]);
+  const abortRef                  = useRef<AbortController | null>(null);
 
-  const scrollBottom = () => bottomRef.current?.scrollIntoView({ block: 'end' });
-
-  useEffect(() => { scrollBottom(); }, [messages]);
-
-  // ── Load sessions sidebar ─────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
     try { setSessions(await fetchSessions()); } catch { /* silent */ }
   }, []);
 
-  // ── Restore history for current session on mount ──────────────────────────
   useEffect(() => {
     loadSessions();
     (async () => {
       try {
         const records = await fetchMessages(sessionId);
         if (records.length) setMessages(recordsToMessages(records));
-      } catch { /* new session, no history */ }
+      } catch { /* new session */ }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Session actions ───────────────────────────────────────────────────────
   const newChat = () => {
-    const id = newSessionId();
-    setSessionId(id);
+    setSessionId(newSessionId());
     setMessages([]);
   };
 
@@ -90,12 +120,10 @@ export default function App() {
     if (id === sessionId) newChat();
   };
 
-  // ── Streaming send ────────────────────────────────────────────────────────
   const send = async (text: string) => {
     if (busy || !text.trim()) return;
 
     const agentId = crypto.randomUUID();
-
     setMessages(prev => [
       ...prev,
       { id: crypto.randomUUID(), role: 'user', content: text },
@@ -122,7 +150,9 @@ export default function App() {
       });
 
       if (!resp.ok) {
-        patch({ streaming: false, error: resp.statusText });
+        const msg = resp.statusText;
+        patch({ streaming: false, error: msg });
+        toast.error(msg);
         return;
       }
 
@@ -156,13 +186,21 @@ export default function App() {
           } else if (payload.type === 'done') {
             patch({ streaming: false, usage: payload.usage as AgentMsg['usage'] });
           } else if (payload.type === 'error') {
-            patch({ streaming: false, error: payload.message as string });
+            const msg = payload.message as string;
+            patch({ streaming: false, error: msg });
+            toast.error(msg, { duration: 6000 });
           }
         }
       }
     } catch (err: unknown) {
       const isAbort = err instanceof Error && err.name === 'AbortError';
-      patch({ streaming: false, ...(isAbort ? {} : { error: (err as Error).message }) });
+      if (!isAbort) {
+        const msg = (err as Error).message;
+        patch({ streaming: false, error: msg });
+        toast.error(msg);
+      } else {
+        patch({ streaming: false });
+      }
     } finally {
       abortRef.current = null;
       setBusy(false);
@@ -173,7 +211,7 @@ export default function App() {
   const stop = () => abortRef.current?.abort();
 
   return (
-    <>
+    <div className="flex h-screen overflow-hidden bg-gray-900 text-gray-50">
       <Sidebar
         sessions={sessions}
         currentSessionId={sessionId}
@@ -181,22 +219,25 @@ export default function App() {
         onSwitch={switchSession}
         onDelete={deleteSession}
       />
-      <div className="main">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Header sessionId={sessionId} />
-        <div id="messages">
-          {messages.length === 0 ? (
-            <EmptyState onChip={send} />
-          ) : (
-            messages.map(m =>
-              m.role === 'user'
-                ? <UserMessage  key={m.id} content={m.content} />
-                : <AgentMessage key={m.id} message={m} />
-            )
-          )}
-          <div ref={bottomRef} />
-        </div>
-        <InputArea busy={busy} onSend={send} onStop={stop} />
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ChatView
+                sessionId={sessionId}
+                messages={messages}
+                busy={busy}
+                onSend={send}
+                onStop={stop}
+              />
+            }
+          />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,3 +1,10 @@
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 const PRICING: Record<string, { input: number; output: number }> = {
   'google/gemma-4-26b-a4b-it':   { input: 0.07,  output: 0.35  },
   'anthropic/claude-3.5-sonnet': { input: 3.00,  output: 15.00 },
