@@ -100,16 +100,7 @@ Tool calling support is required. Most frontier models support it; smaller local
 
 ## Cost tracking
 
-The pricing map in `src/api/routers/chat.py` (`_PRICING`) maps LiteLLM model strings to input/output cost per million tokens. Entries already exist for common models. To add a new model:
-
-```python
-_PRICING: dict[str, dict[str, float]] = {
-    ...
-    "your-provider/your-model": {"input": 1.00, "output": 5.00},
-}
-```
-
-Models not in the map show no cost estimate in the UI — everything else still works.
+Cost is calculated automatically using LiteLLM's built-in pricing database via `litellm.completion_cost()`. It covers thousands of models across all supported providers — no manual maintenance needed. If a model isn't in LiteLLM's database (e.g. a private endpoint), the cost card in the UI will show no estimate but everything else still works.
 
 ---
 

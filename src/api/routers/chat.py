@@ -38,18 +38,6 @@ _CHANNEL_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Pricing map ($/M tokens) — keyed by LiteLLM model string.
-# Add entries here as you add models; unknown models show no cost estimate.
-_PRICING: dict[str, dict[str, float]] = {
-    "openrouter/openai/gpt-4o":                        {"input": 2.50,  "output": 10.00},
-    "openrouter/anthropic/claude-3.5-sonnet":          {"input": 3.00,  "output": 15.00},
-    "openrouter/google/gemma-4-26b-a4b-it":            {"input": 0.07,  "output": 0.35},
-    "openai/gpt-4o":                                   {"input": 2.50,  "output": 10.00},
-    "anthropic/claude-3-5-sonnet-20241022":            {"input": 3.00,  "output": 15.00},
-    "anthropic/claude-3-5-haiku-20241022":             {"input": 0.80,  "output": 4.00},
-    "groq/llama3-70b-8192":                            {"input": 0.59,  "output": 0.79},
-    "groq/llama-3.1-8b-instant":                       {"input": 0.05,  "output": 0.08},
-}
 
 
 def _pick_label(tool_name: str) -> str:
@@ -66,10 +54,17 @@ def _clean(text: str) -> str:
 
 
 def _calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
-    p = _PRICING.get(model)
-    if not p:
+    try:
+        import litellm
+        info = litellm.model_cost.get(model)
+        if not info:
+            return None
+        return (
+            input_tok  * info.get("input_cost_per_token",  0)
+            + output_tok * info.get("output_cost_per_token", 0)
+        )
+    except Exception:
         return None
-    return (input_tok / 1e6) * p["input"] + (output_tok / 1e6) * p["output"]
 
 
 async def _save_turn(
