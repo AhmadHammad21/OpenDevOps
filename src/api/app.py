@@ -36,9 +36,26 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    import asyncio
+    from agent.config import settings as _cfg
+
     checkpointer = await db.init()
     init_agent(checkpointer)
+
+    poller_task = None
+    if _cfg.poll_interval_minutes > 0:
+        from agent.poller import polling_loop
+        poller_task = asyncio.create_task(polling_loop())
+        logger.info("Proactive poller started (interval={}min)", _cfg.poll_interval_minutes)
+
     yield
+
+    if poller_task:
+        poller_task.cancel()
+        try:
+            await poller_task
+        except asyncio.CancelledError:
+            pass
     await db.close()
 
 

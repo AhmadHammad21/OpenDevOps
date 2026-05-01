@@ -108,6 +108,18 @@ async def _save_turn(
         logger.error("[{}]  DB save failed: {}", _sid(session_id), e)
 
 
+async def _maybe_notify_slack(session_id: str, tool_calls_log: list[dict[str, Any]]) -> None:
+    """Post to Slack if the agent called submit_investigation and a webhook is configured."""
+    if not settings.slack_webhook_url:
+        return
+    for tc in tool_calls_log:
+        if tc.get("tool") == "submit_investigation":
+            from integrations.slack_webhook import post_investigation
+            app_url = None  # could be made configurable
+            await post_investigation(settings.slack_webhook_url, tc["args"], session_id, app_url)
+            return
+
+
 async def _stream_chat(session_id: str, user_message: str):
     """Stream SSE events to the frontend."""
     agent   = get_agent()
@@ -254,6 +266,7 @@ async def _stream_chat(session_id: str, user_message: str):
     logger.info("{sep}", sep=_SEP)
 
     await _save_turn(session_id, user_message, response_text, tool_calls_log, usage)
+    await _maybe_notify_slack(session_id, tool_calls_log)
 
     yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
 

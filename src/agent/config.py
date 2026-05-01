@@ -18,5 +18,13 @@ class Settings(BaseSettings):
     # PostgreSQL connection string — if unset, falls back to in-memory checkpointer
     database_url: str | None = None
 
+    # Slack — leave unset to disable notifications
+    slack_webhook_url: str | None = None
+
+    # Proactive polling — set poll_interval_minutes=0 to disable
+    poll_interval_minutes: int = 0          # disabled by default
+    poll_error_threshold: float = 5.0       # % Lambda error rate that triggers investigation
+    poll_reinvestigate_hours: int = 1       # don't re-investigate the same alarm within N hours
+
 
 settings = Settings()
