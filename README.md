@@ -158,8 +158,8 @@ docs/
 - [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
 
 ### Medium-term
-- [ ] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
-- [ ] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
+- [x] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
+- [x] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
 - [ ] **Multi-provider LLM support** — plug in any OpenAI-compatible provider (Anthropic, OpenAI, LiteLLM, Ollama, local models) via a single config switch; provider-specific adapters where the API diverges
 - [ ] **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
