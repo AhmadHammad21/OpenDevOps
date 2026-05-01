@@ -38,11 +38,17 @@ _CHANNEL_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Pricing map ($/M tokens)
+# Pricing map ($/M tokens) — keyed by LiteLLM model string.
+# Add entries here as you add models; unknown models show no cost estimate.
 _PRICING: dict[str, dict[str, float]] = {
-    "google/gemma-4-26b-a4b-it":   {"input": 0.07,  "output": 0.35},
-    "anthropic/claude-3.5-sonnet": {"input": 3.00,  "output": 15.00},
-    "openai/gpt-4o":               {"input": 2.50,  "output": 10.00},
+    "openrouter/openai/gpt-4o":                        {"input": 2.50,  "output": 10.00},
+    "openrouter/anthropic/claude-3.5-sonnet":          {"input": 3.00,  "output": 15.00},
+    "openrouter/google/gemma-4-26b-a4b-it":            {"input": 0.07,  "output": 0.35},
+    "openai/gpt-4o":                                   {"input": 2.50,  "output": 10.00},
+    "anthropic/claude-3-5-sonnet-20241022":            {"input": 3.00,  "output": 15.00},
+    "anthropic/claude-3-5-haiku-20241022":             {"input": 0.80,  "output": 4.00},
+    "groq/llama3-70b-8192":                            {"input": 0.59,  "output": 0.79},
+    "groq/llama-3.1-8b-instant":                       {"input": 0.05,  "output": 0.08},
 }
 
 
@@ -250,7 +256,7 @@ async def _stream_chat(session_id: str, user_message: str):
 
     usage: dict[str, Any] = {
         "latency_ms": int((time.time() - start) * 1000),
-        "model": settings.openrouter_model,
+        "model": settings.llm_model,
     }
     if usage_meta:
         usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0

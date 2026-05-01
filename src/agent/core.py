@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from deepagents import create_deep_agent
-from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatLiteLLM
 from agent.config import settings
 from models.agent import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
@@ -37,10 +37,10 @@ _agent = None
 def init_agent(checkpointer: Any) -> None:
     """Create the agent with the given checkpointer. Called once during app startup."""
     global _agent
-    model = ChatOpenAI(
-        model=settings.openrouter_model,
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
+    model = ChatLiteLLM(
+        model=settings.llm_model,
+        api_base=settings.llm_api_base or None,
+        api_key=settings.llm_api_key or None,
     )
     _agent = create_deep_agent(
         model=model,
