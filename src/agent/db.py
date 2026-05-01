@@ -402,6 +402,24 @@ class Database:
             for r in recent_rows
         ]
 
+        # ── Root cause distribution from submit_investigation calls ─────────────
+        rc_rows = await self._fetchall("""
+            SELECT
+                tc.args->>'root_cause_category' AS category,
+                COUNT(*)                         AS count
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE
+              AND tc.tool_name = 'submit_investigation'
+              AND tc.args->>'root_cause_category' IS NOT NULL
+            GROUP BY 1
+            ORDER BY 2 DESC
+        """)
+        root_causes = [
+            {"category": r["category"], "count": int(r["count"])}
+            for r in rc_rows
+        ]
+
         return {
             "summary": {
                 "total_sessions":    int(summary.get("total_sessions", 0) or 0),
@@ -417,6 +435,7 @@ class Database:
             "top_tools": top_tools,
             "service_breakdown": service_breakdown,
             "recent_sessions": recent_sessions,
+            "root_causes": root_causes,
         }
 
     async def delete_session(self, session_id: str) -> None:
