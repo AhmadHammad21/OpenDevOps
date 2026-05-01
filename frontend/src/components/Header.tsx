@@ -1,11 +1,10 @@
 import { History, Settings } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useMatch } from 'react-router-dom';
 
-interface Props {
-  sessionId: string;
-}
+export default function Header() {
+  const match = useMatch('/chat/:sessionId');
+  const sessionId = match?.params.sessionId;
 
-export default function Header({ sessionId }: Props) {
   return (
     <header className="px-6 py-3 border-b border-gray-700 bg-gray-800 flex items-center justify-between shrink-0">
       <div className="flex items-center gap-2.5">
@@ -19,8 +18,10 @@ export default function Header({ sessionId }: Props) {
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-500 font-mono">{sessionId.slice(0, 8)}</span>
-        <Link to="/history" className="text-gray-500 hover:text-gray-300 transition-colors" title="Session history">
+        {sessionId && (
+          <span className="text-xs text-gray-500 font-mono">{sessionId.slice(0, 8)}</span>
+        )}
+        <Link to="/history"  className="text-gray-500 hover:text-gray-300 transition-colors" title="Session history">
           <History size={16} />
         </Link>
         <Link to="/settings" className="text-gray-500 hover:text-gray-300 transition-colors" title="Settings">

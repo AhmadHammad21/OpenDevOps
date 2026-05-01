@@ -6,7 +6,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/chat': 'http://localhost:8000',
+      '/chat': {
+        target: 'http://localhost:8000',
+        // Only proxy POST — GET /chat/:sessionId is a React Router route, not an API call
+        bypass(req) {
+          if (req.method !== 'POST') return req.url;
+        },
+      },
       '/sessions': 'http://localhost:8000',
     },
   },
