@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from deepagents import create_deep_agent
-from langchain_community.chat_models import ChatLiteLLM
+from langchain_litellm import ChatLiteLLM
 from agent.config import settings
 from models.agent import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
