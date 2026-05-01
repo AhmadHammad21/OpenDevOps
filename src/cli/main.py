@@ -29,8 +29,10 @@ from cli.investigate import investigate_cmd  # noqa: E402
 from cli.ask import ask_cmd  # noqa: E402
 from cli.report import report_cmd  # noqa: E402
 from cli.ui import ui_cmd  # noqa: E402
+from cli.mcp import mcp_cmd  # noqa: E402
 
 app.command("investigate")(investigate_cmd)
 app.command("ask")(ask_cmd)
 app.command("report")(report_cmd)
 app.command("ui")(ui_cmd)
+app.command("mcp")(mcp_cmd)

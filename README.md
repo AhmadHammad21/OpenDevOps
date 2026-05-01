@@ -166,7 +166,7 @@ docs/
 - [x] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
 - [x] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
 - [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
-- [ ] **MCP integration** — expose the agent as an MCP server so it can be driven from Claude Desktop, Cursor, or any MCP-compatible client; UI panel to browse connected MCP tools
+- [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
