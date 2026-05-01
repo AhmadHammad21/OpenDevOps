@@ -146,8 +146,8 @@ export default function ChatPage({ onSessionsChange }: Props) {
   if (!sessionId) return <Navigate to="/" replace />;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-6 py-7 flex flex-col gap-5">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="flex-1 overflow-y-auto px-6 py-7 flex flex-col gap-5 min-h-0">
         {messages.length === 0 ? (
           <EmptyState onChip={send} />
         ) : (

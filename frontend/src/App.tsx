@@ -48,7 +48,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-900 text-gray-50">
+    <div className="flex w-full h-screen overflow-hidden bg-gray-900 text-gray-50">
       <Sidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -56,7 +56,7 @@ export default function App() {
         onSwitch={switchSession}
         onDelete={deleteSession}
       />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
         <Header />
         <Routes>
           <Route path="/"                   element={<RedirectToSession />} />

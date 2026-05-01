@@ -5,7 +5,7 @@
 @layer base {
   html { height: 100%; }
   body { @apply bg-gray-900 text-gray-50 h-full overflow-hidden; }
-  #root { @apply flex h-full overflow-hidden; }
+  #root { @apply h-full overflow-hidden; }
 }
 
 /* Spinner dots — kept as CSS because Tailwind animate-bounce has different timing */
