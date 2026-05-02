@@ -44,32 +44,53 @@ async def _init() -> None:
 
 
 async def _run_agent(prompt: str) -> dict[str, Any]:
-    """Run the agent and return the submit_investigation args (or a plain text fallback)."""
+    """Run the agent, persist the turn to DB, notify Slack, and return the result."""
     await _init()
     from agent.core import get_agent
+    from agent.turns import save_turn, notify_slack
 
     thread_id = str(uuid.uuid4())
     config = {
         "configurable": {"thread_id": thread_id},
         "recursion_limit": settings.max_tool_calls * 3 + 15,
     }
+    import time
+    start = time.time()
     result = await get_agent().ainvoke(
         {"messages": [{"role": "user", "content": prompt}]},
         config=config,
     )
-    # Prefer structured submit_investigation result
-    for msg in reversed(result.get("messages", [])):
+
+    # Collect tool calls and assistant text from message history
+    tool_calls_log: list[dict[str, Any]] = []
+    assistant_text = ""
+    submit_args: dict[str, Any] | None = None
+
+    for msg in result.get("messages", []):
         for tc in getattr(msg, "tool_calls", []) or []:
             name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
             args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
+            tool_calls_log.append({"tool": name, "args": args, "result": {}})
             if name == "submit_investigation":
-                return {"type": "investigation", "session_id": thread_id, **args}
-    # Fall back to last assistant message text
-    for msg in reversed(result.get("messages", [])):
+                submit_args = args
         content = getattr(msg, "content", None)
-        if content and not getattr(msg, "tool_calls", None):
-            return {"type": "text", "session_id": thread_id, "text": str(content)}
-    return {"type": "text", "session_id": thread_id, "text": "No result produced."}
+        if content and isinstance(content, str) and not getattr(msg, "tool_calls", None):
+            assistant_text = content
+
+    usage_meta = getattr(result.get("messages", [None])[-1], "usage_metadata", None) or {}
+    usage: dict[str, Any] = {
+        "model":        settings.llm_model,
+        "latency_ms":   int((time.time() - start) * 1000),
+        "input_tokens": getattr(usage_meta, "input_tokens",  None) or usage_meta.get("input_tokens",  0),
+        "output_tokens": getattr(usage_meta, "output_tokens", None) or usage_meta.get("output_tokens", 0),
+    }
+
+    await save_turn(thread_id, prompt, assistant_text, tool_calls_log, usage)
+    await notify_slack(thread_id, tool_calls_log)
+
+    if submit_args:
+        return {"type": "investigation", "session_id": thread_id, **submit_args}
+    return {"type": "text", "session_id": thread_id, "text": assistant_text or "No result produced."}
 
 
 def _format_investigation(r: dict[str, Any]) -> str:

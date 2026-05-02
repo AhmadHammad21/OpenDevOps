@@ -63,11 +63,12 @@ async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | 
     return None
 
 
-async def _notify(result: dict[str, Any], session_id: str) -> None:
-    if not settings.slack_webhook_url:
-        return
-    from integrations.slack_webhook import post_investigation
-    await post_investigation(settings.slack_webhook_url, result, session_id)
+async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: str) -> None:
+    from agent.turns import save_turn, notify_slack
+    tool_calls_log = [{"tool": "submit_investigation", "args": result, "result": {}}]
+    usage = {"model": settings.llm_model, "latency_ms": 0}
+    await save_turn(session_id, prompt, "", tool_calls_log, usage)
+    await notify_slack(session_id, tool_calls_log)
 
 
 async def _check_alarms() -> None:
@@ -98,7 +99,7 @@ async def _check_alarms() -> None:
         result = await _run_investigation(prompt, key)
         if result:
             logger.info("Poller investigation complete for alarm: {}", name)
-            await _notify(result, session_id)
+            await _persist_and_notify(prompt, result, session_id)
 
 
 async def _check_lambda_errors() -> None:
@@ -135,7 +136,7 @@ async def _check_lambda_errors() -> None:
         result = await _run_investigation(prompt, key)
         if result:
             logger.info("Poller investigation complete for Lambda: {}", name)
-            await _notify(result, session_id)
+            await _persist_and_notify(prompt, result, session_id)
 
 
 async def polling_loop() -> None:
