@@ -34,9 +34,20 @@ export default function ToolCallsBox({ calls, streaming }: Props) {
                 <span className="w-[5px] h-[5px] rounded-full bg-indigo-500 dark:bg-[#818CF8] shrink-0" />
                 {tc.tool}
               </div>
-              <pre className="font-mono text-[11px] bg-gray-50 dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-[5px] px-2.5 py-1.5 text-gray-500 dark:text-[#94A3B8] overflow-auto max-h-24 leading-snug whitespace-pre">
-                {fmtJson(tc.args)}
-              </pre>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] uppercase tracking-[0.07em] font-semibold text-gray-400 dark:text-[#64748B]">Input</span>
+                <pre className="font-mono text-[11px] bg-gray-50 dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-[5px] px-2.5 py-1.5 text-gray-500 dark:text-[#94A3B8] overflow-auto max-h-24 leading-snug whitespace-pre">
+                  {fmtJson(tc.args)}
+                </pre>
+              </div>
+              {tc.result != null && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase tracking-[0.07em] font-semibold text-gray-400 dark:text-[#64748B]">Output</span>
+                  <pre className="font-mono text-[11px] bg-gray-50 dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-[5px] px-2.5 py-1.5 text-gray-500 dark:text-[#94A3B8] overflow-auto max-h-32 leading-snug whitespace-pre">
+                    {fmtJson(tc.result)}
+                  </pre>
+                </div>
+              )}
             </div>
           ))}
 

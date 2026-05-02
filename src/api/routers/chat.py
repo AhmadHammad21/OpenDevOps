@@ -118,6 +118,18 @@ async def _stream_chat(session_id: str, user_message: str):
                 if args:
                     tc_accum[idx]["args_str"] += args
 
+            # Complete tool_calls (non-streamed AIMessage) — DeepAgents often sends these
+            # as a full message rather than chunks, so tool_call_chunks would be empty.
+            for tc in getattr(chunk, "tool_calls", []) or []:
+                tc_id = _field(tc, "id") or ""
+                name  = _field(tc, "name") or ""
+                args  = _field(tc, "args") or {}
+                if tc_id and name:
+                    pending_calls[tc_id] = {
+                        "tool": name,
+                        "args": args if isinstance(args, dict) else {},
+                    }
+
 
             content = getattr(chunk, "content", "")
             if content and isinstance(content, str):
