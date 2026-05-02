@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@0.344.0/font/lucide.css">
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-sans); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .label { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  button { font-family: var(--font-sans); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; border: none; transition: all 120ms ease; }
+  button:active { transform: scale(0.98); }
+
+  .btn-primary { background: #6366F1; color: #fff; font-size: 13px; padding: 7px 14px; border-radius: 6px; }
+  .btn-primary:hover { background: #4F46E5; }
+  .btn-primary-sm { background: #6366F1; color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 5px; }
+  .btn-primary-lg { background: #6366F1; color: #fff; font-size: 14px; padding: 9px 18px; border-radius: 6px; font-weight: 600; }
+
+  .btn-secondary { background: #fff; color: #374151; font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid #D1D5DB; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .btn-secondary:hover { background: #F9FAFB; border-color: #9CA3AF; }
+
+  .btn-ghost { background: transparent; color: #6B7280; font-size: 13px; padding: 7px 12px; border-radius: 6px; }
+  .btn-ghost:hover { background: #F3F4F6; color: #374151; }
+
+  .btn-danger { background: #FFF1F2; color: #E11D48; font-size: 13px; padding: 7px 14px; border-radius: 6px; border: 1px solid #FECDD3; }
+  .btn-danger:hover { background: #FFE4E6; }
+
+  .btn-disabled { background: #F3F4F6; color: #9CA3AF; font-size: 13px; padding: 7px 14px; border-radius: 6px; cursor: not-allowed; }
+
+  .btn-dark { background: #111827; color: #F9FAFB; font-size: 13px; padding: 7px 14px; border-radius: 6px; }
+  .btn-dark:hover { background: #1F2937; }
+
+  .btn-icon { background: #F3F4F6; color: #374151; font-size: 13px; padding: 7px; border-radius: 6px; width: 32px; height: 32px; display:inline-flex; align-items:center; justify-content:center; }
+  .btn-icon:hover { background: #E5E7EB; }
+</style>
+</head>
+<body>
+  <div class="label">Primary</div>
+  <div class="row">
+    <button class="btn-primary-sm">Deploy</button>
+    <button class="btn-primary">Deploy agent</button>
+    <button class="btn-primary-lg">Deploy agent</button>
+  </div>
+
+  <div class="label">Secondary & Ghost</div>
+  <div class="row">
+    <button class="btn-secondary">View logs</button>
+    <button class="btn-secondary">⚙ Settings</button>
+    <button class="btn-ghost">Cancel</button>
+    <button class="btn-dark">Connect repo</button>
+  </div>
+
+  <div class="label">Danger & Disabled</div>
+  <div class="row">
+    <button class="btn-danger">Stop agent</button>
+    <button class="btn-danger">Delete pipeline</button>
+    <button class="btn-disabled" disabled>Deploying…</button>
+  </div>
+
+  <div class="label">Icon buttons</div>
+  <div class="row">
+    <button class="btn-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </button>
+    <button class="btn-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="btn-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="btn-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+    </button>
+    <button class="btn-primary" style="gap:6px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Run pipeline
+    </button>
+  </div>
+</body>
+</html>

@@ -26,19 +26,18 @@ const SERVICE_COLORS: Record<string, string> = {
   CloudWatch: 'bg-blue-500', CloudTrail: 'bg-purple-500',
   ECS: 'bg-emerald-500', Lambda: 'bg-amber-500',
   EC2: 'bg-orange-500', RDS: 'bg-cyan-500',
-  IAM: 'bg-red-500', Agent: 'bg-gray-500', Other: 'bg-gray-600',
+  IAM: 'bg-red-500', Agent: 'bg-gray-400', Other: 'bg-gray-400',
 };
 
 const RC_LABELS: Record<string, { label: string; color: string }> = {
-  SYSTEM_CHANGE:      { label: 'System change',    color: 'text-amber-400' },
-  INPUT_ANOMALY:      { label: 'Input anomaly',     color: 'text-blue-400' },
-  RESOURCE_LIMIT:     { label: 'Resource limit',    color: 'text-orange-400' },
-  COMPONENT_FAILURE:  { label: 'Component failure', color: 'text-red-400' },
-  DEPENDENCY_ISSUE:   { label: 'Dependency issue',  color: 'text-purple-400' },
-  UNKNOWN:            { label: 'Unknown',           color: 'text-gray-500' },
+  SYSTEM_CHANGE:      { label: 'System change',    color: 'text-amber-500' },
+  INPUT_ANOMALY:      { label: 'Input anomaly',     color: 'text-blue-500' },
+  RESOURCE_LIMIT:     { label: 'Resource limit',    color: 'text-orange-500' },
+  COMPONENT_FAILURE:  { label: 'Component failure', color: 'text-red-500' },
+  DEPENDENCY_ISSUE:   { label: 'Dependency issue',  color: 'text-purple-500' },
+  UNKNOWN:            { label: 'Unknown',           color: 'text-gray-400' },
 };
 
-/** Generate the last N calendar dates as YYYY-MM-DD strings */
 function lastNDays(n: number): string[] {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date();
@@ -51,17 +50,15 @@ function StatCard({
   label, value, sub, icon, accent = false,
 }: { label: string; value: string | number; sub?: string; icon: React.ReactNode; accent?: boolean }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500 uppercase tracking-widest">{label}</span>
-        <span className={cn('text-gray-500', accent && 'text-emerald-500')}>{icon}</span>
+    <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-gray-500 dark:text-[#94A3B8] uppercase tracking-[0.07em] font-semibold">{label}</span>
+        <span className={cn('text-gray-400 dark:text-[#64748B]', accent && 'text-emerald-500 dark:text-[#34D399]')}>{icon}</span>
       </div>
-      <div>
-        <div className={cn('text-2xl font-bold', accent ? 'text-emerald-400' : 'text-gray-100')}>
-          {value}
-        </div>
-        {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
+      <div className={cn('text-[28px] font-bold leading-none tracking-[-0.03em] mt-1', accent ? 'text-emerald-500 dark:text-[#34D399]' : 'text-gray-900 dark:text-[#F1F5F9]')}>
+        {value}
       </div>
+      {sub && <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] mt-1.5">{sub}</div>}
     </div>
   );
 }
@@ -81,7 +78,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 text-sm gap-2">
+      <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-[#64748B] text-sm gap-2">
         <div className="spinner-dots"><span /><span /><span /></div>
         Loading dashboard…
       </div>
@@ -90,7 +87,7 @@ export default function DashboardPage() {
 
   if (error || !stats) {
     return (
-      <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+      <div className="flex-1 flex items-center justify-center text-red-500 dark:text-[#F87171] text-sm">
         Failed to load stats — is the backend running?
       </div>
     );
@@ -98,7 +95,6 @@ export default function DashboardPage() {
 
   const { summary, top_tools, service_breakdown, root_causes, recent_sessions } = stats;
 
-  // Fill in all 14 days, zeroing days with no data
   const days = lastNDays(14);
   const activityMap = new Map(stats.activity.map(d => [d.date, d.sessions]));
   const activity = days.map(date => ({ date, sessions: activityMap.get(date) ?? 0 }));
@@ -113,10 +109,18 @@ export default function DashboardPage() {
   const totalRc = root_causes.reduce((s, r) => s + r.count, 0) || 1;
 
   return (
-    <div className="flex-1 overflow-y-auto min-h-0">
-      <div className="p-6 max-w-5xl mx-auto flex flex-col gap-5">
+    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#0F0F12] min-h-0">
+      {/* Page header */}
+      <div className="bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7 py-[14px] flex items-center justify-between shrink-0">
+        <div>
+          <div className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">Dashboard</div>
+          <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">Usage analytics and investigation history.</div>
+        </div>
+      </div>
 
-        {/* ── Stat cards ── */}
+      <div className="p-7 max-w-5xl mx-auto flex flex-col gap-6">
+
+        {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Sessions"   value={summary.total_sessions}  icon={<MessageSquare size={15} />} />
           <StatCard
@@ -140,9 +144,9 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Activity chart ── */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-          <h2 className="text-xs text-gray-500 uppercase tracking-widest mb-4">
+        {/* Activity chart */}
+        <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <h2 className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-4">
             Activity — last 14 days
           </h2>
           <div className="flex items-end gap-1 h-16">
@@ -151,20 +155,19 @@ export default function DashboardPage() {
                 <div
                   className={cn(
                     'w-full rounded-sm transition-colors',
-                    d.sessions > 0 ? 'bg-emerald-500/80 hover:bg-emerald-400' : 'bg-gray-700/50',
+                    d.sessions > 0 ? 'bg-indigo-400 dark:bg-[#818CF8] hover:bg-indigo-500 dark:hover:bg-[#6366F1]' : 'bg-gray-100 dark:bg-[#27272F]',
                   )}
                   style={{ height: `${Math.max((d.sessions / maxActivity) * 100, d.sessions > 0 ? 12 : 4)}%` }}
                 />
                 {d.sessions > 0 && (
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 border border-gray-700 text-xs text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-white dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] shadow-sm text-xs text-gray-700 dark:text-[#CBD5E1] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
                     {d.date.slice(5)} · {d.sessions} session{d.sessions !== 1 ? 's' : ''}
                   </div>
                 )}
               </div>
             ))}
           </div>
-          {/* axis labels */}
-          <div className="flex justify-between mt-1.5 text-[10px] text-gray-600">
+          <div className="flex justify-between mt-1.5 text-[10px] text-gray-400 dark:text-[#64748B]">
             <span>{days[0].slice(5)}</span>
             <span>{days[6].slice(5)}</span>
             <span>{days[13].slice(5)}</span>
@@ -173,54 +176,54 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* ── Service breakdown ── */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h2 className="text-xs text-gray-500 uppercase tracking-widest mb-4">Calls by service</h2>
+          {/* Service breakdown */}
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <h2 className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-4">Calls by service</h2>
             {service_breakdown.length === 0 ? (
-              <p className="text-sm text-gray-600 py-6 text-center">No tool calls yet</p>
+              <p className="text-sm text-gray-400 dark:text-[#64748B] py-6 text-center">No tool calls yet</p>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {service_breakdown.map(s => (
                   <div key={s.service} className="flex items-center gap-3">
-                    <span className="w-24 text-xs text-gray-400 shrink-0">{s.service}</span>
-                    <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+                    <span className="w-24 text-xs text-gray-500 dark:text-[#94A3B8] shrink-0">{s.service}</span>
+                    <div className="flex-1 bg-gray-100 dark:bg-[#27272F] rounded-full h-1.5">
                       <div
-                        className={cn('h-1.5 rounded-full', SERVICE_COLORS[s.service] ?? 'bg-gray-500')}
+                        className={cn('h-1.5 rounded-full', SERVICE_COLORS[s.service] ?? 'bg-gray-400')}
                         style={{ width: `${s.pct}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500 w-8 text-right shrink-0">{s.calls}</span>
+                    <span className="text-xs text-gray-400 dark:text-[#64748B] w-8 text-right shrink-0">{s.calls}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* ── Root cause distribution ── */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h2 className="text-xs text-gray-500 uppercase tracking-widest mb-4">
+          {/* Root cause distribution */}
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <h2 className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-4">
               Recurring incident types
             </h2>
             {root_causes.length === 0 ? (
-              <p className="text-sm text-gray-600 py-6 text-center">
+              <p className="text-sm text-gray-400 dark:text-[#64748B] py-6 text-center">
                 No completed investigations yet
               </p>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {root_causes.map(rc => {
-                  const meta = RC_LABELS[rc.category] ?? { label: rc.category, color: 'text-gray-400' };
+                  const meta = RC_LABELS[rc.category] ?? { label: rc.category, color: 'text-gray-500' };
                   return (
                     <div key={rc.category} className="flex items-center gap-3">
                       <span className={cn('w-36 text-xs shrink-0 font-medium', meta.color)}>
                         {meta.label}
                       </span>
-                      <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+                      <div className="flex-1 bg-gray-100 dark:bg-[#27272F] rounded-full h-1.5">
                         <div
-                          className="h-1.5 rounded-full bg-gray-400"
+                          className="h-1.5 rounded-full bg-indigo-400 dark:bg-[#818CF8]"
                           style={{ width: `${(rc.count / totalRc) * 100}%` }}
                         />
                       </div>
-                      <span className="text-xs text-gray-500 w-6 text-right shrink-0">{rc.count}</span>
+                      <span className="text-xs text-gray-400 dark:text-[#64748B] w-6 text-right shrink-0">{rc.count}</span>
                     </div>
                   );
                 })}
@@ -231,19 +234,19 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* ── Top tools ── */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h2 className="text-xs text-gray-500 uppercase tracking-widest mb-3">Top tools</h2>
+          {/* Top tools */}
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <h2 className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-3">Top tools</h2>
             {top_tools.length === 0 ? (
-              <p className="text-sm text-gray-600 py-4 text-center">No tool calls yet</p>
+              <p className="text-sm text-gray-400 dark:text-[#64748B] py-4 text-center">No tool calls yet</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-700/50">
+              <div className="flex flex-col divide-y divide-gray-100 dark:divide-[#27272F]">
                 {top_tools.slice(0, 8).map(t => (
                   <div key={t.tool} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-                    <span className="flex-1 font-mono text-xs text-amber-400 truncate">{t.tool}</span>
-                    <span className="text-xs text-gray-400 tabular-nums">{t.count}</span>
+                    <span className="flex-1 font-mono text-xs text-amber-500 truncate">{t.tool}</span>
+                    <span className="text-xs text-gray-400 dark:text-[#64748B] tabular-nums">{t.count}</span>
                     {t.errors > 0 && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                      <span className="flex items-center gap-0.5 text-[10px] text-red-500 dark:text-[#F87171]">
                         <AlertTriangle size={10} />{t.errors}
                       </span>
                     )}
@@ -253,13 +256,13 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* ── Recent sessions ── */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-            <h2 className="text-xs text-gray-500 uppercase tracking-widest mb-3">Recent sessions</h2>
+          {/* Recent sessions */}
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <h2 className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-3">Recent sessions</h2>
             {recent_sessions.length === 0 ? (
-              <p className="text-sm text-gray-600 py-4 text-center">No sessions yet</p>
+              <p className="text-sm text-gray-400 dark:text-[#64748B] py-4 text-center">No sessions yet</p>
             ) : (
-              <div className="flex flex-col divide-y divide-gray-700/50">
+              <div className="flex flex-col divide-y divide-gray-100 dark:divide-[#27272F]">
                 {recent_sessions.map(s => (
                   <Link
                     key={s.id}
@@ -267,15 +270,15 @@ export default function DashboardPage() {
                     className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0 group"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-gray-200 truncate group-hover:text-emerald-400 transition-colors">
+                      <span className="text-[13px] text-gray-700 dark:text-[#CBD5E1] truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors font-medium">
                         {s.title ?? 'Untitled'}
                       </span>
-                      <span className="text-[10px] text-gray-600 shrink-0 flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400 dark:text-[#64748B] shrink-0 flex items-center gap-1">
                         <Clock size={9} />
                         {s.last_active_at ? relativeTime(s.last_active_at) : ''}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                    <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-[#64748B] font-mono">
                       <span>{s.query_count} quer{s.query_count === 1 ? 'y' : 'ies'}</span>
                       <span>{s.tool_count} tools</span>
                       {s.cost_usd > 0 && <span>{fmtCost(s.cost_usd)}</span>}
@@ -287,18 +290,18 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Token footer ── */}
+        {/* Token footer */}
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: 'Input tokens',  value: fmtTok(summary.total_input_tokens),  icon: <Zap size={12} /> },
             { label: 'Output tokens', value: fmtTok(summary.total_output_tokens), icon: <Zap size={12} /> },
             { label: 'Tool errors',   value: summary.total_tool_errors || '0',     icon: <AlertTriangle size={12} /> },
           ].map(item => (
-            <div key={item.label} className="bg-gray-800/50 border border-gray-700/60 rounded-lg px-4 py-3 flex items-center justify-between">
-              <span className="text-xs text-gray-500">{item.label}</span>
+            <div key={item.label} className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg px-4 py-3 flex items-center justify-between shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <span className="text-xs text-gray-500 dark:text-[#94A3B8]">{item.label}</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-gray-600">{item.icon}</span>
-                <span className="text-sm font-mono font-medium text-gray-300">{item.value}</span>
+                <span className="text-gray-300 dark:text-[#3F3F47]">{item.icon}</span>
+                <span className="text-[13px] font-mono font-medium text-gray-700 dark:text-[#CBD5E1]">{item.value}</span>
               </div>
             </div>
           ))}

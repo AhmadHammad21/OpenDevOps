@@ -49,7 +49,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex w-full h-screen overflow-hidden bg-gray-900 text-gray-50">
+    <div className="flex w-full h-screen overflow-hidden bg-gray-50 dark:bg-[#0F0F12]">
       <Sidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
@@ -60,11 +60,11 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
         <Header />
         <Routes>
-          <Route path="/"                   element={<RedirectToSession />} />
-          <Route path="/chat/:sessionId"    element={<ChatPage onSessionsChange={loadSessions} />} />
-          <Route path="/dashboard"           element={<DashboardPage />} />
-          <Route path="/history"            element={<HistoryPage />} />
-          <Route path="/settings"           element={<SettingsPage />} />
+          <Route path="/"                element={<RedirectToSession />} />
+          <Route path="/chat/:sessionId" element={<ChatPage onSessionsChange={loadSessions} onNew={newChat} />} />
+          <Route path="/dashboard"       element={<DashboardPage />} />
+          <Route path="/history"         element={<HistoryPage />} />
+          <Route path="/settings"        element={<SettingsPage />} />
         </Routes>
       </div>
     </div>

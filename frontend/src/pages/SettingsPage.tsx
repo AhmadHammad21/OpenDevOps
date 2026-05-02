@@ -1,63 +1,193 @@
-import { Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, Eye, EyeOff, Key, Trash2, Plus, Check } from 'lucide-react';
 
 const ENV_VARS = [
-  { key: 'OPENROUTER_API_KEY',   desc: 'OpenRouter API key (sk-or-…)' },
-  { key: 'OPENROUTER_MODEL',     desc: 'Model ID, e.g. anthropic/claude-3.5-sonnet' },
-  { key: 'OPENROUTER_BASE_URL',  desc: 'Defaults to https://openrouter.ai/api/v1' },
-  { key: 'AWS_REGION',           desc: 'AWS region, e.g. us-east-1' },
-  { key: 'AWS_PROFILE',          desc: 'Optional IAM profile name' },
-  { key: 'MAX_TOOL_CALLS',       desc: 'Hard cap on tool calls per investigation (default 20)' },
-  { key: 'DATABASE_URL',         desc: 'Postgres connection string for session storage' },
-  { key: 'LOG_LEVEL',            desc: 'INFO / DEBUG / WARNING' },
+  { key: 'OPENROUTER_API_KEY',  value: 'sk-or-v1-••••••••4f2a', secret: true  },
+  { key: 'OPENROUTER_MODEL',    value: 'anthropic/claude-3.5-sonnet',          secret: false },
+  { key: 'OPENROUTER_BASE_URL', value: 'https://openrouter.ai/api/v1',         secret: false },
+  { key: 'AWS_REGION',          value: 'us-east-1',                             secret: false },
+  { key: 'AWS_PROFILE',         value: 'devops-agent-readonly',                 secret: false },
+  { key: 'MAX_TOOL_CALLS',      value: '20',                                    secret: false },
+  { key: 'DATABASE_URL',        value: 'postgres://prod.cluster.internal',      secret: true  },
+  { key: 'LOG_LEVEL',           value: 'INFO',                                  secret: false },
 ];
 
+const INTEGRATIONS = [
+  { name: 'GitHub',     desc: 'Connect your repositories',   connected: false },
+  { name: 'Slack',      desc: 'Get incident notifications',  connected: false },
+  { name: 'PagerDuty',  desc: 'Alert on failures',           connected: false },
+  { name: 'Datadog',    desc: 'Send metrics and traces',     connected: false },
+];
+
+const AGENT_FIELDS = [
+  { label: 'Agent name',      value: 'prod-agent-01', hint: 'Used as identifier in logs' },
+  { label: 'Default region',  value: 'us-east-1',     hint: 'AWS region for tool calls' },
+  { label: 'Max tool calls',  value: '20',            hint: 'Hard cap per investigation run' },
+];
+
+type Tab = 'env' | 'agent' | 'integrations';
+
 export default function SettingsPage() {
+  const [tab, setTab] = useState<Tab>('env');
+  const [shown, setShown] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState(false);
+
+  const toggleShow = (k: string) => setShown(p => ({ ...p, [k]: !p[k] }));
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'env',          label: 'Environment' },
+    { id: 'agent',        label: 'Agent config' },
+    { id: 'integrations', label: 'Integrations' },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-700 bg-gray-800 flex items-center gap-4 shrink-0">
-        <Link
-          to="/"
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-100 transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Back
-        </Link>
-        <h1 className="text-sm font-semibold text-gray-100">Settings</h1>
+    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#0F0F12] min-h-0">
+      {/* Page header */}
+      <div className="bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7 py-[14px]">
+        <div className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">Settings</div>
+        <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">Manage your agent configuration and environment</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-xl">
-          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
-            Configuration is managed via environment variables in your{' '}
-            <code className="text-emerald-400 bg-gray-800 border border-gray-700 rounded px-1.5 py-px text-xs font-mono">.env</code>{' '}
-            file at the project root. Restart the server after changes.
-          </p>
+      {/* Tabs */}
+      <div className="flex bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3.5 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px ${
+              tab === t.id
+                ? 'text-indigo-500 dark:text-[#818CF8] border-indigo-500 dark:border-[#818CF8]'
+                : 'text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-700 dark:hover:text-[#F1F5F9]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-          <div className="border border-gray-700 rounded-lg overflow-hidden">
-            <div className="px-4 py-2 bg-gray-800 border-b border-gray-700">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Environment Variables</span>
-            </div>
-            <div className="divide-y divide-gray-700/60">
-              {ENV_VARS.map(v => (
-                <div key={v.key} className="px-4 py-3 flex flex-col gap-0.5 hover:bg-gray-800/40 transition-colors">
-                  <code className="text-sm font-mono text-amber-400 font-semibold">{v.key}</code>
-                  <span className="text-xs text-gray-500">{v.desc}</span>
+      <div className="px-7 py-6 max-w-[760px]">
+
+        {/* ── Environment tab ── */}
+        {tab === 'env' && (
+          <>
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-3.5">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] flex items-center justify-between bg-gray-50 dark:bg-[#1E1E24]">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">
+                  Environment Variables
+                </span>
+                <button className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F1F5F9] px-2.5 py-[5px] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] bg-white dark:bg-[#18181C] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
+                  <Plus size={12} />
+                  Add variable
+                </button>
+              </div>
+              {/* Column headers */}
+              <div className="flex px-4 py-[7px] bg-gray-50 dark:bg-[#1E1E24] border-b border-gray-200 dark:border-[#27272F]">
+                <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] flex-[0_0_200px]">Key</span>
+                <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] flex-1">Value</span>
+              </div>
+              {ENV_VARS.map((v, i) => (
+                <div
+                  key={v.key}
+                  className={`flex items-center gap-2 px-4 py-[9px] ${i < ENV_VARS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}
+                >
+                  <div className="flex-[0_0_200px] flex items-center gap-1.5">
+                    {v.secret && <Key size={11} className="text-gray-400 dark:text-[#64748B] shrink-0" />}
+                    <span className="font-mono text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{v.key}</span>
+                  </div>
+                  <div className="flex-1 font-mono text-[12px] text-gray-500 dark:text-[#94A3B8] overflow-hidden text-ellipsis whitespace-nowrap">
+                    {v.secret && !shown[v.key] ? '••••••••••••' : v.value}
+                  </div>
+                  <div className="flex gap-0.5">
+                    {v.secret && (
+                      <button
+                        onClick={() => toggleShow(v.key)}
+                        className="p-[3px] rounded hover:bg-gray-100 dark:hover:bg-[#27272F] text-gray-400 dark:text-[#64748B] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-colors"
+                      >
+                        {shown[v.key] ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    )}
+                    <button className="p-[3px] rounded hover:bg-gray-100 dark:hover:bg-[#27272F] text-gray-400 dark:text-[#64748B] hover:text-red-500 dark:hover:text-[#F87171] transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+            <div className="flex justify-end gap-2">
+              <button className="text-[13px] font-medium text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F1F5F9] px-3.5 py-[7px] rounded-[6px] transition-colors">
+                Discard
+              </button>
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 text-[13px] font-medium text-white bg-indigo-500 dark:bg-[#818CF8] hover:bg-indigo-600 dark:hover:bg-[#6366F1] px-3.5 py-[7px] rounded-[6px] transition-colors shadow-[0_1px_2px_rgba(99,102,241,0.25)]"
+              >
+                {saved ? <><Check size={13} /> Saved!</> : 'Save changes'}
+              </button>
+            </div>
+          </>
+        )}
 
-          <a
-            href="https://openrouter.ai/models"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-6 inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            Browse available models on OpenRouter
-            <ExternalLink size={13} />
-          </a>
-        </div>
+        {/* ── Agent config tab ── */}
+        {tab === 'agent' && (
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            {AGENT_FIELDS.map((f, i) => (
+              <div key={i} className="mb-4 last:mb-0">
+                <label className="block text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1] mb-[5px]">{f.label}</label>
+                <input
+                  defaultValue={f.value}
+                  className="w-full font-sans text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[6px] px-2.5 py-[7px] outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
+                />
+                <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-1">{f.hint}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Integrations tab ── */}
+        {tab === 'integrations' && (
+          <>
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-4">
+              {INTEGRATIONS.map((intg, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 px-[18px] py-[14px] ${i < INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}
+                >
+                  <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0">
+                    <span className="text-sm">{intg.name === 'Slack' ? '💬' : intg.name === 'GitHub' ? '🐱' : intg.name === 'PagerDuty' ? '📟' : '📊'}</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9]">{intg.name}</div>
+                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8]">{intg.desc}</div>
+                  </div>
+                  {intg.connected ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-[#34D399] bg-emerald-50 dark:bg-[#0D2B1D] border border-emerald-200 dark:border-[#1A4A30] rounded px-1.5 py-[2px]">
+                      <span className="w-[5px] h-[5px] rounded-full bg-emerald-500 dark:bg-[#34D399]" />
+                      Connected
+                    </span>
+                  ) : (
+                    <button className="text-[12px] font-medium text-gray-600 dark:text-[#94A3B8] bg-white dark:bg-[#18181C] hover:bg-gray-50 dark:hover:bg-[#27272F] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
+                      Connect
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <a
+              href="https://openrouter.ai/models"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[13px] text-indigo-500 dark:text-[#818CF8] hover:text-indigo-600 dark:hover:text-[#6366F1] transition-colors"
+            >
+              Browse available models on OpenRouter
+              <ExternalLink size={13} />
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

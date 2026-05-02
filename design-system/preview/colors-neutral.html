@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-sans); }
+  .row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .swatch { flex:1; height: 48px; border-radius: 6px; display:flex; flex-direction:column; justify-content:flex-end; padding:5px 7px; min-width:0; }
+  .label { font-size: 10px; font-weight: 500; font-family: var(--font-mono); }
+  .light { color: rgba(0,0,0,0.45); }
+  .dark  { color: rgba(255,255,255,0.75); }
+  .section-title { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="section-title">Neutral Gray Scale</div>
+<div class="row">
+  <div class="swatch" style="background:#FFFFFF; border:1px solid #E5E7EB"><span class="label light">0</span></div>
+  <div class="swatch" style="background:#F9FAFB; border:1px solid #E5E7EB"><span class="label light">50</span></div>
+  <div class="swatch" style="background:#F3F4F6"><span class="label light">100</span></div>
+  <div class="swatch" style="background:#E5E7EB"><span class="label light">200</span></div>
+  <div class="swatch" style="background:#D1D5DB"><span class="label light">300</span></div>
+  <div class="swatch" style="background:#9CA3AF"><span class="label light">400</span></div>
+  <div class="swatch" style="background:#6B7280"><span class="label dark">500</span></div>
+  <div class="swatch" style="background:#4B5563"><span class="label dark">600</span></div>
+  <div class="swatch" style="background:#374151"><span class="label dark">700</span></div>
+  <div class="swatch" style="background:#1F2937"><span class="label dark">800</span></div>
+  <div class="swatch" style="background:#111827"><span class="label dark">900</span></div>
+  <div class="swatch" style="background:#0A0A0B"><span class="label dark">950</span></div>
+</div>
+</body>
+</html>

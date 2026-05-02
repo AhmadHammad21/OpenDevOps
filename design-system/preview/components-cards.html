@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #F9FAFB; font-family: var(--font-sans); }
+  .label { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-start; }
+  .card { background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .card:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04); }
+  .card-title { font-size: 13px; font-weight: 600; color: #111827; margin-bottom: 2px; }
+  .card-sub { font-size: 12px; color: #6B7280; }
+  .stat { font-size: 28px; font-weight: 700; color: #111827; letter-spacing: -0.03em; line-height: 1.1; }
+  .stat-label { font-size: 12px; color: #6B7280; margin-top: 2px; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; font-size: 11px; font-weight: 500; padding: 2px 6px; border: 1px solid transparent; }
+  .badge-green { background:#ECFDF5; color:#059669; border-color:#A7F3D0; }
+  .badge-amber { background:#FFFBEB; color:#D97706; border-color:#FDE68A; }
+  .badge-blue  { background:#EEF2FF; color:#4F46E5; border-color:#C7D2FE; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .divider { border: none; border-top: 1px solid #F3F4F6; margin: 12px 0; }
+</style>
+</head>
+<body>
+  <div class="label">Stat cards</div>
+  <div class="row">
+    <div class="card" style="min-width:130px">
+      <div class="stat">12</div>
+      <div class="stat-label">Active pipelines</div>
+    </div>
+    <div class="card" style="min-width:130px">
+      <div class="stat" style="color:#10B981">99.8%</div>
+      <div class="stat-label">Uptime (30d)</div>
+    </div>
+    <div class="card" style="min-width:130px">
+      <div class="stat">4.2s</div>
+      <div class="stat-label">Avg deploy time</div>
+    </div>
+    <div class="card" style="min-width:130px">
+      <div class="stat" style="color:#F43F5E">1</div>
+      <div class="stat-label">Failed runs</div>
+    </div>
+  </div>
+
+  <div class="label">Agent card</div>
+  <div class="row">
+    <div class="card" style="width: 240px;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px;">
+        <div>
+          <div class="card-title">prod-agent-01</div>
+          <div class="card-sub">us-east-1 · k8s-prod</div>
+        </div>
+        <span class="badge badge-green"><span class="dot" style="background:#10B981"></span>Healthy</span>
+      </div>
+      <hr class="divider">
+      <div style="display:flex; justify-content:space-between;">
+        <span class="card-sub">Last run</span>
+        <span style="font-size:12px; color:#374151; font-family:var(--font-mono)">12m ago</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:4px;">
+        <span class="card-sub">Version</span>
+        <span style="font-size:12px; color:#374151; font-family:var(--font-mono)">v2.4.1</span>
+      </div>
+    </div>
+
+    <div class="card" style="width: 240px;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px;">
+        <div>
+          <div class="card-title">staging-agent-02</div>
+          <div class="card-sub">eu-west-1 · k8s-staging</div>
+        </div>
+        <span class="badge badge-amber"><span class="dot" style="background:#F59E0B"></span>Degraded</span>
+      </div>
+      <hr class="divider">
+      <div style="display:flex; justify-content:space-between;">
+        <span class="card-sub">Last run</span>
+        <span style="font-size:12px; color:#374151; font-family:var(--font-mono)">3h ago</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:4px;">
+        <span class="card-sub">Version</span>
+        <span style="font-size:12px; color:#374151; font-family:var(--font-mono)">v2.3.0</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

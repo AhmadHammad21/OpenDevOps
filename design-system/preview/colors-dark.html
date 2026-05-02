@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #0D1117; font-family: var(--font-mono); }
+  .row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .swatch { height: 44px; border-radius: 6px; display:flex; flex-direction:column; justify-content:flex-end; padding:5px 8px; min-width: 60px; }
+  .label { font-size: 10px; font-weight: 500; opacity: 0.7; }
+  .terminal-row { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #161B22; border-radius: 8px; border: 1px solid #30363D; }
+  .line { font-size: 12px; line-height: 1.6; }
+  .prompt { color: #3FB950; }
+  .cmd { color: #E6EDF3; }
+  .output { color: #8B949E; }
+  .error { color: #FF7B72; }
+  .warn { color: #E3B341; }
+  .info { color: #79C0FF; }
+  .success { color: #3FB950; }
+  .purple { color: #D2A8FF; }
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="swatch" style="background:#0D1117; border:1px solid #30363D"><span class="label" style="color:#8B949E">bg</span></div>
+  <div class="swatch" style="background:#161B22; border:1px solid #30363D"><span class="label" style="color:#8B949E">surface</span></div>
+  <div class="swatch" style="background:#21262D; border:1px solid #30363D"><span class="label" style="color:#8B949E">elevated</span></div>
+  <div class="swatch" style="background:#30363D"><span class="label" style="color:#8B949E">border</span></div>
+  <div class="swatch" style="background:#3FB950"><span class="label" style="color:rgba(0,0,0,0.6)">green</span></div>
+  <div class="swatch" style="background:#79C0FF"><span class="label" style="color:rgba(0,0,0,0.6)">blue</span></div>
+  <div class="swatch" style="background:#E3B341"><span class="label" style="color:rgba(0,0,0,0.6)">yellow</span></div>
+  <div class="swatch" style="background:#FF7B72"><span class="label" style="color:rgba(0,0,0,0.6)">red</span></div>
+  <div class="swatch" style="background:#D2A8FF"><span class="label" style="color:rgba(0,0,0,0.6)">purple</span></div>
+  <div class="swatch" style="background:#6366F1"><span class="label" style="color:rgba(255,255,255,0.8)">cursor</span></div>
+</div>
+<div class="terminal-row">
+  <div class="line"><span class="prompt">agent@opendevops</span><span class="cmd">:~$ deploy --env production --region us-east-1</span></div>
+  <div class="line output">› Resolving configuration...</div>
+  <div class="line info">› Connected to cluster k8s-prod-01</div>
+  <div class="line success">✓ Image built: sha256:a1b2c3d4</div>
+  <div class="line warn">⚠ Memory limit 80% — consider scaling</div>
+  <div class="line error">✗ Health check failed on pod web-7f9b4</div>
+  <div class="line purple">→ Rolling back to v2.4.1...</div>
+</div>
+</body>
+</html>

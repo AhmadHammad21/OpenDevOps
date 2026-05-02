@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 0; background: #F9FAFB; font-family: var(--font-sans); display: flex; gap: 0; height: 400px; }
+  .sidebar {
+    width: 220px;
+    background: #fff;
+    border-right: 1px solid #E5E7EB;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 0;
+    flex-shrink: 0;
+  }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 14px 12px;
+    border-bottom: 1px solid #F3F4F6;
+    margin-bottom: 8px;
+  }
+  .logo-mark {
+    width: 24px; height: 24px;
+    background: #6366F1;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-text { font-size: 13px; font-weight: 600; color: #111827; }
+  .section-label {
+    font-size: 10px; font-weight: 600; color: #9CA3AF;
+    letter-spacing: 0.09em; text-transform: uppercase;
+    padding: 8px 14px 4px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    font-size: 13px; font-weight: 500; color: #6B7280;
+    cursor: pointer; border-radius: 0;
+    transition: background 120ms, color 120ms;
+    position: relative;
+  }
+  .nav-item:hover { background: #F3F4F6; color: #374151; }
+  .nav-item.active {
+    background: #EEF2FF; color: #4F46E5;
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute; left: 0; top: 4px; bottom: 4px;
+    width: 2.5px; background: #6366F1; border-radius: 0 2px 2px 0;
+  }
+  .nav-item svg { flex-shrink: 0; opacity: 0.7; }
+  .nav-item.active svg { opacity: 1; }
+  .badge { background: #EEF2FF; color: #4F46E5; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 9999px; margin-left: auto; font-family: var(--font-mono); }
+  .badge-red { background: #FFF1F2; color: #E11D48; }
+  .spacer { flex: 1; }
+  .user-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid #F3F4F6;
+    cursor: pointer;
+  }
+  .avatar { width: 26px; height: 26px; background: #6366F1; border-radius: 50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:600; flex-shrink:0; }
+  .user-name { font-size: 12px; font-weight: 500; color: #374151; }
+  .user-role { font-size: 11px; color: #9CA3AF; }
+  .main { flex: 1; padding: 20px; }
+  .main-title { font-size: 16px; font-weight: 600; color: #111827; margin-bottom: 4px; }
+  .main-sub { font-size: 13px; color: #6B7280; }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo-row">
+      <div class="logo-mark">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      </div>
+      <span class="logo-text">OpenDevOps</span>
+    </div>
+
+    <div class="nav-item active">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Chat
+      <span class="badge">2</span>
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Pipelines
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Agent logs
+      <span class="badge badge-red">1</span>
+    </div>
+
+    <div class="section-label">Admin</div>
+    <div class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Team
+    </div>
+    <div class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Settings
+    </div>
+
+    <div class="spacer"></div>
+    <div class="user-row">
+      <div class="avatar">JD</div>
+      <div>
+        <div class="user-name">Jane Doe</div>
+        <div class="user-role">Admin</div>
+      </div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="main-title">Dashboard</div>
+    <div class="main-sub">Good morning, Jane. 3 pipelines are active.</div>
+  </div>
+</body>
+</html>

@@ -5,7 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['"SF Mono"', '"Fira Code"', '"Cascadia Code"', 'monospace'],
+        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"Geist Mono"', '"SF Mono"', '"Fira Code"', 'monospace'],
       },
     },
   },

@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenDevOps — UI Kit v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; overflow: hidden; }
+  body { font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif; background: #F9FAFB; color: #111827; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #9CA3AF; border-radius: 9999px; }
+  * { transition: background-color 180ms, border-color 180ms, color 100ms; }
+
+  @keyframes dot-bounce { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-4px);opacity:1} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#6366F1; margin:0 1px; animation:dot-bounce 1s infinite; }
+  .dot:nth-child(2){animation-delay:.15s} .dot:nth-child(3){animation-delay:.3s}
+
+  .prose { font-size:13px; line-height:1.7; color:#374151; }
+  .prose strong { color:#111827; font-weight:600; }
+  .prose code { font-family:'Geist Mono',monospace; font-size:12px; color:#4F46E5; background:#EEF2FF; border:1px solid #C7D2FE; border-radius:3px; padding:1px 5px; }
+  .prose p { margin:4px 0; }
+  .prose ul,.prose ol { padding-left:18px; margin:4px 0; }
+  .prose li { margin:2px 0; }
+  .prose pre { font-family:'Geist Mono',monospace; font-size:11px; background:#F9FAFB; border:1px solid #E5E7EB; border-radius:6px; padding:10px 12px; overflow-x:auto; margin:8px 0; }
+  .prose blockquote { border-left:2px solid #6366F1; padding-left:10px; color:#6B7280; }
+  .prose h1,.prose h2,.prose h3 { color:#111827; font-weight:600; margin:8px 0 4px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ─── DESIGN TOKENS ────────────────────────────────────────────────
+const LIGHT = {
+  pageBg: '#F9FAFB', surface: '#FFFFFF', sunken: '#F3F4F6',
+  border: '#E5E7EB', borderMd: '#D1D5DB',
+  fg1: '#111827', fg2: '#374151', fg3: '#6B7280', fg4: '#9CA3AF',
+  accent: '#6366F1', accentHover: '#4F46E5',
+  accentSubtle: '#EEF2FF', accentMuted: '#E0E7FF', accentBorder: '#C7D2FE',
+  green: '#10B981', greenBg: '#ECFDF5', greenBorder: '#A7F3D0',
+  amber: '#F59E0B', amberBg: '#FFFBEB', amberBorder: '#FDE68A',
+  red: '#EF4444', redBg: '#FEF2F2', redBorder: '#FECACA',
+  termBg: '#0D1117', termSurface: '#161B22', termBorder: '#30363D',
+  termGreen: '#3FB950', termBlue: '#79C0FF', termYellow: '#E3B341',
+  termRed: '#FF7B72', termMuted: '#8B949E', termText: '#E6EDF3',
+  amber400: '#FBBF24',
+  btnSecBg: '#FFFFFF', btnSecColor: '#374151', btnSecBorder: '#D1D5DB',
+  msgUserBg: '#6366F1', msgUserColor: '#fff',
+  msgAgentBg: '#F9FAFB', msgAgentColor: '#374151',
+  inputBg: '#FFFFFF', inputBorder: '#D1D5DB',
+  proseBg: '#F9FAFB', proseCode: '#4F46E5', proseCodeBg: '#EEF2FF', proseCodeBorder: '#C7D2FE',
+};
+const DARK = {
+  pageBg: '#0F0F12', surface: '#18181C', sunken: '#1E1E24',
+  border: '#27272F', borderMd: '#3F3F47',
+  fg1: '#F1F5F9', fg2: '#CBD5E1', fg3: '#94A3B8', fg4: '#64748B',
+  accent: '#818CF8', accentHover: '#6366F1',
+  accentSubtle: '#1E1B4B', accentMuted: '#312E81', accentBorder: '#3730A3',
+  green: '#34D399', greenBg: 'rgba(16,185,129,0.1)', greenBorder: 'rgba(16,185,129,0.25)',
+  amber: '#FCD34D', amberBg: 'rgba(245,158,11,0.1)', amberBorder: 'rgba(245,158,11,0.25)',
+  red: '#F87171', redBg: 'rgba(239,68,68,0.1)', redBorder: 'rgba(239,68,68,0.25)',
+  termBg: '#0D1117', termSurface: '#161B22', termBorder: '#30363D',
+  termGreen: '#3FB950', termBlue: '#79C0FF', termYellow: '#E3B341',
+  termRed: '#FF7B72', termMuted: '#8B949E', termText: '#E6EDF3',
+  amber400: '#FCD34D',
+  btnSecBg: '#18181C', btnSecColor: '#CBD5E1', btnSecBorder: '#3F3F47',
+  msgUserBg: '#4F46E5', msgUserColor: '#fff',
+  msgAgentBg: '#18181C', msgAgentColor: '#CBD5E1',
+  inputBg: '#18181C', inputBorder: '#3F3F47',
+  proseBg: '#18181C', proseCode: '#A5B4FC', proseCodeBg: '#1E1B4B', proseCodeBorder: '#3730A3',
+};
+
+// Dark mode context
+const DarkCtx = React.createContext(false);
+function useDark() { return React.useContext(DarkCtx); }
+function useC() { return useDark() ? DARK : LIGHT; }
+
+// Start with LIGHT as default C for shared components defined before App
+let C = LIGHT;
+
+// ─── ICONS ────────────────────────────────────────────────────────
+function Ic({ n, s=16, c='currentColor', style={} }) {
+  const paths = {
+    dashboard:    <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>,
+    chat:         <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>,
+    plus:         <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+    x:            <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+    settings:     <><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></>,
+    history:      <><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.35"/></>,
+    send:         <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
+    terminal:     <><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></>,
+    wrench:       <><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></>,
+    chevronDown:  <><polyline points="6 9 12 15 18 9"/></>,
+    chevronRight: <><polyline points="9 18 15 12 9 6"/></>,
+    zap:          <><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></>,
+    alertTri:     <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
+    clock:        <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+    dollar:       <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+    arrowLeft:    <><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></>,
+    check:        <><polyline points="20 6 9 17 4 12"/></>,
+    key:          <><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></>,
+    eye:          <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+    eyeOff:       <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>,
+    trash:        <><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></>,
+    server:       <><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></>,
+    git:          <><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></>,
+    play:         <><polygon points="5 3 19 12 5 21 5 3"/></>,
+    refresh:      <><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>,
+    users:        <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    logout:       <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
+    moreH:        <><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></>,
+    shield:       <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>,
+    copy:         <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
+    square:       <><rect x="3" y="3" width="18" height="18" rx="2"/></>,
+    externalLink: <><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></>,
+  };
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={style}>{paths[n]}</svg>;
+}
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────
+function Badge({ children, variant='default', dot=false }) {
+  const C = useC();
+  const light = {
+    default: { bg:'#F3F4F6', color:'#6B7280', border:'#E5E7EB' },
+    blue:    { bg:'#EEF2FF', color:'#4338CA', border:'#C7D2FE' },
+    green:   { bg:'#ECFDF5', color:'#059669', border:'#A7F3D0' },
+    amber:   { bg:'#FFFBEB', color:'#B45309', border:'#FDE68A' },
+    red:     { bg:'#FEF2F2', color:'#DC2626', border:'#FECACA' },
+    dark:    { bg:'#111827', color:'#F9FAFB', border:'#374151' },
+  };
+  const dark = {
+    default: { bg:'#27272F', color:'#94A3B8', border:'#3F3F47' },
+    blue:    { bg:'#1E1B4B', color:'#A5B4FC', border:'#3730A3' },
+    green:   { bg:'rgba(16,185,129,0.12)', color:'#34D399', border:'rgba(16,185,129,0.3)' },
+    amber:   { bg:'rgba(245,158,11,0.12)', color:'#FCD34D', border:'rgba(245,158,11,0.3)' },
+    red:     { bg:'rgba(239,68,68,0.12)', color:'#F87171', border:'rgba(239,68,68,0.3)' },
+    dark:    { bg:'#0F0F12', color:'#F1F5F9', border:'#3F3F47' },
+  };
+  const isDark = useDark();
+  const palette = isDark ? dark : light;
+  const s = palette[variant] || palette.default;
+  const dotC = { blue:'#818CF8', green:'#34D399', amber:'#FCD34D', red:'#F87171', default:'#64748B', dark:'#64748B' };
+  const dotCL = { blue:'#6366F1', green:'#10B981', amber:'#F59E0B', red:'#EF4444', default:'#9CA3AF', dark:'#9CA3AF' };
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, borderRadius:4, fontSize:11, fontWeight:500, padding:'2px 7px', background:s.bg, color:s.color, border:`1px solid ${s.border}` }}>
+      {dot && <span style={{ width:5, height:5, borderRadius:'50%', background:(isDark?dotC:dotCL)[variant]||(isDark?dotC:dotCL).default, flexShrink:0 }}></span>}
+      {children}
+    </span>
+  );
+}
+
+function Btn({ children, variant='primary', size='md', icon, onClick, disabled, style:sx={} }) {
+  const C = useC();
+  const sz = { sm:{fontSize:12,padding:'5px 10px',borderRadius:5}, md:{fontSize:13,padding:'7px 14px',borderRadius:6}, lg:{fontSize:14,padding:'9px 18px',borderRadius:6,fontWeight:600} };
+  const vr = {
+    primary:   { background:C.accent, color:'#fff', border:'none', boxShadow:'0 1px 2px rgba(99,102,241,0.25)' },
+    secondary: { background:C.btnSecBg, color:C.btnSecColor, border:`1px solid ${C.btnSecBorder}`, boxShadow:'0 1px 2px rgba(0,0,0,0.06)' },
+    ghost:     { background:'transparent', color:C.fg3, border:'none' },
+    danger:    { background:C.redBg, color:C.red, border:`1px solid ${C.redBorder}` },
+    dark:      { background:C.fg1, color:C.pageBg, border:'none' },
+    disabled:  { background:C.sunken, color:C.fg4, border:'none', cursor:'not-allowed' },
+  };
+  const v = disabled ? 'disabled' : variant;
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ fontFamily:'inherit', cursor:disabled?'not-allowed':'pointer', display:'inline-flex', alignItems:'center', gap:6, fontWeight:500, transition:'all 120ms', ...sz[size], ...vr[v], ...sx }}>
+      {icon && <Ic n={icon} s={size==='lg'?15:13} />}
+      {children}
+    </button>
+  );
+}
+
+function Avatar({ name='', size=28, color }) {
+  const C = useC();
+  color = color || C.accent;
+  const initials = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  return <div style={{ width:size, height:size, borderRadius:'50%', background:color, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:Math.round(size*.38), fontWeight:600, flexShrink:0 }}>{initials||'?'}</div>;
+}
+
+// ─── DARK MODE TOGGLE ─────────────────────────────────────────────
+function DarkToggle({ dark, onToggle }) {
+  const C = useC();
+  return (
+    <button onClick={onToggle} title={dark ? 'Switch to light mode' : 'Switch to dark mode'} style={{
+      width: 36, height: 20, borderRadius: 10, border: `1px solid ${C.border}`,
+      cursor: 'pointer', padding: 0, position: 'relative',
+      background: dark ? C.accent : C.sunken,
+      transition: 'background 200ms, border-color 200ms', flexShrink: 0,
+    }}>
+      <span style={{
+        position: 'absolute', top: 1, left: dark ? 17 : 1,
+        width: 16, height: 16, borderRadius: '50%',
+        background: '#fff',
+        transition: 'left 200ms',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      }}>
+        {dark ? '🌙' : '☀️'}
+      </span>
+    </button>
+  );
+}
+
+// ─── SIDEBAR ──────────────────────────────────────────────────────
+function Sidebar({ page, onNav }) {
+  const C = useC();
+  const [hovSess, setHovSess] = React.useState(null);
+  const sessions = [
+    { id:'s1', title:'Lambda throttling — prod', time:'12m ago' },
+    { id:'s2', title:'High latency on payment API', time:'2h ago' },
+    { id:'s3', title:'ECS task failures in staging', time:'Yesterday' },
+    { id:'s4', title:'CloudWatch alarm investigation', time:'3d ago' },
+  ];
+  const navItems = [
+    { id:'dashboard', label:'Dashboard', icon:'dashboard' },
+    { id:'chat',      label:'Chat',      icon:'chat', badge:'2' },
+    { id:'logs',      label:'Agent logs', icon:'terminal', badge:'1', badgeRed:true },
+    { id:'pipelines', label:'Pipelines',  icon:'git' },
+  ];
+  const adminItems = [
+    { id:'team',     label:'Team',     icon:'users' },
+    { id:'settings', label:'Settings', icon:'settings' },
+  ];
+
+  return (
+    <aside style={{ width:240, flexShrink:0, background:C.surface, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', height:'100%' }}>
+      {/* Logo */}
+      <div style={{ padding:'14px 14px 12px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:9 }}>
+        <div style={{ width:28, height:28, background:C.accent, borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Ic n="terminal" s={14} c="#fff" />
+        </div>
+        <span style={{ fontSize:14, fontWeight:700, color:C.fg1, letterSpacing:'-0.02em' }}>OpenDevOps</span>
+      </div>
+
+      {/* Primary nav */}
+      <div style={{ paddingTop:8 }}>
+        {navItems.map(item => {
+          const active = page === item.id;
+          return (
+            <button key={item.id} onClick={() => onNav(item.id)} style={{
+              width:'100%', display:'flex', alignItems:'center', gap:8,
+              padding:'7px 14px', fontSize:13, fontWeight:500,
+              color: active ? C.accent : C.fg3,
+              background: active ? C.accentSubtle : 'transparent',
+              border: 'none', cursor:'pointer', fontFamily:'inherit',
+              position:'relative', transition:'all 100ms', textAlign:'left',
+            }}
+            onMouseEnter={e=>{ if(!active){e.currentTarget.style.background=C.sunken; e.currentTarget.style.color=C.fg2;} }}
+            onMouseLeave={e=>{ if(!active){e.currentTarget.style.background='transparent'; e.currentTarget.style.color=C.fg3;} }}
+            >
+              {active && <span style={{ position:'absolute', left:0, top:4, bottom:4, width:3, background:C.accent, borderRadius:'0 2px 2px 0' }}></span>}
+              <Ic n={item.icon} s={14} c="currentColor" />
+              <span style={{ flex:1 }}>{item.label}</span>
+              {item.badge && <span style={{ background:item.badgeRed?'#FEF2F2':'#EEF2FF', color:item.badgeRed?'#DC2626':C.accent, fontSize:10, fontWeight:600, padding:'1px 5px', borderRadius:9999, fontFamily:'Geist Mono,monospace' }}>{item.badge}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Conversations */}
+      <div style={{ padding:'10px 14px 4px', fontSize:10, fontWeight:600, color:C.fg4, letterSpacing:'0.09em', textTransform:'uppercase', marginTop:8 }}>Conversations</div>
+      <div style={{ flex:1, overflowY:'auto', paddingBottom:8 }}>
+        {sessions.map(s => (
+          <div key={s.id} onClick={() => onNav('chat')}
+            onMouseEnter={() => setHovSess(s.id)}
+            onMouseLeave={() => setHovSess(null)}
+            style={{
+              padding:'7px 14px', cursor:'pointer', position:'relative',
+              borderLeft: s.id==='s1' ? `2px solid ${C.accent}` : '2px solid transparent',
+              background: s.id==='s1' ? C.accentSubtle : hovSess===s.id ? C.sunken : 'transparent',
+              transition:'all 100ms',
+            }}>
+            <div style={{ fontSize:13, fontWeight:s.id==='s1'?500:400, color:s.id==='s1'?C.fg1:C.fg2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', paddingRight:18 }}>{s.title}</div>
+            <div style={{ fontSize:11, color:C.fg4, marginTop:1 }}>{s.time}</div>
+            {hovSess===s.id && (
+              <button style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:C.fg4, padding:3, borderRadius:4 }}>
+                <Ic n="x" s={12} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Admin section */}
+      <div style={{ padding:'0 0 0', borderTop:`1px solid ${C.border}` }}>
+        <div style={{ padding:'8px 14px 3px', fontSize:10, fontWeight:600, color:C.fg4, letterSpacing:'0.09em', textTransform:'uppercase' }}>Admin</div>
+        {adminItems.map(item => {
+          const active = page === item.id;
+          return (
+            <button key={item.id} onClick={() => onNav(item.id)} style={{
+              width:'100%', display:'flex', alignItems:'center', gap:8,
+              padding:'7px 14px', fontSize:13, fontWeight:500,
+              color: active ? C.accent : C.fg3,
+              background: active ? C.accentSubtle : 'transparent',
+              border:'none', cursor:'pointer', fontFamily:'inherit',
+              position:'relative', transition:'all 100ms', textAlign:'left',
+            }}
+            onMouseEnter={e=>{ if(!active){e.currentTarget.style.background=C.sunken; e.currentTarget.style.color=C.fg2;} }}
+            onMouseLeave={e=>{ if(!active){e.currentTarget.style.background='transparent'; e.currentTarget.style.color=C.fg3;} }}
+            >
+              {active && <span style={{ position:'absolute', left:0, top:4, bottom:4, width:3, background:C.accent, borderRadius:'0 2px 2px 0' }}></span>}
+              <Ic n={item.icon} s={14} c="currentColor" />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* User */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderTop:`1px solid ${C.border}`, cursor:'pointer' }}>
+        <Avatar name="Jane Doe" size={26} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:12, fontWeight:500, color:C.fg1 }}>Jane Doe</div>
+          <div style={{ fontSize:11, color:C.fg4 }}>Admin</div>
+        </div>
+        <Ic n="logout" s={13} c={C.fg4} />
+      </div>
+    </aside>
+  );
+}
+
+// ─── CHAT PAGE ────────────────────────────────────────────────────
+function ChatPage() {
+  const C = useC();
+  const [messages, setMessages] = React.useState([
+    { id:'1', role:'agent', content:"Hi Jane! I'm your DevOps agent. I can investigate AWS incidents, check CloudWatch alarms, trace ECS failures, and deploy fixes. What's going on?", toolCalls:[], usage:null },
+    { id:'2', role:'user',  content:'Why is my Lambda throttling?' },
+    { id:'3', role:'agent',
+      content:"I investigated `payments-processor`. Here's what I found:\n\n**Root cause:** Hit the regional concurrency limit (1,000) at 14:32 UTC.\n\n**Contributing factors:**\n- Traffic spike from checkout service (+340% over baseline)\n- No reserved concurrency configured\n\n**Fix:** Set reserved concurrency to 200 and add an SQS queue with a dead-letter queue to buffer spikes.",
+      toolCalls:[
+        { tool:'get_lambda_metrics', args:{ function_name:'payments-processor', period:'1h' }, result:{ throttles:847, invocations:2341 } },
+        { tool:'get_cloudwatch_alarms', args:{ state:'ALARM' }, result:{ alarms:['LambdaThrottles-payments'] } },
+      ],
+      usage:{ latency_ms:4200, model:'anthropic/claude-3.5-sonnet', input_tokens:1842, output_tokens:312, cost_usd:0.0089 },
+    },
+  ]);
+  const [input, setInput] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
+  function send(text) {
+    if (!text.trim() || busy) return;
+    const agentId = Date.now().toString();
+    setMessages(p => [...p,
+      { id: Date.now().toString(), role:'user', content:text },
+      { id: agentId, role:'agent', content:'', toolCalls:[], usage:null, streaming:true },
+    ]);
+    setInput(''); setBusy(true);
+    setTimeout(() => {
+      setMessages(p => p.map(m => m.id===agentId ? { ...m, streaming:false,
+        content:"I checked your infrastructure. Found **2 CloudWatch alarms in ALARM state** in `us-east-1` — both triggered after a deployment at 14:47 UTC.\n\nWould you like me to roll back the deployment or investigate the root cause first?",
+        toolCalls:[{ tool:'list_cloudwatch_alarms', args:{ region:'us-east-1' }, result:{ alarms_in_alarm:2 } }],
+        usage:{ latency_ms:2800, model:'anthropic/claude-3.5-sonnet', input_tokens:920, output_tokens:145, cost_usd:0.0041 },
+      } : m));
+      setBusy(false);
+    }, 1500);
+  }
+
+  function ToolBox({ calls }) {
+    const C = useC();
+    const [open, setOpen] = React.useState(false);
+    return (
+      <div style={{ border:`1px solid ${C.border}`, borderRadius:7, overflow:'hidden', fontSize:12, flexShrink:0 }}>
+        <div onClick={() => setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:7, padding:'5px 10px', background:C.sunken, cursor:'pointer' }}>
+          <Ic n="wrench" s={11} c={C.accent} />
+          <span style={{ color:C.accent, fontWeight:600, fontFamily:'Geist Mono,monospace' }}>{calls.length}</span>
+          <span style={{ color:C.fg3 }}>tool calls</span>
+          <Ic n="chevronDown" s={10} c={C.fg4} style={{ marginLeft:'auto', transform:open?'rotate(180deg)':'none', transition:'transform 200ms' }} />
+        </div>
+        {open && calls.map((tc,i) => (
+          <div key={i} style={{ borderTop:`1px solid ${C.border}`, padding:10 }}>
+            <div style={{ fontFamily:'Geist Mono,monospace', color:C.amber400, fontWeight:600, fontSize:11, marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
+              <span style={{ width:5, height:5, background:C.accent, borderRadius:'50%', display:'inline-block' }}></span>
+              {tc.tool}
+            </div>
+            <pre style={{ fontFamily:'Geist Mono,monospace', fontSize:11, background:C.sunken, border:`1px solid ${C.border}`, borderRadius:5, padding:'6px 10px', color:C.fg3, overflow:'auto', maxHeight:100 }}>{JSON.stringify(tc.args, null, 2)}</pre>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function UsageBox({ usage }) {
+    const C = useC();
+    const [open, setOpen] = React.useState(false);
+    return (
+      <div style={{ border:`1px solid ${C.border}`, borderRadius:7, overflow:'hidden', fontSize:12, flexShrink:0, minWidth:140 }}>
+        <div onClick={() => setOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', background:C.sunken, cursor:'pointer', whiteSpace:'nowrap' }}>
+          <Ic n="zap" s={11} c={C.fg4} />
+          <span style={{ fontFamily:'Geist Mono,monospace', fontSize:11, color:C.fg2 }}>
+            <strong style={{ color:C.fg1 }}>{(usage.latency_ms/1000).toFixed(1)}s</strong>
+            {usage.cost_usd>0 && <> · <strong style={{ color:C.accent }}>${usage.cost_usd.toFixed(4)}</strong></>}
+          </span>
+          <Ic n="chevronDown" s={10} c={C.fg4} style={{ marginLeft:'auto', transform:open?'rotate(180deg)':'none', transition:'transform 200ms' }} />
+        </div>
+        {open && (
+          <div style={{ padding:'8px 10px', borderTop:`1px solid ${C.border}`, background:C.surface, display:'flex', flexDirection:'column', gap:5 }}>
+            {[['Latency',(usage.latency_ms/1000).toFixed(1)+'s'],['In tokens',(usage.input_tokens||0).toLocaleString()],['Out tokens',(usage.output_tokens||0).toLocaleString()]].map(([l,v]) => (
+              <div key={l} style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
+                <span style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'0.08em', color:C.fg4 }}>{l}</span>
+                <span style={{ fontFamily:'Geist Mono,monospace', fontSize:11, color:C.fg1, fontWeight:500 }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ fontSize:10, color:C.fg4, fontFamily:'Geist Mono,monospace', marginTop:2, borderTop:`1px solid ${C.border}`, paddingTop:5 }}>{usage.model}</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const chips = ['Lambda throttling?','Show ALARM state alarms','Recent deployments?','ECS health check'];
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minHeight:0, background:C.surface }}>
+      {/* Header */}
+      <div style={{ padding:'10px 20px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+        <div style={{ width:30, height:30, background:C.accentSubtle, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <span style={{ fontSize:14 }}>⚡</span>
+        </div>
+        <div>
+          <div style={{ fontSize:13, fontWeight:600, color:C.fg1 }}>DevOps Agent</div>
+          <div style={{ fontSize:11, color:C.green, display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ width:5, height:5, borderRadius:'50%', background:C.green, display:'inline-block' }}></span>
+            Active · prod-agent-01
+          </div>
+        </div>
+        <Btn variant="primary" size="sm" icon="plus" onClick={() => {}} style={{ marginLeft:'auto' }}>New chat</Btn>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex:1, overflowY:'auto', padding:'20px 24px', display:'flex', flexDirection:'column', gap:18 }}>
+        {messages.length === 0 ? (
+          <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:32 }}>
+            <div style={{ width:52, height:52, background:C.accentSubtle, borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>⚡</div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:18, fontWeight:600, color:C.fg1, marginBottom:6 }}>OpenDevOps Agent</div>
+              <div style={{ fontSize:13, color:C.fg3, maxWidth:360, lineHeight:1.6 }}>Ask about your AWS infrastructure or describe an incident.</div>
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:7, justifyContent:'center', marginTop:4 }}>
+              {chips.map(c => (
+                <button key={c} onClick={() => send(c)} style={{ fontSize:12, padding:'5px 13px', background:C.surface, border:`1px solid ${C.border}`, borderRadius:9999, color:C.fg3, cursor:'pointer', fontFamily:'inherit', transition:'all 120ms', background:C.surface }}
+                  onMouseEnter={e => { e.currentTarget.style.color=C.accent; e.currentTarget.style.borderColor=C.accentBorder; e.currentTarget.style.background=C.accentSubtle; }}
+                  onMouseLeave={e => { e.currentTarget.style.color=C.fg3; e.currentTarget.style.borderColor=C.border; e.currentTarget.style.background=C.surface; }}
+                >{c}</button>
+              ))}
+            </div>
+          </div>
+        ) : messages.map(m => m.role === 'user' ? (
+          <div key={m.id} style={{ display:'flex', justifyContent:'flex-end', animation:'fadeIn 200ms ease' }}>
+            <div style={{ maxWidth:580, background:C.msgUserBg, borderRadius:'10px 2px 10px 10px', padding:'9px 14px', fontSize:13, color:C.msgUserColor, lineHeight:1.6 }}>{m.content}</div>
+          </div>
+        ) : (
+          <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:6, animation:'fadeIn 200ms ease' }}>
+            {m.streaming && (
+              <div style={{ fontSize:12, color:C.fg4, display:'flex', alignItems:'center', gap:6 }}>
+                <span className="dot"></span><span className="dot"></span><span className="dot"></span>
+                <span style={{ marginLeft:4 }}>Investigating…</span>
+              </div>
+            )}
+            <div style={{ display:'flex', gap:10, alignItems:'flex-start', maxWidth:720 }}>
+              <div style={{ width:30, height:30, background:C.accentSubtle, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0, marginTop:2 }}>⚡</div>
+              <div style={{ background:C.msgAgentBg, border:`1px solid ${C.border}`, borderRadius:'2px 10px 10px 10px', padding:'10px 14px', fontSize:13, lineHeight:1.65, color:C.msgAgentColor, maxWidth:660 }}>
+                {m.streaming
+                  ? <div style={{ display:'flex', gap:3 }}><span className="dot"></span><span className="dot"></span><span className="dot"></span></div>
+                  : <div className="prose" dangerouslySetInnerHTML={{ __html: m.content.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/`(.*?)`/g,'<code>$1</code>').replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>') }} />
+                }
+              </div>
+            </div>
+            {(m.toolCalls?.length > 0 || m.usage) && !m.streaming && (
+              <div style={{ display:'flex', gap:8, marginLeft:40, flexWrap:'wrap' }}>
+                {m.toolCalls?.length > 0 && <ToolBox calls={m.toolCalls} />}
+                {m.usage && <UsageBox usage={m.usage} />}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div style={{ padding:'12px 20px', borderTop:`1px solid ${C.border}`, background:C.surface, flexShrink:0 }}>
+        <div style={{ display:'flex', gap:8, alignItems:'flex-end', border:`1px solid ${C.borderMd}`, borderRadius:10, padding:'8px 10px', background:C.inputBg, boxShadow:'0 1px 3px rgba(0,0,0,0.06)', transition:'border-color 150ms, box-shadow 150ms' }}
+          onFocusCapture={e => { e.currentTarget.style.borderColor=C.accent; e.currentTarget.style.boxShadow=`0 0 0 3px rgba(99,102,241,0.12)`; }}
+          onBlurCapture={e => { e.currentTarget.style.borderColor=C.borderMd; e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)'; }}
+        >
+          <textarea value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send(input);} }}
+            placeholder="Describe an incident or ask about your AWS environment…"
+            rows={1}
+            style={{ flex:1, border:'none', outline:'none', resize:'none', fontFamily:'inherit', fontSize:13, color:C.fg1, background:'transparent', lineHeight:1.55, maxHeight:140, overflowY:'auto' }}
+          />
+          <button onClick={() => send(input)} disabled={!input.trim()&&!busy}
+            style={{ width:32, height:32, borderRadius:7, flexShrink:0, background:input.trim()?C.accent:'#E5E7EB', border:'none', display:'flex', alignItems:'center', justifyContent:'center', cursor:input.trim()?'pointer':'default', transition:'background 120ms' }}>
+            <Ic n={busy?'square':'send'} s={13} c={input.trim()?'#fff':'#9CA3AF'} />
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:C.fg4, textAlign:'center', marginTop:6 }}>Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DASHBOARD PAGE ───────────────────────────────────────────────
+function DashboardPage({ onNav }) {
+  const C = useC();
+  const stats = [
+    { label:'Active agents', value:'3', sub:'2 healthy · 1 degraded', color:C.fg1 },
+    { label:'Pipelines today', value:'48', sub:'46 passed · 2 failed', color:C.fg1 },
+    { label:'Avg deploy time', value:'4.2s', sub:'↓12% from last week', color:C.green },
+    { label:'Uptime (30d)', value:'99.8%', sub:'SLA target: 99.5%', color:C.green },
+  ];
+  const agents = [
+    { name:'prod-agent-01', region:'us-east-1', cluster:'k8s-prod', status:'healthy', version:'v2.4.1', lastRun:'12m ago' },
+    { name:'staging-agent-02', region:'eu-west-1', cluster:'k8s-staging', status:'degraded', version:'v2.3.0', lastRun:'3h ago' },
+    { name:'dev-agent-03', region:'us-west-2', cluster:'k8s-dev', status:'healthy', version:'v2.4.1', lastRun:'28m ago' },
+  ];
+  const runs = [
+    { pipeline:'deploy-api', branch:'main', status:'passed', duration:'18s', time:'12m ago' },
+    { pipeline:'run-tests', branch:'feat/auth', status:'passed', duration:'42s', time:'34m ago' },
+    { pipeline:'deploy-worker', branch:'main', status:'failed', duration:'11s', time:'1h ago' },
+    { pipeline:'build-image', branch:'main', status:'passed', duration:'28s', time:'2h ago' },
+  ];
+  const statusV = { healthy:'green', degraded:'amber', failed:'red', passed:'green' };
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:C.pageBg }}>
+      {/* Header */}
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'14px 28px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.fg1, letterSpacing:'-0.02em' }}>Dashboard</div>
+          <div style={{ fontSize:13, color:C.fg3, marginTop:2 }}>Good morning, Jane. 3 agents are active.</div>
+        </div>
+        <Btn variant="primary" size="sm" icon="play" onClick={() => onNav('chat')}>Ask agent</Btn>
+      </div>
+
+      <div style={{ padding:'24px 28px', display:'flex', flexDirection:'column', gap:24 }}>
+        {/* Stats */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+          {stats.map((s,i) => (
+            <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:'16px 18px', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+              <div style={{ fontSize:28, fontWeight:700, color:s.color, letterSpacing:'-0.03em', lineHeight:1.1 }}>{s.value}</div>
+              <div style={{ fontSize:13, fontWeight:500, color:C.fg1, marginTop:4 }}>{s.label}</div>
+              <div style={{ fontSize:12, color:C.fg3, marginTop:2 }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Agents */}
+        <div>
+          <div style={{ fontSize:13, fontWeight:600, color:C.fg2, marginBottom:10 }}>Agents</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {agents.map((a,i) => (
+              <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:16, boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:C.fg1 }}>{a.name}</div>
+                    <div style={{ fontSize:12, color:C.fg3, marginTop:1 }}>{a.region} · {a.cluster}</div>
+                  </div>
+                  <Badge variant={statusV[a.status]} dot>{a.status.charAt(0).toUpperCase()+a.status.slice(1)}</Badge>
+                </div>
+                <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, display:'flex', flexDirection:'column', gap:5 }}>
+                  {[['Last run', a.lastRun],['Version', a.version]].map(([l,v]) => (
+                    <div key={l} style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:12, color:C.fg3 }}>{l}</span>
+                      <span style={{ fontSize:12, color:C.fg2, fontFamily:'Geist Mono,monospace' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent runs */}
+        <div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:C.fg2 }}>Recent pipeline runs</div>
+            <button onClick={() => onNav('pipelines')} style={{ background:'none', border:'none', fontSize:12, color:C.accent, cursor:'pointer', fontFamily:'inherit', fontWeight:500 }}>View all</button>
+          </div>
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, overflow:'hidden', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  {['Pipeline','Branch','Status','Duration','Time'].map(h => (
+                    <th key={h} style={{ fontSize:11, fontWeight:600, color:C.fg4, letterSpacing:'0.06em', textTransform:'uppercase', padding:'9px 16px', textAlign:'left', background:C.sunken, borderBottom:`1px solid ${C.border}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r,i) => (
+                  <tr key={i} onMouseEnter={e=>e.currentTarget.style.background=C.sunken} onMouseLeave={e=>e.currentTarget.style.background='transparent'} style={{ cursor:'pointer' }}>
+                    <td style={{ fontSize:13, padding:'11px 16px', borderBottom:i<runs.length-1?`1px solid ${C.border}`:'none' }}><span style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:C.fg2 }}>{r.pipeline}</span></td>
+                    <td style={{ fontSize:13, padding:'11px 16px', borderBottom:i<runs.length-1?`1px solid ${C.border}`:'none' }}><span style={{ fontFamily:'Geist Mono,monospace', fontSize:12, color:C.fg3 }}>{r.branch}</span></td>
+                    <td style={{ padding:'11px 16px', borderBottom:i<runs.length-1?`1px solid ${C.border}`:'none' }}><Badge variant={r.status==='passed'?'green':'red'} dot>{r.status}</Badge></td>
+                    <td style={{ fontSize:12, padding:'11px 16px', fontFamily:'Geist Mono,monospace', color:C.fg2, borderBottom:i<runs.length-1?`1px solid ${C.border}`:'none' }}>{r.duration}</td>
+                    <td style={{ fontSize:12, padding:'11px 16px', color:C.fg4, borderBottom:i<runs.length-1?`1px solid ${C.border}`:'none' }}>{r.time}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SETTINGS PAGE ────────────────────────────────────────────────
+function SettingsPage({ onNav }) {
+  const C = useC();
+  const [tab, setTab] = React.useState('env');
+  const [envVars, setEnvVars] = React.useState([
+    { key:'OPENROUTER_API_KEY', value:'sk-or-v1-••••••••4f2a', secret:true, show:false },
+    { key:'OPENROUTER_MODEL',   value:'anthropic/claude-3.5-sonnet', secret:false, show:false },
+    { key:'AWS_REGION',         value:'us-east-1', secret:false, show:false },
+    { key:'AWS_PROFILE',        value:'production', secret:false, show:false },
+    { key:'MAX_TOOL_CALLS',     value:'20', secret:false, show:false },
+    { key:'DATABASE_URL',       value:'postgres://prod.cluster.internal', secret:true, show:false },
+  ]);
+  const [saved, setSaved] = React.useState(false);
+
+  function toggleShow(k) {
+    setEnvVars(p => p.map(v => v.key===k ? {...v, show:!v.show} : v));
+  }
+
+  const tabs = [
+    { id:'env',          label:'Environment' },
+    { id:'agent',        label:'Agent config' },
+    { id:'integrations', label:'Integrations' },
+  ];
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:C.pageBg }}>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'14px 28px' }}>
+        <div style={{ fontSize:16, fontWeight:700, color:C.fg1, letterSpacing:'-0.02em' }}>Settings</div>
+        <div style={{ fontSize:13, color:C.fg3, marginTop:2 }}>Manage your agent configuration and environment</div>
+      </div>
+      <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${C.border}`, background:C.surface, padding:'0 28px' }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding:'9px 14px', fontSize:13, fontWeight:500,
+            color: tab===t.id ? C.accent : C.fg3,
+            borderBottom: tab===t.id ? `2px solid ${C.accent}` : '2px solid transparent',
+            background:'none', border:'none', fontFamily:'inherit', cursor:'pointer',
+            marginBottom:-1, transition:'color 120ms',
+          }}>{t.label}</button>
+        ))}
+      </div>
+      <div style={{ padding:'24px 28px', maxWidth:760 }}>
+        {tab === 'env' && (
+          <>
+            <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, overflow:'hidden', boxShadow:'0 1px 2px rgba(0,0,0,0.04)', marginBottom:14 }}>
+              <div style={{ padding:'11px 16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', background:C.pageBg }}>
+                <span style={{ fontSize:11, fontWeight:600, color:C.fg4, textTransform:'uppercase', letterSpacing:'0.07em' }}>Environment Variables</span>
+                <Btn variant="secondary" size="sm" icon="plus">Add variable</Btn>
+              </div>
+              <div style={{ display:'flex', padding:'7px 16px', background:C.sunken, borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:10, fontWeight:600, color:C.fg4, letterSpacing:'0.07em', textTransform:'uppercase', flex:'0 0 200px' }}>Key</span>
+                <span style={{ fontSize:10, fontWeight:600, color:C.fg4, letterSpacing:'0.07em', textTransform:'uppercase', flex:1 }}>Value</span>
+              </div>
+              {envVars.map((v, i) => (
+                <div key={v.key} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 16px', borderBottom: i<envVars.length-1?`1px solid ${C.border}`:'none' }}>
+                  <div style={{ flex:'0 0 200px', display:'flex', alignItems:'center', gap:5 }}>
+                    {v.secret && <Ic n="key" s={11} c={C.fg4} />}
+                    <span style={{ fontFamily:'Geist Mono,monospace', fontSize:12, fontWeight:500, color:C.fg2 }}>{v.key}</span>
+                  </div>
+                  <div style={{ flex:1, fontFamily:'Geist Mono,monospace', fontSize:12, color:C.fg3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {v.secret && !v.show ? '••••••••••••' : v.value}
+                  </div>
+                  <div style={{ display:'flex', gap:2 }}>
+                    {v.secret && <button onClick={() => toggleShow(v.key)} style={{ background:'none', border:'none', cursor:'pointer', color:C.fg4, padding:3, borderRadius:4 }}><Ic n={v.show?'eyeOff':'eye'} s={13} /></button>}
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:C.fg4, padding:3, borderRadius:4 }}><Ic n="trash" s={13} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+              <Btn variant="ghost" size="sm">Discard</Btn>
+              <Btn variant="primary" size="sm" icon={saved?'check':undefined} onClick={() => { setSaved(true); setTimeout(()=>setSaved(false),2000); }}>{saved?'Saved!':'Save changes'}</Btn>
+            </div>
+          </>
+        )}
+        {tab === 'agent' && (
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, padding:20, boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+            {[{l:'Agent name',v:'prod-agent-01',h:'Used as identifier in logs'},{l:'Default region',v:'us-east-1',h:'AWS region for deployments'},{l:'Max tool calls',v:'20',h:'Hard cap per investigation run'}].map((f,i) => (
+              <div key={i} style={{ marginBottom:16 }}>
+                <label style={{ fontSize:12, fontWeight:500, color:C.fg2, display:'block', marginBottom:5 }}>{f.l}</label>
+                <input defaultValue={f.v} style={{ width:'100%', fontFamily:'inherit', fontSize:13, color:C.fg1, background:C.inputBg, border:`1px solid ${C.borderMd}`, borderRadius:6, padding:'7px 10px', outline:'none' }}
+                  onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=`0 0 0 3px rgba(99,102,241,0.12)`;}}
+                  onBlur={e=>{e.target.style.borderColor=C.borderMd;e.target.style.boxShadow='none';}}
+                />
+                <div style={{ fontSize:11, color:C.fg4, marginTop:4 }}>{f.h}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === 'integrations' && (
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, overflow:'hidden', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+            {[{name:'GitHub',desc:'Connect your repositories',connected:true},{name:'Slack',desc:'Get deployment notifications',connected:false},{name:'PagerDuty',desc:'Alert on failures',connected:false},{name:'Datadog',desc:'Send metrics and traces',connected:true}].map((intg,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 18px', borderBottom:i<3?`1px solid ${C.border}`:'none' }}>
+                <div style={{ width:34, height:34, background:C.sunken, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Ic n="git" s={15} c={C.fg3} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:500, color:C.fg1 }}>{intg.name}</div>
+                  <div style={{ fontSize:12, color:C.fg3 }}>{intg.desc}</div>
+                </div>
+                {intg.connected ? <Badge variant="green" dot>Connected</Badge> : <Btn variant="secondary" size="sm">Connect</Btn>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── AGENT LOGS (TERMINAL) PAGE ───────────────────────────────────
+function LogsPage() {
+  const C = useC();
+  const [selected, setSelected] = React.useState(0);
+  const [filter, setFilter] = React.useState('all');
+  const runs = [
+    { id:248, name:'deploy-api', agent:'prod-agent-01', status:'failed', time:'10:42 AM', dur:'18s' },
+    { id:247, name:'run-tests', agent:'prod-agent-01', status:'passed', time:'10:08 AM', dur:'42s' },
+    { id:246, name:'build-image', agent:'staging-agent-02', status:'passed', time:'9:51 AM', dur:'28s' },
+    { id:245, name:'deploy-worker', agent:'prod-agent-01', status:'passed', time:'9:12 AM', dur:'14s' },
+  ];
+  const logs = {
+    0:[
+      {ts:'10:42:01',lvl:'INFO', msg:'Agent started — version v2.4.1'},
+      {ts:'10:42:01',lvl:'INFO', msg:'Connecting to cluster k8s-prod-01...'},
+      {ts:'10:42:02',lvl:'OK',   msg:'Connected — 6 nodes healthy'},
+      {ts:'10:42:03',lvl:'INFO', msg:'Pulling image opendevops/api:v2.4.1'},
+      {ts:'10:42:08',lvl:'OK',   msg:'Image pulled — sha256:a1b2c3d4e5f6'},
+      {ts:'10:42:11',lvl:'WARN', msg:'Memory usage at 81% — threshold is 80%'},
+      {ts:'10:42:14',lvl:'ERROR',msg:'Health check failed: pod web-7f9b4 not ready'},
+      {ts:'10:42:14',lvl:'INFO', msg:'Initiating rollback to v2.3.0...'},
+      {ts:'10:42:19',lvl:'OK',   msg:'Rollback complete — serving v2.3.0'},
+      {ts:'10:42:19',lvl:'DEBUG',msg:'Run duration: 18.4s · exit code: 1'},
+    ],
+    1:[
+      {ts:'10:08:01',lvl:'INFO',msg:'Starting test suite — 142 tests'},
+      {ts:'10:08:04',lvl:'OK',  msg:'Unit tests passed (98/98)'},
+      {ts:'10:08:28',lvl:'WARN',msg:'Integration test slow (14.2s)'},
+      {ts:'10:08:42',lvl:'OK',  msg:'All 142 tests passed in 41.8s'},
+    ],
+  };
+  const lvlColor = {INFO:C.termBlue, OK:C.termGreen, WARN:C.termYellow, ERROR:C.termRed, DEBUG:C.termMuted};
+  const lvlPad   = {INFO:'INFO ', OK:'  OK ', WARN:'WARN ', ERROR:'ERROR', DEBUG:'DEBUG'};
+  const visLogs = (logs[selected]||logs[0]).filter(l => filter==='all' || l.lvl===filter.toUpperCase() || (filter==='ok'&&l.lvl==='OK'));
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.pageBg }}>
+      <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'14px 28px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:C.fg1, letterSpacing:'-0.02em' }}>Agent logs</div>
+          <div style={{ fontSize:13, color:C.fg3, marginTop:2 }}>Real-time output from agent runs</div>
+        </div>
+        <Btn variant="secondary" size="sm" icon="refresh">Refresh</Btn>
+      </div>
+      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+        {/* Run list */}
+        <div style={{ width:256, borderRight:`1px solid ${C.border}`, background:C.surface, display:'flex', flexDirection:'column', flexShrink:0, overflow:'auto' }}>
+          <div style={{ padding:'8px 10px', borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, background:C.sunken, borderRadius:6, padding:'5px 9px' }}>
+              <Ic n="terminal" s={12} c={C.fg4} />
+              <input placeholder="Filter runs…" style={{ border:'none', background:'transparent', outline:'none', fontSize:12, color:C.fg2, fontFamily:'inherit', flex:1 }} />
+            </div>
+          </div>
+          {runs.map((r,i) => (
+            <div key={i} onClick={() => setSelected(i)} style={{
+              padding:'10px 14px', cursor:'pointer', borderBottom:`1px solid ${C.border}`,
+              background: selected===i ? C.accentSubtle : 'transparent',
+              borderLeft: selected===i ? `2px solid ${C.accent}` : '2px solid transparent',
+              transition:'all 100ms',
+            }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                <span style={{ fontFamily:'Geist Mono,monospace', fontSize:12, fontWeight:500, color:C.fg2 }}>{r.name}</span>
+                <Badge variant={r.status==='passed'?'green':'red'} dot>{r.status}</Badge>
+              </div>
+              <div style={{ fontSize:11, color:C.fg4, display:'flex', gap:7 }}>
+                <span>#{r.id}</span><span>{r.agent}</span><span style={{ marginLeft:'auto' }}>{r.time}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Terminal */}
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.termBg }}>
+          <div style={{ background:C.termSurface, borderBottom:`1px solid ${C.termBorder}`, padding:'8px 14px', display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+            <div style={{ display:'flex', gap:5 }}>
+              {['#FF5F57','#FEBC2E','#28C840'].map(col => <div key={col} style={{ width:11, height:11, borderRadius:'50%', background:col }}></div>)}
+            </div>
+            <span style={{ fontSize:12, color:C.termMuted, fontFamily:'Geist Mono,monospace', flex:1, marginLeft:6 }}>{runs[selected].name} · {runs[selected].agent} · run #{runs[selected].id}</span>
+            <div style={{ display:'flex', gap:4 }}>
+              {['all','error','warn','ok'].map(f => (
+                <button key={f} onClick={() => setFilter(f)} style={{ background:filter===f?'#1C2128':'transparent', color:filter===f?C.termText:C.termMuted, border:`1px solid ${filter===f?C.termBorder:'transparent'}`, borderRadius:4, fontSize:10, fontWeight:500, padding:'2px 7px', cursor:'pointer', fontFamily:'Geist Mono,monospace', transition:'all 100ms' }}>{f}</button>
+              ))}
+            </div>
+            <button style={{ background:'none', border:'none', cursor:'pointer', color:C.termMuted, marginLeft:4 }}><Ic n="copy" s={13} c={C.termMuted} /></button>
+          </div>
+          <div style={{ flex:1, overflowY:'auto', padding:'12px 18px', fontFamily:'Geist Mono,monospace' }}>
+            {visLogs.map((l,i) => (
+              <div key={i} style={{ fontSize:12, lineHeight:1.8, display:'flex', gap:12 }}>
+                <span style={{ color:C.termMuted, flexShrink:0, userSelect:'none' }}>{l.ts}</span>
+                <span style={{ color:lvlColor[l.lvl], flexShrink:0, fontWeight:l.lvl==='ERROR'?600:400 }}>[{lvlPad[l.lvl]}]</span>
+                <span style={{ color:l.lvl==='ERROR'?C.termRed:l.lvl==='WARN'?C.termYellow:C.termText }}>{l.msg}</span>
+              </div>
+            ))}
+            <div style={{ fontSize:12, lineHeight:1.8, color:C.termMuted, display:'flex', gap:4, marginTop:4 }}>
+              <span>$</span>
+              <span style={{ width:7, height:13, background:C.accent, display:'inline-block', verticalAlign:'middle', animation:'blink 1.1s step-end infinite' }}></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TWEAKS PANEL ─────────────────────────────────────────────────
+function TweaksPanel({ page, onNav, onClose }) {
+  const C = useC();
+  return (
+    <div style={{ position:'fixed', bottom:20, right:20, width:248, zIndex:9999, background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, boxShadow:'0 10px 30px rgba(0,0,0,0.12)', overflow:'hidden', fontFamily:'inherit' }}>
+      <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ fontSize:13, fontWeight:600, color:C.fg1 }}>Tweaks</span>
+        <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.fg4, fontSize:14, padding:2 }}>✕</button>
+      </div>
+      <div style={{ padding:'12px 14px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div>
+          <div style={{ fontSize:10, fontWeight:600, color:C.fg4, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Navigate to</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+            {[['chat','Chat'],['dashboard','Dashboard'],['logs','Logs'],['settings','Settings']].map(([id,label]) => (
+              <button key={id} onClick={() => onNav(id)} style={{
+                background: page===id ? C.accentSubtle : C.sunken,
+                color: page===id ? C.accent : C.fg3,
+                border:`1px solid ${page===id ? C.accentBorder : 'transparent'}`,
+                borderRadius:6, fontSize:12, fontWeight:500, padding:'4px 10px',
+                cursor:'pointer', fontFamily:'inherit', transition:'all 100ms',
+              }}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize:10, fontWeight:600, color:C.fg4, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Auth state</div>
+          <button style={{ background:C.accentSubtle, color:C.accent, border:`1px solid ${C.accentBorder}`, borderRadius:6, fontSize:12, fontWeight:500, padding:'5px 12px', cursor:'pointer', fontFamily:'inherit' }}>Signed in as Jane Doe</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ──────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"page":"chat","dark":false}/*EDITMODE-END*/;
+
+function App() {
+  const [page, setPage] = React.useState(TWEAK_DEFAULTS.page || 'chat');
+  const [dark, setDark] = React.useState(TWEAK_DEFAULTS.dark || false);
+  const [showTweaks, setShowTweaks] = React.useState(false);
+
+  // Keep body bg in sync so there's no flash at the edges
+  React.useEffect(() => {
+    document.body.style.background = dark ? DARK.pageBg : LIGHT.pageBg;
+  }, [dark]);
+
+  React.useEffect(() => {
+    function onMsg(e) {
+      if (e.data?.type === '__activate_edit_mode')   setShowTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setShowTweaks(false);
+    }
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type:'__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  function nav(p) {
+    setPage(p);
+    window.parent.postMessage({ type:'__edit_mode_set_keys', edits:{page:p, dark} }, '*');
+  }
+
+  function toggleDark() {
+    const next = !dark;
+    setDark(next);
+    window.parent.postMessage({ type:'__edit_mode_set_keys', edits:{page, dark:next} }, '*');
+  }
+
+  // Provide context so all child components pick up correct theme
+  return (
+    <DarkCtx.Provider value={dark}>
+      <AppInner page={page} dark={dark} onNav={nav} onToggleDark={toggleDark} showTweaks={showTweaks} setShowTweaks={setShowTweaks} />
+    </DarkCtx.Provider>
+  );
+}
+
+function AppInner({ page, dark, onNav, onToggleDark, showTweaks, setShowTweaks }) {
+  const C = useC();
+
+  const pages = {
+    chat:      <ChatPage />,
+    dashboard: <DashboardPage onNav={onNav} />,
+    logs:      <LogsPage />,
+    settings:  <SettingsPage onNav={onNav} />,
+  };
+
+  return (
+    <div style={{ display:'flex', width:'100%', height:'100%', overflow:'hidden', background:C.pageBg, transition:'background 200ms' }}>
+      <Sidebar page={page} onNav={onNav} />
+      <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
+        {/* Top bar */}
+        <div style={{ background:C.surface, borderBottom:`1px solid ${C.border}`, padding:'9px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, transition:'background 200ms, border-color 200ms' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+            <div style={{ width:26, height:26, background:C.accent, borderRadius:7, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Ic n="terminal" s={13} c="#fff" />
+            </div>
+            <span style={{ fontSize:13, fontWeight:600, color:C.fg1 }}>OpenDevOps</span>
+            <span style={{ fontSize:10, color:C.accent, background:C.accentSubtle, border:`1px solid ${C.accentBorder}`, borderRadius:4, padding:'1px 6px', fontWeight:600, letterSpacing:'0.04em' }}>BETA</span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <span style={{ fontSize:11, color:C.fg4, fontFamily:'Geist Mono,monospace' }}>a1b2c3d4</span>
+            <button onClick={() => onNav('settings')} style={{ background:'none', border:'none', cursor:'pointer', color:C.fg4, padding:2 }}><Ic n="settings" s={15} /></button>
+            {/* Dark mode toggle */}
+            <DarkToggle dark={dark} onToggle={onToggleDark} />
+          </div>
+        </div>
+        {pages[page] || pages.chat}
+      </div>
+      {showTweaks && (
+        <TweaksPanel page={page} onNav={onNav} onClose={() => { setShowTweaks(false); window.parent.postMessage({type:'__edit_mode_dismissed'},'*'); }} />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

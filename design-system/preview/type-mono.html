@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-sans); }
+  .block { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; }
+  .label { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 8px; }
+  .dark { background: #0D1117; border-color: #30363D; }
+  .line { font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.7; }
+  .prompt { color: #3FB950; }
+  .cmd { color: #E6EDF3; }
+  .key { color: #79C0FF; }
+  .val { color: #3FB950; }
+  .comment { color: #6B7280; }
+  .inline-code { font-family: 'Geist Mono', monospace; font-size: 12px; background: #F3F4F6; color: #4F46E5; padding: 2px 6px; border-radius: 4px; border: 1px solid #E5E7EB; }
+</style>
+</head>
+<body>
+  <div class="block dark">
+    <div class="label" style="color:#8B949E">Terminal / Command</div>
+    <div class="line"><span class="prompt">$ </span><span class="cmd">opendevops agent deploy --env staging</span></div>
+    <div class="line" style="color:#8B949E">  › Pulling image opendevops/agent:latest</div>
+    <div class="line" style="color:#3FB950">  ✓ Deployed successfully in 28s</div>
+  </div>
+  <div class="block dark">
+    <div class="label" style="color:#8B949E">Environment Variables</div>
+    <div class="line"><span class="key">API_KEY</span><span style="color:#8B949E"> = </span><span class="val">"sk-prod-••••••••4f2a"</span></div>
+    <div class="line"><span class="key">DB_HOST</span><span style="color:#8B949E"> = </span><span class="val">"postgres://prod.cluster.internal"</span></div>
+    <div class="line"><span class="comment"># REDIS_URL not set — using default</span></div>
+  </div>
+  <div class="block">
+    <div class="label">Inline code in prose</div>
+    <p style="font-size:14px;color:#374151;line-height:1.7;margin:0">
+      Run <span class="inline-code">opendevops init</span> to scaffold a new project, then set your 
+      <span class="inline-code">API_KEY</span> environment variable before deploying.
+    </p>
+  </div>
+</body>
+</html>

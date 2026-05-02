@@ -4,22 +4,24 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import './index.css';
 import App from './App';
+import { ThemeProvider } from './context/ThemeContext';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
-      <Toaster
-        theme="dark"
-        position="bottom-right"
-        toastOptions={{
-          style: {
-            background: '#1f2937',
-            border: '1px solid #374151',
-            color: '#f9fafb',
-          },
-        }}
-      />
+      <ThemeProvider>
+        <App />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: '#ffffff',
+              border: '1px solid #E5E7EB',
+              color: '#111827',
+            },
+          }}
+        />
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 );

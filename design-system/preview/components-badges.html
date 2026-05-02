@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-sans); }
+  .label { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; font-size: 11px; font-weight: 500; padding: 3px 7px; border: 1px solid transparent; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .pill { border-radius: 9999px; font-size: 11px; font-weight: 500; padding: 2px 8px; }
+
+  /* Status */
+  .status-running  { background:#EEF2FF; color:#4F46E5; border-color:#C7D2FE; }
+  .status-healthy  { background:#ECFDF5; color:#059669; border-color:#A7F3D0; }
+  .status-degraded { background:#FFFBEB; color:#D97706; border-color:#FDE68A; }
+  .status-failed   { background:#FFF1F2; color:#E11D48; border-color:#FECDD3; }
+  .status-pending  { background:#F9FAFB; color:#6B7280; border-color:#E5E7EB; }
+
+  /* Type */
+  .badge-blue   { background:#EEF2FF; color:#4F46E5; border-color:#C7D2FE; }
+  .badge-green  { background:#ECFDF5; color:#059669; border-color:#A7F3D0; }
+  .badge-amber  { background:#FFFBEB; color:#D97706; border-color:#FDE68A; }
+  .badge-red    { background:#FFF1F2; color:#E11D48; border-color:#FECDD3; }
+  .badge-gray   { background:#F3F4F6; color:#6B7280; border-color:#E5E7EB; }
+  .badge-dark   { background:#111827; color:#F9FAFB; border-color:#374151; }
+</style>
+</head>
+<body>
+  <div class="label">Agent / Pipeline status</div>
+  <div class="row">
+    <span class="badge status-running"><span class="dot" style="background:#6366F1; animation: pulse 1.5s infinite;"></span>Running</span>
+    <span class="badge status-healthy"><span class="dot" style="background:#10B981"></span>Healthy</span>
+    <span class="badge status-degraded"><span class="dot" style="background:#F59E0B"></span>Degraded</span>
+    <span class="badge status-failed"><span class="dot" style="background:#F43F5E"></span>Failed</span>
+    <span class="badge status-pending"><span class="dot" style="background:#9CA3AF"></span>Pending</span>
+  </div>
+
+  <div class="label">Type badges</div>
+  <div class="row">
+    <span class="badge badge-blue">Production</span>
+    <span class="badge badge-amber">Staging</span>
+    <span class="badge badge-gray">Development</span>
+    <span class="badge badge-dark">v2.4.1</span>
+    <span class="badge badge-green">Open source</span>
+    <span class="badge badge-red">Deprecated</span>
+  </div>
+
+  <div class="label">Pills (tags)</div>
+  <div class="row">
+    <span class="badge pill badge-blue">kubernetes</span>
+    <span class="badge pill badge-gray">docker</span>
+    <span class="badge pill badge-gray">terraform</span>
+    <span class="badge pill badge-gray">aws</span>
+    <span class="badge pill badge-green">ci/cd</span>
+    <span class="badge pill badge-gray">+ 3 more</span>
+  </div>
+
+  <div class="label">Counts &amp; numerics</div>
+  <div class="row">
+    <span style="background:#EEF2FF; color:#4F46E5; font-size:11px; font-weight:600; padding:1px 6px; border-radius:9999px; font-family: var(--font-mono);">12</span>
+    <span style="background:#ECFDF5; color:#059669; font-size:11px; font-weight:600; padding:1px 6px; border-radius:9999px; font-family: var(--font-mono);">3 passed</span>
+    <span style="background:#FFF1F2; color:#E11D48; font-size:11px; font-weight:600; padding:1px 6px; border-radius:9999px; font-family: var(--font-mono);">1 failed</span>
+    <span style="background:#F3F4F6; color:#6B7280; font-size:11px; font-weight:600; padding:1px 6px; border-radius:9999px; font-family: var(--font-mono);">48 runs</span>
+  </div>
+
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+</body>
+</html>

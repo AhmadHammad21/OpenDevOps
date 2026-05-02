@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" fill="none">
+  
+  <g>
+    
+    <path d="M8 10 L2 20 L8 30" stroke="#6366F1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+    
+    <path d="M22 10 L28 20 L22 30" stroke="#6366F1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+    
+    <circle cx="15" cy="20" r="2.5" fill="#6366F1"></circle>
+    
+    <circle cx="15" cy="20" r="5" stroke="#6366F1" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"></circle>
+  </g>
+  
+  <text x="38" y="25" font-family="&#39;Geist&#39;, -apple-system, sans-serif" font-size="16" font-weight="600" fill="#111827" letter-spacing="-0.3">OpenDevOps</text>
+</svg>

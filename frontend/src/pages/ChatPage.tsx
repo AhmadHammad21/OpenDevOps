@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Plus } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import UserMessage from '../components/UserMessage';
 import AgentMessage from '../components/AgentMessage';
@@ -31,21 +32,20 @@ function recordsToMessages(records: MessageRecord[]): Message[] {
 
 interface Props {
   onSessionsChange: () => void;
+  onNew: () => void;
 }
 
-export default function ChatPage({ onSessionsChange }: Props) {
+export default function ChatPage({ onSessionsChange, onNew }: Props) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [messages,  setMessages] = useState<Message[]>([]);
   const [busy,      setBusy]     = useState(false);
   const abortRef                 = useRef<AbortController | null>(null);
   const bottomRef                = useRef<HTMLDivElement>(null);
 
-  // Keep localStorage in sync so the redirect on `/` goes to the last session
   useEffect(() => {
     if (sessionId) localStorage.setItem('devops-session-id', sessionId);
   }, [sessionId]);
 
-  // Load history when session changes
   useEffect(() => {
     if (!sessionId) return;
     setMessages([]);
@@ -146,8 +146,30 @@ export default function ChatPage({ onSessionsChange }: Props) {
   if (!sessionId) return <Navigate to="/" replace />;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="flex-1 overflow-y-auto px-6 py-7 flex flex-col gap-5 min-h-0">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white dark:bg-[#0F0F12]">
+      {/* Chat sub-header */}
+      <div className="px-5 py-2.5 border-b border-gray-200 dark:border-[#27272F] bg-white dark:bg-[#18181C] flex items-center gap-2.5 shrink-0">
+        <div className="w-[30px] h-[30px] bg-indigo-50 dark:bg-[#1E1B4B] rounded-lg flex items-center justify-center text-sm shrink-0 select-none">
+          ⚡
+        </div>
+        <div>
+          <div className="text-[13px] font-semibold text-gray-900 dark:text-[#F1F5F9]">DevOps Agent</div>
+          <div className="text-[11px] text-emerald-500 dark:text-[#34D399] flex items-center gap-1">
+            <span className="w-[5px] h-[5px] rounded-full bg-emerald-500 dark:bg-[#34D399] inline-block" />
+            Active
+          </div>
+        </div>
+        <button
+          onClick={onNew}
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-[5px] bg-indigo-500 hover:bg-indigo-600 text-white text-[12px] font-medium rounded-[5px] transition-colors"
+        >
+          <Plus size={12} />
+          New chat
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-[18px] min-h-0">
         {messages.length === 0 ? (
           <EmptyState onChip={send} />
         ) : (
@@ -159,6 +181,7 @@ export default function ChatPage({ onSessionsChange }: Props) {
         )}
         <div ref={bottomRef} />
       </div>
+
       <InputArea busy={busy} onSend={send} onStop={stop} />
     </div>
   );

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-sans); }
+  .grid { display: flex; flex-direction: column; gap: 16px; }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .swatch {
+    flex: 1;
+    height: 56px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 6px 8px;
+    position: relative;
+    min-width: 0;
+  }
+  .swatch-label { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.85); font-family: var(--font-mono); }
+  .swatch-label.dark { color: rgba(0,0,0,0.55); }
+  .section-title { font-size: 11px; font-weight: 600; color: #9CA3AF; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; font-family: var(--font-sans); }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div>
+    <div class="section-title">Indigo — Brand Accent</div>
+    <div class="row">
+      <div class="swatch" style="background:#EEF2FF"><span class="swatch-label dark">50</span></div>
+      <div class="swatch" style="background:#E0E7FF"><span class="swatch-label dark">100</span></div>
+      <div class="swatch" style="background:#C7D2FE"><span class="swatch-label dark">200</span></div>
+      <div class="swatch" style="background:#A5B4FC"><span class="swatch-label dark">300</span></div>
+      <div class="swatch" style="background:#818CF8"><span class="swatch-label">400</span></div>
+      <div class="swatch" style="background:#6366F1"><span class="swatch-label">500 ●</span></div>
+      <div class="swatch" style="background:#4F46E5"><span class="swatch-label">600</span></div>
+      <div class="swatch" style="background:#4338CA"><span class="swatch-label">700</span></div>
+      <div class="swatch" style="background:#3730A3"><span class="swatch-label">800</span></div>
+      <div class="swatch" style="background:#312E81"><span class="swatch-label">900</span></div>
+    </div>
+  </div>
+  <div>
+    <div class="section-title">Logo & Wordmark</div>
+    <div class="row" style="align-items:center; gap:24px; padding: 12px 0;">
+      <img src="../assets/logo.svg" height="32" alt="OpenDevOps logo">
+      <img src="../assets/logo-mark.svg" height="32" alt="OpenDevOps mark">
+      <div style="background:#111827; border-radius:8px; padding:8px 16px; display:flex; align-items:center;">
+        <img src="../assets/logo-dark.svg" height="28" alt="OpenDevOps dark logo">
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

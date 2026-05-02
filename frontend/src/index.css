@@ -4,14 +4,14 @@
 
 @layer base {
   html { height: 100%; }
-  body { @apply bg-gray-900 text-gray-50 h-full overflow-hidden; }
+  body { @apply bg-gray-50 text-gray-900 h-full overflow-hidden; -webkit-font-smoothing: antialiased; }
   #root { @apply h-full overflow-hidden; }
 }
 
-/* Spinner dots — kept as CSS because Tailwind animate-bounce has different timing */
+/* Spinner dots */
 @layer components {
   .spinner-dots span {
-    @apply inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mx-px;
+    @apply inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 mx-px;
     animation: dot-bounce 1s infinite;
   }
   .spinner-dots span:nth-child(2) { animation-delay: 0.15s; }
@@ -23,19 +23,36 @@
   40%            { transform: translateY(-4px); opacity: 1;   }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-gray-700 rounded-full; }
+::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
+.dark ::-webkit-scrollbar-thumb { background: #3F3F47; border-radius: 9999px; }
 
-/* Typography plugin — tweak prose colours for our dark bg */
+/* Prose for agent messages — light theme */
 .prose-chat {
-  @apply prose prose-invert prose-sm max-w-none;
-  @apply prose-p:my-1.5 prose-headings:font-semibold;
-  @apply prose-code:text-emerald-400 prose-code:bg-gray-900 prose-code:border prose-code:border-gray-700 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:text-[12.5px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none;
-  @apply prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-pre:text-xs;
-  @apply prose-blockquote:border-l-emerald-500 prose-blockquote:text-gray-400;
-  @apply prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline;
-  @apply prose-strong:text-gray-100;
-  @apply prose-th:bg-gray-700/60;
+  @apply prose prose-sm max-w-none;
+  @apply prose-p:my-1.5 prose-headings:font-semibold prose-headings:text-gray-900;
+  @apply prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:border prose-code:border-indigo-100 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:text-[12px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none;
+  @apply prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200 prose-pre:text-xs prose-pre:font-mono;
+  @apply prose-blockquote:border-l-indigo-400 prose-blockquote:text-gray-500;
+  @apply prose-a:text-indigo-500 prose-a:no-underline hover:prose-a:underline;
+  @apply prose-strong:text-gray-900;
+  @apply prose-th:bg-gray-100;
+}
+
+/* Dark prose overrides */
+.dark .prose-chat {
+  @apply prose-headings:text-[#F1F5F9] prose-strong:text-[#F1F5F9];
+  @apply prose-code:text-[#818CF8] prose-code:bg-[#1E1B4B] prose-code:border-[#3730A3];
+  @apply prose-pre:bg-[#18181C] prose-pre:border-[#27272F];
+  @apply prose-blockquote:text-[#94A3B8];
+  @apply prose-a:text-[#818CF8];
+  @apply prose-th:bg-[#1E1E24];
+  color: #CBD5E1;
 }
