@@ -81,9 +81,18 @@ the full schema reference.
 
 **Web UI**
 
+You need two terminals running simultaneously:
+
 ```bash
+# Terminal 1 — FastAPI backend (API + SSE streaming)
 uv run uvicorn src.api.app:app --reload
-# Open http://localhost:8000
+```
+
+```bash
+# Terminal 2 — React frontend (Vite dev server with HMR)
+cd frontend
+npm run dev
+# Open http://localhost:5173
 ```
 
 **CLI**
