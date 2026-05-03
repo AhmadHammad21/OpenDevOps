@@ -438,6 +438,135 @@ class Database:
             "root_causes": root_causes,
         }
 
+    async def get_history_stats(self, days: int = 30) -> dict:
+        """Cross-session analytics — always aggregated, never loads raw message content."""
+
+        alarm_rows = await self._fetchall("""
+            SELECT
+                tc.args->>'alarm_name'          AS alarm_name,
+                COUNT(DISTINCT tc.session_id)   AS session_count,
+                COUNT(*)                        AS total_lookups,
+                MAX(s.last_active_at)           AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE
+              AND tc.tool_name = 'get_alarm_history'
+              AND tc.args->>'alarm_name' IS NOT NULL
+              AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
+            GROUP BY 1
+            ORDER BY session_count DESC, total_lookups DESC
+            LIMIT 10
+        """, days)
+
+        lambda_rows = await self._fetchall("""
+            SELECT
+                tc.args->>'function_name'       AS function_name,
+                COUNT(DISTINCT tc.session_id)   AS session_count,
+                COUNT(*)                        AS total_calls,
+                MAX(s.last_active_at)           AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE
+              AND tc.tool_name IN ('get_lambda_error_rate', 'get_lambda_function_config')
+              AND tc.args->>'function_name' IS NOT NULL
+              AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
+            GROUP BY 1
+            ORDER BY session_count DESC
+            LIMIT 10
+        """, days)
+
+        error_rows = await self._fetchall("""
+            SELECT
+                tc.tool_name,
+                LEFT(tc.error, 120)             AS error_snippet,
+                COUNT(*)                        AS count,
+                MAX(tc.created_at)              AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE
+              AND tc.error IS NOT NULL
+              AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
+            GROUP BY 1, 2
+            ORDER BY count DESC
+            LIMIT 10
+        """, days)
+
+        trend_rows = await self._fetchall("""
+            SELECT
+                DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
+                COUNT(*) AS count
+            FROM sessions
+            WHERE is_deleted = FALSE
+              AND last_active_at > NOW() - (%s * INTERVAL '1 day')
+            GROUP BY 1
+            ORDER BY 1
+        """, days)
+
+        return {
+            "days": days,
+            "top_alarms": [
+                {
+                    "alarm_name":    r["alarm_name"],
+                    "session_count": int(r["session_count"]),
+                    "total_lookups": int(r["total_lookups"]),
+                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
+                }
+                for r in alarm_rows
+            ],
+            "top_lambdas": [
+                {
+                    "function_name": r["function_name"],
+                    "session_count": int(r["session_count"]),
+                    "total_calls":   int(r["total_calls"]),
+                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
+                }
+                for r in lambda_rows
+            ],
+            "recurring_errors": [
+                {
+                    "tool_name":     r["tool_name"],
+                    "error_snippet": r["error_snippet"],
+                    "count":         int(r["count"]),
+                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
+                }
+                for r in error_rows
+            ],
+            "trend": [
+                {"date": str(r["day"]), "count": int(r["count"])}
+                for r in trend_rows
+            ],
+        }
+
+    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
+        """Full-text search over session titles and first user message per session."""
+        if not query.strip():
+            return []
+        rows = await self._fetchall("""
+            SELECT id, title, last_active_at, model, snippet
+            FROM (
+                SELECT DISTINCT ON (s.id)
+                    s.id, s.title, s.last_active_at, s.model,
+                    LEFT(m.content, 200) AS snippet
+                FROM sessions s
+                JOIN messages m ON m.session_id = s.id AND m.role = 'user'
+                WHERE s.is_deleted = FALSE
+                  AND (s.title ILIKE '%%' || %s || '%%' OR m.content ILIKE '%%' || %s || '%%')
+                ORDER BY s.id, m.created_at ASC
+            ) sub
+            ORDER BY last_active_at DESC
+            LIMIT %s
+        """, query, query, min(limit, 20))
+        return [
+            {
+                "id":             str(r["id"]),
+                "title":          r["title"],
+                "last_active_at": r["last_active_at"].isoformat() if r["last_active_at"] else None,
+                "model":          r["model"],
+                "snippet":        r["snippet"],
+            }
+            for r in rows
+        ]
+
     async def delete_session(self, session_id: str) -> None:
         """Soft-delete a session — hidden from UI, data preserved for the cleanup job."""
         await self._exec(

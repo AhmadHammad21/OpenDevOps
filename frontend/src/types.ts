@@ -31,6 +31,48 @@ export interface AgentMessage {
 
 export type Message = UserMessage | AgentMessage;
 
+export interface HistoryAlarm {
+  alarm_name: string;
+  session_count: number;
+  total_lookups: number;
+  last_seen: string | null;
+}
+
+export interface HistoryLambda {
+  function_name: string;
+  session_count: number;
+  total_calls: number;
+  last_seen: string | null;
+}
+
+export interface HistoryError {
+  tool_name: string;
+  error_snippet: string;
+  count: number;
+  last_seen: string | null;
+}
+
+export interface HistoryTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface HistoryStats {
+  days: number;
+  top_alarms: HistoryAlarm[];
+  top_lambdas: HistoryLambda[];
+  recurring_errors: HistoryError[];
+  trend: HistoryTrendPoint[];
+}
+
+export interface SearchResult {
+  id: string;
+  title: string | null;
+  last_active_at: string | null;
+  model: string;
+  snippet: string;
+}
+
 export interface Session {
   id: string;
   title: string | null;

@@ -159,7 +159,7 @@ docs/
 - [x] **Cache layer** — in-process TTL cache (`cachetools`) on all 19 AWS tool functions; 2-minute TTL, 256 entry max, AWS profile+region included in cache key
 - [x] **Schema / models layer** — centralized `src/models/` package for all Pydantic models: agent domain, memory state, and API request/response schemas
 - [ ] **Soft-deleted session cleanup job** — product version only; OSS users manage their own DB
-- [ ] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
+- [x] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
 - [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
 
 ### Medium-term
@@ -168,6 +168,7 @@ docs/
 - [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
 - [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
+- [ ] **Bash sandbox + AWS CLI tool** — expose a sandboxed `run_aws_cli(command)` escape-hatch tool alongside the 19 structured tools; read-only enforcement via per-org IAM role (`List*`/`Get*`/`Describe*` only); covers the long tail of AWS CLI commands no predefined tool handles; per-org credential isolation via scoped profiles
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
