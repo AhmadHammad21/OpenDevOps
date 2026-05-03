@@ -5,6 +5,9 @@ const CHIPS = [
   'Check ECS service health in default cluster',
   'Any deployments or config changes recently?',
   'Why is my Lambda throttling?',
+  'Which alarms have been investigated most in the last 30 days?',
+  'What recurring errors have we seen across past investigations?',
+  'Search past investigations for Lambda throttling',
 ];
 
 interface Props {
