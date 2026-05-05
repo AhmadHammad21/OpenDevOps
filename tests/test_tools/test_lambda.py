@@ -1,8 +1,7 @@
 import boto3
-import pytest
 from moto import mock_aws
 
-from tools.lambda_ import GetFunctionConfigTool, GetLambdaErrorRateTool, ListFunctionsTool
+from tools.lambda_ import get_lambda_error_rate, get_lambda_function_config, list_lambda_functions
 
 
 def _create_lambda_role(iam_client: boto3.client) -> str:
@@ -27,8 +26,7 @@ def _create_lambda_role(iam_client: boto3.client) -> str:
 
 @mock_aws
 def test_list_functions_empty():
-    tool = ListFunctionsTool()
-    result = tool.run()
+    result = list_lambda_functions()
     assert result["functions"] == []
     assert result["count"] == 0
 
@@ -47,8 +45,7 @@ def test_list_functions_with_function():
         MemorySize=256,
         Timeout=30,
     )
-    tool = ListFunctionsTool()
-    result = tool.run()
+    result = list_lambda_functions()
     assert result["count"] == 1
     fn = result["functions"][0]
     assert fn["name"] == "my-fn"
@@ -69,14 +66,12 @@ def test_get_function_config():
         Code={"ZipFile": b"fake"},
         Environment={"Variables": {"KEY1": "val1", "KEY2": "val2"}},
     )
-    tool = GetFunctionConfigTool()
-    result = tool.run(name="cfg-fn")
+    result = get_lambda_function_config(name="cfg-fn")
     assert result["name"] == "cfg-fn"
     assert set(result["env_var_keys"]) == {"KEY1", "KEY2"}
 
 
 @mock_aws
 def test_get_lambda_error_rate():
-    tool = GetLambdaErrorRateTool()
-    result = tool.run(name="nonexistent-fn", hours=1)
+    result = get_lambda_error_rate(name="nonexistent-fn", hours=1)
     assert "total_errors" in result or "error" in result

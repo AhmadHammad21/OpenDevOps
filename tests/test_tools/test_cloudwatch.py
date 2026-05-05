@@ -1,20 +1,19 @@
 import boto3
-import pytest
 from moto import mock_aws
 
 from tools.cloudwatch import (
-    DescribeLogGroupsTool,
-    GetAlarmHistoryTool,
-    GetAlarmsTool,
-    GetLogEventsTool,
-    GetMetricDataTool,
+    describe_log_groups,
+    get_alarm_history,
+    get_alarms,
+    get_log_events,
+    get_metric_data,
+    query_logs_insights,
 )
 
 
 @mock_aws
 def test_get_alarms_empty():
-    tool = GetAlarmsTool()
-    result = tool.run()
+    result = get_alarms()
     assert result["alarms"] == []
     assert result["count"] == 0
 
@@ -32,8 +31,7 @@ def test_get_alarms_with_alarm():
         Threshold=1,
         ComparisonOperator="GreaterThanThreshold",
     )
-    tool = GetAlarmsTool()
-    result = tool.run()
+    result = get_alarms()
     assert result["count"] == 1
     assert result["alarms"][0]["name"] == "test-alarm"
 
@@ -51,8 +49,7 @@ def test_get_alarms_filter_by_state():
         Threshold=1,
         ComparisonOperator="GreaterThanThreshold",
     )
-    tool = GetAlarmsTool()
-    result = tool.run(state="ALARM")
+    result = get_alarms(state="ALARM")
     assert isinstance(result["alarms"], list)
 
 
@@ -69,16 +66,14 @@ def test_get_alarm_history():
         Threshold=1,
         ComparisonOperator="GreaterThanThreshold",
     )
-    tool = GetAlarmHistoryTool()
-    result = tool.run(alarm_name="history-alarm", hours=24)
+    result = get_alarm_history(alarm_name="history-alarm", hours=24)
     # moto may not implement describe_alarm_history; we accept either a result or a graceful error
     assert "history" in result or "error" in result
 
 
 @mock_aws
 def test_get_metric_data():
-    tool = GetMetricDataTool()
-    result = tool.run(
+    result = get_metric_data(
         namespace="AWS/Lambda",
         metric="Errors",
         dimensions=[{"Name": "FunctionName", "Value": "my-fn"}],
@@ -89,8 +84,7 @@ def test_get_metric_data():
 
 @mock_aws
 def test_describe_log_groups_empty():
-    tool = DescribeLogGroupsTool()
-    result = tool.run()
+    result = describe_log_groups()
     assert result["log_groups"] == []
     assert result["count"] == 0
 
@@ -99,8 +93,7 @@ def test_describe_log_groups_empty():
 def test_describe_log_groups_with_group():
     client = boto3.client("logs", region_name="us-east-1")
     client.create_log_group(logGroupName="/aws/lambda/my-fn")
-    tool = DescribeLogGroupsTool()
-    result = tool.run()
+    result = describe_log_groups()
     assert result["count"] == 1
     assert result["log_groups"][0]["name"] == "/aws/lambda/my-fn"
 
@@ -109,6 +102,17 @@ def test_describe_log_groups_with_group():
 def test_get_log_events_empty():
     client = boto3.client("logs", region_name="us-east-1")
     client.create_log_group(logGroupName="/aws/lambda/my-fn")
-    tool = GetLogEventsTool()
-    result = tool.run(log_group="/aws/lambda/my-fn")
+    result = get_log_events(log_group="/aws/lambda/my-fn")
     assert result["events"] == []
+
+
+@mock_aws
+def test_query_logs_insights_graceful_result():
+    client = boto3.client("logs", region_name="us-east-1")
+    client.create_log_group(logGroupName="/aws/lambda/my-fn")
+    result = query_logs_insights(
+        log_group="/aws/lambda/my-fn",
+        query="fields @timestamp, @message | limit 5",
+        hours=1,
+    )
+    assert "results" in result or "error" in result

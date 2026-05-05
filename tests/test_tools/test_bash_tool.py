@@ -9,7 +9,6 @@ import pytest
 
 from tools.bash_tool import run_bash_command
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:

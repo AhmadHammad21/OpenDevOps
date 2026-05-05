@@ -203,7 +203,7 @@ class Database:
     async def list_sessions(self) -> list[dict]:
         """Return non-deleted sessions ordered by most recently active."""
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC"
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC"
         )
         return [
             {
@@ -211,6 +211,7 @@ class Database:
                 "title": r["title"],
                 "last_active_at": r["last_active_at"].isoformat() if r["last_active_at"] else None,
                 "model": r["model"],
+                "aws_region": r["aws_region"],
             }
             for r in rows
         ]
@@ -264,9 +265,12 @@ class Database:
         for msg in messages:
             mid = str(msg["id"])
             item: dict = {
+                "id": mid,
                 "role": msg["role"],
                 "content": msg["content"],
                 "created_at": msg["created_at"].isoformat() if msg["created_at"] else None,
+                "tool_calls": [],
+                "usage": None,
             }
             if msg["role"] == "assistant":
                 item["tool_calls"] = tc_by_msg.get(mid, [])

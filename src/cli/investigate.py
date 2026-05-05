@@ -33,7 +33,13 @@ def investigate_cmd(
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
         progress.add_task("Investigating...", total=None)
-        result = agent.investigate(investigation)
+        try:
+            result = agent.investigate(investigation)
+        except TimeoutError:
+            console.print(
+                "[red]Investigation timed out. Try narrowing the scope or increase INVESTIGATION_TIMEOUT.[/red]"
+            )
+            raise typer.Exit(code=1)
 
     if json_output:
         rprint(json.dumps(result.raw_json or result.model_dump(), indent=2))

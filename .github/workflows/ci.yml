@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Ruff lint (gating)
+        run: uv run ruff check tests
+
+      - name: Ruff lint src (informational)
+        run: uv run ruff check src --exit-zero
+
+      - name: Pytest
+        run: uv run pytest -q

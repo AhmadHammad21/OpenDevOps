@@ -1,5 +1,6 @@
 """DeepAgents-based investigation agent."""
 
+import asyncio
 import json
 import re
 import uuid
@@ -38,6 +39,19 @@ ALL_TOOLS = (
 _agent = None
 
 
+def _run_async(coro: Any) -> Any:
+    """Run a coroutine from synchronous CLI code.
+
+    CLI commands are synchronous, so they need a safe bridge into async setup and
+    timeout-controlled agent invocation.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    raise RuntimeError("Cannot run synchronous agent call inside an active event loop")
+
+
 def init_agent(checkpointer: Any) -> None:
     """Create the agent with the given checkpointer. Called once during app startup."""
     global _agent
@@ -58,6 +72,30 @@ def get_agent() -> Any:
     if _agent is None:
         raise RuntimeError("Agent not initialised — call init_agent() first")
     return _agent
+
+
+def ensure_agent_initialized() -> None:
+    """Initialize DB + agent lazily for non-API entrypoints (CLI)."""
+    global _agent
+    if _agent is not None:
+        return
+    from agent.db import db
+
+    checkpointer = _run_async(db.init())
+    init_agent(checkpointer)
+
+
+async def ainvoke_with_timeout(agent_input: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Run agent invocation with a global investigation timeout."""
+    return await asyncio.wait_for(
+        get_agent().ainvoke(agent_input, config=config),
+        timeout=settings.investigation_timeout,
+    )
+
+
+def invoke_with_timeout(agent_input: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Synchronous wrapper for timeout-enforced invocation."""
+    return _run_async(ainvoke_with_timeout(agent_input, config))
 
 
 def _parse_result_json(text: str) -> dict[str, Any] | None:
@@ -95,6 +133,8 @@ class InvestigationAgent:
     """Synchronous wrapper for the CLI investigate command."""
 
     def investigate(self, investigation: Investigation) -> InvestigationResult:
+        ensure_agent_initialized()
+
         user_msg = investigation.description
         if investigation.alarm_name:
             user_msg += f"\nAlarm name: {investigation.alarm_name}"
@@ -111,9 +151,9 @@ class InvestigationAgent:
 
         logger.info("investigation_started description={}", investigation.description)
 
-        result = get_agent().invoke(
+        result = invoke_with_timeout(
             {"messages": [{"role": "user", "content": user_msg}]},
-            config=config,
+            config,
         )
 
         messages = result.get("messages", [])

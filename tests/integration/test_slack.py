@@ -1,36 +1,69 @@
-"""Quick standalone test — sends a sample investigation result to Slack."""
+"""Assertive tests for Slack payload rendering and webhook delivery."""
+
+from __future__ import annotations
 
 import asyncio
-from agent.config import settings
-from integrations.slack_webhook import post_investigation
+
+from integrations.slack_webhook import _build_payload, post_investigation
 
 SAMPLE_RESULT = {
     "root_cause_category": "RESOURCE_LIMIT",
-    "root_cause_summary": (
-        "Lambda function payment-processor exceeded its memory limit (512 MB) "
-        "during a traffic spike, causing 47 invocations to fail with OOM errors."
-    ),
+    "root_cause_summary": "Lambda exhausted memory under burst traffic.",
     "confidence": "HIGH",
     "evidence": [
-        "CloudWatch: MemoryUtilization hit 99.8% at 14:32 UTC",
-        "Lambda logs: 47x 'Runtime exited with error: signal: killed' in the last hour",
-        "Error rate jumped from 0.2% → 18.4% at 14:31 UTC",
+        "MemoryUtilization reached 99%",
+        "OOM errors spiked in CloudWatch logs",
     ],
     "mitigation_steps": [
-        "Increase Lambda memory from 512 MB to 1024 MB",
-        "Add a memory utilization alarm at 80% to catch this earlier",
-        "Review payload sizes — large S3 objects may be loaded into memory unnecessarily",
+        "Increase Lambda memory",
+        "Add memory alarm at 80%",
     ],
     "services_affected": ["Lambda", "CloudWatch"],
 }
 
-async def main():
-    if not settings.slack_webhook_url:
-        print("SLACK_WEBHOOK_URL is not set in .env — aborting.")
-        return
 
-    print(f"Sending test message to Slack webhook …")
-    await post_investigation(settings.slack_webhook_url, SAMPLE_RESULT, "test-session-1234")
-    print("Done.")
+def test_build_payload_contains_category_confidence_and_summary():
+    payload = _build_payload(SAMPLE_RESULT, "session-1234")
+    attachment = payload["attachments"][0]
+    blocks = attachment["blocks"]
 
-asyncio.run(main())
+    assert attachment["color"] == "#e74c3c"
+    assert any("RESOURCE_LIMIT" in str(block) for block in blocks)
+    assert any("HIGH" in str(block) for block in blocks)
+    assert any("Lambda exhausted memory" in str(block) for block in blocks)
+
+
+def test_post_investigation_sends_payload(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = "ok"
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = (exc_type, exc, tb)
+
+        async def post(self, url, json):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", FakeClient)
+
+    asyncio.run(
+        post_investigation(
+            "https://hooks.slack.test/example",
+            SAMPLE_RESULT,
+            "session-1234",
+        )
+    )
+
+    assert captured["url"] == "https://hooks.slack.test/example"
+    assert "attachments" in captured["json"]
