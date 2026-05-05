@@ -64,11 +64,11 @@ docker run -d --name opendevops-pg \
   -e POSTGRES_DB=opendevops \
   -e POSTGRES_USER=dev \
   -e POSTGRES_PASSWORD=dev \
-  -p 5432:5432 \
+  -p 5433:5432 \
   postgres:16
 
 # Add to .env
-echo "DATABASE_URL=postgresql://dev:dev@localhost:5432/opendevops" >> .env
+echo "DATABASE_URL=postgresql://dev:dev@localhost:5433/opendevops" >> .env
 
 # Create tables (safe to re-run)
 uv run python scripts/setup_db.py
@@ -86,6 +86,7 @@ the full schema reference.
 docker compose up --build
 # Backend: http://localhost:8000
 # Frontend: http://localhost:80
+# Postgres (host): localhost:5433
 ```
 
 The backend image installs AWS CLI v2 automatically — the bash execution tool
@@ -151,11 +152,12 @@ src/
 ├── cli/               # Typer CLI commands
 └── integrations/      # Future: Slack, PagerDuty
 frontend/
-└── index.html         # Chat UI — sidebar, live tool calls, cost card
+└── src/               # React UI source (Vite)
 migrations/
 └── 001_initial.sql    # App schema (sessions, messages, tool_calls, usage_events)
 scripts/
-└── setup_db.py        # One-shot DB setup (runs migrations + LangGraph checkpointer)
+├── setup_db.py        # One-shot DB setup (runs migrations + LangGraph checkpointer)
+└── test_db_connection.py # DB connectivity smoke test (.env-driven)
 docs/
 └── schema.md          # Full schema reference with ER diagram
 ```
@@ -192,7 +194,8 @@ docs/
 - [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
 - [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
-- [ ] **Bash sandbox + AWS CLI tool** — expose a sandboxed `run_aws_cli(command)` escape-hatch tool alongside the 19 structured tools; read-only enforcement via per-org IAM role (`List*`/`Get*`/`Describe*` only); covers the long tail of AWS CLI commands no predefined tool handles; per-org credential isolation via scoped profiles
+- [x] **Bash CLI escape hatch (Phase 1)** — `run_bash_command` is implemented for read-only AWS CLI, kubectl, and docker commands with strict allowlist validation and timeout.
+- [ ] **Bash sandbox Phase 2** — run each bash command in an isolated throwaway container (`--network none`, read-only FS, non-root, resource limits).
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement

@@ -1,6 +1,6 @@
 # PLAN.md — OpenDevOps Agent Roadmap
 
-> An openv-source AWS DevOps Agent clone. Powered by OpenRouter LLMs.
+> An open-source AWS DevOps Agent clone. Powered by OpenRouter LLMs.
 > Investigate incidents, find root causes, ship fixes faster.
 
 ---
@@ -24,9 +24,22 @@ a community, maybe make AWS nervous enough to call.
 
 ---
 
+## Current Status Snapshot (May 2026)
+
+- Core platform is live on main: CLI, FastAPI API, streaming chat UI, Docker Compose, and PostgreSQL persistence.
+- Read-only AWS investigation toolset is in place across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM.
+- run_bash_command (read-only AWS CLI / kubectl / docker) is implemented with allowlist validation and timeout.
+- MCP server support is implemented (devops-agent mcp) for external clients.
+- Slack webhook notifications and proactive polling are implemented.
+- Remaining roadmap items are mostly hardening, extensibility, and productization work.
+
+---
+
 ## Phase 1 — Solid Foundation (MVP) 🏗️
 
 **Goal:** A working CLI agent that can investigate a described incident using AWS data.
+
+**Status:** Delivered on main
 
 **Duration estimate:** 1–2 weeks solo
 
@@ -50,6 +63,8 @@ a community, maybe make AWS nervous enough to call.
 
 **Goal:** The agent understands *your* environment, not just individual services.
 
+**Status:** Partially delivered (logs insights, ask/report modes, history persistence)
+
 ### Features
 - **Application topology mapping** — auto-discover how services connect
   (e.g., API Gateway → Lambda → DynamoDB)
@@ -69,6 +84,8 @@ a community, maybe make AWS nervous enough to call.
 ## Phase 3 — Integrations & Notifications 🔔
 
 **Goal:** Fit into existing DevOps workflows without friction.
+
+**Status:** Partially delivered (Slack integration complete; PagerDuty/GitHub pending)
 
 ### Features
 - **Slack webhook output** — post investigation findings to a channel
@@ -200,13 +217,11 @@ a community, maybe make AWS nervous enough to call.
 
 ## Immediate Next Steps (This Week)
 
-1. `uv init opendevops-agent` — create the project
-2. Implement `tools/cloudwatch.py` first (most useful, easiest to mock)
-3. Write the system prompt in `agent/prompts.py`
-4. Build the bare minimum agent loop in `agent/core.py`
-5. Wire up `devops-agent investigate` CLI command
-6. Test with a real CloudWatch alarm from your AWS account
-7. Record a demo GIF for the README
+1. Add CI smoke test for docker compose up plus API/UI health checks.
+2. Add secret-scanning in CI and rotate any exposed credentials.
+3. Finish soft-delete cleanup job (or explicitly document it as product-only backlog).
+4. Implement Bash sandbox Phase 2 (isolated throwaway container runtime).
+5. Add context-aware tool loading to reduce unnecessary tool exposure per investigation.
 
 ---
 
