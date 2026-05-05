@@ -7,6 +7,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
 - **19 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+- **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Web UI** — FastAPI backend with a chat interface that shows:
@@ -79,12 +80,23 @@ the full schema reference.
 
 ### 5. Run
 
-**Web UI**
-
-You need two terminals running simultaneously:
+**Option A — Docker Compose (recommended, AWS CLI included)**
 
 ```bash
-# Terminal 1 — FastAPI backend (API + SSE streaming)
+docker compose up --build
+# Backend: http://localhost:8000
+# Frontend: http://localhost:80
+```
+
+The backend image installs AWS CLI v2 automatically — the bash execution tool
+works out of the box. Host AWS credentials (`~/.aws`) are mounted read-only
+into the container. For production on AWS, remove the volume mount and attach
+an IAM role to the instance/task instead.
+
+**Option B — Local dev (two terminals)**
+
+```bash
+# Terminal 1 — FastAPI backend
 uv run uvicorn src.api.app:app --reload
 ```
 
@@ -94,6 +106,9 @@ cd frontend
 npm run dev
 # Open http://localhost:5173
 ```
+
+> **Note:** local dev requires `aws` CLI installed on your machine for the bash
+> tool to work. Install it from https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 
 **CLI**
 
@@ -192,6 +207,7 @@ docs/
 - [ ] **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context
 - [ ] **Multi-account AWS** — support multiple AWS profiles per org via `aws_profiles` table (schema already in place)
 - [ ] **Multi-cloud support** — extend tooling to GCP (Cloud Monitoring, Cloud Logging, GKE) and Azure (Monitor, Log Analytics, AKS); unified incident investigation across providers
+- [ ] **Bash sandbox Phase 2 — isolated Docker container** — each `run_bash_command` call runs inside a throwaway container: `--network none`, `--read-only` filesystem, `--memory 256m`, `--cpus 0.5`, non-root user; container destroyed immediately after the command completes; IAM read-only role remains the last line of defense
 
 ### Product (SaaS)
 - [ ] **Redis cache** — replace in-process `cachetools` with Redis; shared across workers, survives restarts, per-org cache namespacing to prevent data leakage between tenants
@@ -199,6 +215,27 @@ docs/
 - [ ] **Auth & user roles** — `superadmin`, `admin`, `user`; JWT-based auth, role-based access control, org-scoped AWS credential management
 - [ ] **Per-org AWS credential store** — encrypted credential vault per organization; agents use org-scoped profiles instead of a single global `AWS_PROFILE`
 - [ ] **Billing & usage metering** — track token usage and tool calls per org/user; expose cost dashboards; integrate with Stripe for usage-based billing
+
+## Security & Sandboxing
+
+The bash execution tool runs whitelisted read-only commands only.
+Every command is validated against an allowlist before execution —
+anything not on the list is rejected immediately and logged.
+
+**Current (Phase 1):** allowlist validation + subprocess with hard timeout.
+No write commands permitted under any circumstances. `shell=True` is never used.
+
+**Phase 2 — Isolated sandbox (planned):**
+- Every bash command runs inside a throwaway Docker container
+- `--network none` — no internet access from inside the sandbox
+- `--read-only` filesystem — container cannot write to disk
+- `--memory 256m` and `--cpus 0.5` — resource caps
+- Non-root user inside the container
+- Container is destroyed immediately after the command completes
+- Even if the LLM misbehaves, the IAM read-only role is the last line of defense
+
+The agent never executes fixes automatically. It investigates, suggests,
+and waits for human approval before anything changes.
 
 ## Development
 
