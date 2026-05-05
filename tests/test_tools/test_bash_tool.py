@@ -19,20 +19,43 @@ def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:
 # ── Allowlist — should pass ───────────────────────────────────────────────────
 
 @pytest.mark.parametrize("cmd", [
+    # Core AWS services (existing boto3 tools)
     "aws logs describe-log-groups",
     "aws logs filter-log-events --log-group-name /aws/lambda/my-fn",
     "aws cloudwatch describe-alarms",
     "aws cloudwatch get-metric-statistics --namespace AWS/Lambda --metric-name Errors",
     "aws ecs describe-services --cluster default --services my-svc",
     "aws ecs list-clusters",
-    "aws ecs list-services --cluster default",
     "aws lambda get-function --function-name my-fn",
     "aws lambda list-functions",
     "aws ec2 describe-instances",
-    "aws ec2 describe-security-groups",
     "aws rds describe-db-instances",
-    "aws rds describe-events",
     "aws cloudtrail lookup-events --max-results 10",
+    # Extended AWS services — no boto3 tool defined for these
+    "aws s3api list-buckets",
+    "aws s3api get-bucket-policy --bucket my-bucket",
+    "aws dynamodb describe-table --table-name my-table",
+    "aws dynamodb list-tables",
+    "aws dynamodb scan --table-name my-table",
+    "aws sns list-topics",
+    "aws sns get-topic-attributes --topic-arn arn:aws:sns:us-east-1:123:my-topic",
+    "aws sqs list-queues",
+    "aws sqs get-queue-attributes --queue-url https://sqs.us-east-1.amazonaws.com/123/my-q",
+    "aws route53 list-hosted-zones",
+    "aws acm list-certificates",
+    "aws secretsmanager list-secrets",
+    "aws secretsmanager describe-secret --secret-id my-secret",
+    "aws ssm describe-parameters",
+    "aws ssm get-parameter --name /my/param",
+    "aws iam list-users",
+    "aws iam get-role --role-name my-role",
+    "aws kinesis list-streams",
+    "aws kinesis describe-stream --stream-name my-stream",
+    "aws elasticache describe-cache-clusters",
+    "aws es list-domain-names",
+    "aws batch describe-job-queues",
+    "aws stepfunctions list-state-machines",
+    # kubectl and docker
     "kubectl get pods",
     "kubectl get pods -n kube-system",
     "kubectl describe pod my-pod",
@@ -52,20 +75,39 @@ def test_allowlisted_commands_pass(mocker, cmd):
 # ── Blocklist — must be rejected ──────────────────────────────────────────────
 
 @pytest.mark.parametrize("cmd", [
-    "aws s3 ls",
+    # AWS write/mutating operations
     "aws s3 cp file.txt s3://bucket/",
     "aws iam delete-user --user-name alice",
     "aws ec2 terminate-instances --instance-ids i-123",
+    "aws ec2 create-instance",
     "aws ecs stop-task --cluster default --task abc",
+    "aws ecs run-task --cluster default --task-definition my-task",
     "aws lambda delete-function --function-name my-fn",
+    "aws lambda invoke --function-name my-fn output.txt",
+    "aws lambda update-function-code --function-name my-fn --zip-file file://fn.zip",
+    "aws s3api put-object --bucket my-bucket --key my-key",
+    "aws dynamodb put-item --table-name my-table",
+    "aws dynamodb delete-item --table-name my-table",
+    "aws sns publish --topic-arn arn:aws:sns:us-east-1:123:my-topic --message hi",
+    "aws sqs send-message --queue-url https://sqs.us-east-1.amazonaws.com/123/q",
+    "aws rds modify-db-instance --db-instance-identifier my-db",
+    # kubectl write operations
     "kubectl delete pod my-pod",
     "kubectl apply -f deployment.yaml",
+    "kubectl create deployment my-deploy",
+    # docker write operations
     "docker rm my-container",
     "docker stop my-container",
+    "docker run my-image",
+    # arbitrary shell commands
     "rm -rf /",
     "bash -c 'echo pwned'",
     "cat /etc/passwd",
     "curl http://evil.com",
+    "python -c 'import os; os.system(\"rm -rf /\")'",
+    # malformed / empty
+    "aws",
+    "aws s3",
     "",
     "   ",
 ])
@@ -73,7 +115,7 @@ def test_blocked_commands_return_blocked_true(cmd):
     result = run_bash_command(cmd)
     assert result["blocked"] is True
     assert result["success"] is False
-    assert "blocked" in result["error"].lower() or "allowlist" in result["error"].lower()
+    assert "blocked" in result["error"].lower() or "read-only" in result["error"].lower()
 
 
 def test_blocked_command_never_calls_subprocess(mocker):
