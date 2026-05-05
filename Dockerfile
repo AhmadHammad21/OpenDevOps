@@ -1,14 +1,14 @@
 # ── Stage 1: install Python dependencies with uv ─────────────────────────────
-FROM python:3.12-slim AS deps
+FROM python:3.12.9-slim-bookworm AS deps
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.6.17 /uv /uvx /bin/
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # ── Stage 2: final image ──────────────────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.12.9-slim-bookworm
 
 # AWS CLI v2 — required for the bash execution tool (run_bash_command)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.6.17 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -33,9 +33,16 @@ COPY src/ src/
 COPY migrations/ migrations/
 COPY scripts/ scripts/
 
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
+RUN chown -R app:app /app
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
+    HOME="/home/app" \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+
+USER app
 
 EXPOSE 8000
 

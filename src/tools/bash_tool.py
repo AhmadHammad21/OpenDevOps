@@ -22,27 +22,109 @@ _AWS_READONLY_VERBS: frozenset[str] = frozenset({
     "batch-get",
 })
 
-# kubectl and docker use exact prefix matching (narrower — fewer read-only verbs to reason about)
-_KUBECTL_PREFIXES = ("kubectl get", "kubectl describe", "kubectl logs")
-_DOCKER_PREFIXES  = ("docker ps", "docker logs", "docker inspect")
+_COMMAND_MAX_LEN = 2000
+_CHAIN_TOKENS: frozenset[str] = frozenset({";", "&&", "||", "|", ">", ">>", "<"})
+
+_AWS_GLOBAL_FLAGS_WITH_VALUE: frozenset[str] = frozenset({
+    "--profile",
+    "--region",
+    "--output",
+    "--query",
+    "--endpoint-url",
+    "--ca-bundle",
+    "--cli-connect-timeout",
+    "--cli-read-timeout",
+})
+_AWS_GLOBAL_FLAGS_NO_VALUE: frozenset[str] = frozenset({
+    "--debug",
+    "--no-cli-pager",
+    "--no-verify-ssl",
+    "--color",
+})
+_AWS_BLOCKED_GLOBAL_FLAGS: frozenset[str] = frozenset({"--endpoint-url"})
+
+_KUBECTL_FLAGS_WITH_VALUE: frozenset[str] = frozenset({
+    "-n",
+    "--namespace",
+    "--context",
+    "--cluster",
+    "--user",
+    "--kubeconfig",
+    "--server",
+    "--request-timeout",
+})
+
+_DOCKER_FLAGS_WITH_VALUE: frozenset[str] = frozenset({"-H", "--host", "--context", "--config"})
 
 _TIMEOUT    = 30
 _MAX_OUTPUT = 4000
 _MAX_STDERR = 1000
 
 
-def _allowed(command: str) -> bool:
-    parts = command.split()
-    if not parts:
+def _tokenize(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+def _find_subcommand(
+    tokens: list[str],
+    start_idx: int,
+    flags_with_value: frozenset[str],
+) -> str | None:
+    i = start_idx
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-"):
+            if tok in flags_with_value:
+                i += 2
+                continue
+            i += 1
+            continue
+        return tok.lower()
+    return None
+
+
+def _allowed(command: str, tokens: list[str]) -> bool:
+    if not tokens:
+        return False
+    if len(command) > _COMMAND_MAX_LEN:
+        return False
+    if any(c in command for c in ("\n", "\r", "\x00")):
+        return False
+    if any(tok in _CHAIN_TOKENS for tok in tokens):
+        return False
+    if any(marker in command for marker in ("&&", "||", ";", "|", ">", "<")):
         return False
 
-    binary = parts[0]
+    binary = tokens[0]
 
     if binary == "aws":
-        # Require: aws <service> <operation> — at least 3 tokens
-        if len(parts) < 3:
+        # Allow global flags before service/op: aws [flags] <service> <operation>
+        i = 1
+        while i < len(tokens) and tokens[i].startswith("-"):
+            flag = tokens[i].lower()
+            if flag in _AWS_BLOCKED_GLOBAL_FLAGS:
+                return False
+            if flag in _AWS_GLOBAL_FLAGS_WITH_VALUE:
+                if i + 1 >= len(tokens):
+                    return False
+                i += 2
+                continue
+            if flag in _AWS_GLOBAL_FLAGS_NO_VALUE:
+                i += 1
+                continue
+            # Unknown top-level aws flags are rejected for safety.
             return False
-        operation = parts[2].lower()
+
+        # Require: aws [flags] <service> <operation>
+        if i + 1 >= len(tokens):
+            return False
+        service = tokens[i]
+        operation = tokens[i + 1].lower()
+        if service.startswith("-"):
+            return False
         # Extract verb = everything before the first dash (e.g. "describe-instances" → "describe")
         verb = operation.split("-")[0]
         # "batch-get-item" → verb fragment is "batch"; check "batch-get" prefix separately
@@ -51,10 +133,12 @@ def _allowed(command: str) -> bool:
         return verb in _AWS_READONLY_VERBS
 
     if binary == "kubectl":
-        return any(command.startswith(p) for p in _KUBECTL_PREFIXES)
+        subcommand = _find_subcommand(tokens, 1, _KUBECTL_FLAGS_WITH_VALUE)
+        return subcommand in {"get", "describe", "logs"}
 
     if binary == "docker":
-        return any(command.startswith(p) for p in _DOCKER_PREFIXES)
+        subcommand = _find_subcommand(tokens, 1, _DOCKER_FLAGS_WITH_VALUE)
+        return subcommand in {"ps", "logs", "inspect"}
 
     return False
 
@@ -78,16 +162,18 @@ def run_bash_command(command: str) -> dict[str, Any]:
         command: Read-only shell command to run.
     """
     command = command.strip()
+    tokens = _tokenize(command)
     start = time.monotonic()
 
-    if not _allowed(command):
+    if not _allowed(command, tokens):
         logger.warning("bash_tool BLOCKED | cmd={!r}", command)
         return {
             "success": False,
             "output":  "",
             "error":   (
-                "Command blocked. AWS commands must use a read-only operation verb "
-                "(describe-, list-, get-, lookup-, filter-, search-, scan-, query, batch-get-). "
+                "Command blocked. AWS commands must use safe global flags and a "
+                "read-only operation verb (describe-, list-, get-, lookup-, filter-, "
+                "search-, scan-, query, batch-get-). "
                 "kubectl: only get/describe/logs. docker: only ps/logs/inspect."
             ),
             "command": command,
@@ -97,7 +183,7 @@ def run_bash_command(command: str) -> dict[str, Any]:
     logger.info("bash_tool RUN | cmd={!r}", command)
     try:
         proc = subprocess.run(
-            shlex.split(command),
+            tokens,
             capture_output=True,
             text=True,
             timeout=_TIMEOUT,
