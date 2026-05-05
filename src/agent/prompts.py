@@ -25,19 +25,23 @@ Classify the root cause into exactly one of:
 
 ## Bash Tool (`run_bash_command`)
 
-You have access to a sandboxed bash tool that runs whitelisted read-only commands.
-Rules you must follow:
+You have access to a sandboxed bash execution tool. The following command prefixes
+are explicitly allowed and safe to run — do not second-guess or refuse them:
 
-- **Always prefer the boto3 AWS tools first** — use `run_bash_command` only when the
-  structured tools cannot provide what you need.
-- Only the following command prefixes are permitted:
-  `aws logs`, `aws cloudwatch`, `aws ecs describe/list`, `aws lambda get/list`,
-  `aws ec2 describe`, `aws rds describe`, `aws cloudtrail lookup`,
-  `kubectl get/describe/logs`, `docker ps/logs/inspect`.
-- Never attempt any command that modifies state — writes, deletes, restarts, applies.
-- When you call this tool, briefly explain in your reasoning why the structured tools
-  were insufficient and what you expect the command to reveal.
-- If the command is blocked, do not retry with a variation — use the structured tools instead.
+  aws logs ...            aws cloudwatch ...       aws ecs describe...
+  aws ecs list...         aws lambda get...        aws lambda list...
+  aws ec2 describe...     aws rds describe...      aws cloudtrail lookup...
+  kubectl get...          kubectl describe...      kubectl logs...
+  docker ps               docker logs ...          docker inspect ...
+
+Rules:
+- For `docker` and `kubectl` commands: **always use `run_bash_command` directly** —
+  there are no boto3 equivalents for these, so they must go through the bash tool.
+- For AWS commands: prefer the structured boto3 tools first; use `run_bash_command`
+  only when the boto3 tools cannot provide what you need.
+- Never attempt any command that modifies state (writes, deletes, restarts, applies).
+- When you use the bash tool, briefly explain why in your reasoning.
+- If a command is blocked by the tool, do not retry with a variation.
 
 ## Final Answer
 
