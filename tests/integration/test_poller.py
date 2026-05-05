@@ -1,74 +1,100 @@
-"""Integration test for the proactive poller.
+"""Assertive tests for proactive poller dispatch behavior."""
 
-Tests the full dispatch flow: fake alarm detected → investigation → Slack post.
-Patches AWS data and the agent investigation so no real infra is needed.
-"""
+from __future__ import annotations
 
 import asyncio
-import sys
-from unittest.mock import patch, AsyncMock
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+from agent import poller
 
-FAKE_ALARM = {
-    "alarms": [
-        {
-            "name": "HighErrorRate-payment-processor",
-            "reason": "Threshold Crossed: 3 datapoints were greater than threshold (5.0). Most recent: [18.4, 21.2, 19.8].",
-            "metric": "Errors",
+
+def test_should_investigate_respects_cooldown():
+    poller._last_investigated.clear()
+    key = "alarm:HighErrorRate"
+
+    assert poller._should_investigate(key) is True
+    poller._mark_investigated(key)
+    assert poller._should_investigate(key) is False
+
+
+def test_check_alarms_dispatches_once(monkeypatch):
+    poller._last_investigated.clear()
+    calls = {"run": 0, "persist": 0}
+
+    def fake_get_alarms(_state):
+        return {
+            "alarms": [
+                {
+                    "name": "HighErrorRate-payment-processor",
+                    "reason": "Threshold crossed",
+                    "metric": "Errors",
+                }
+            ]
         }
-    ]
-}
 
-FAKE_INVESTIGATION_RESULT = {
-    "root_cause_category": "RESOURCE_LIMIT",
-    "root_cause_summary": (
-        "Lambda function payment-processor exceeded its concurrency limit during a traffic spike, "
-        "causing invocations to be throttled and error rate to climb above 18%."
-    ),
-    "confidence": "HIGH",
-    "evidence": [
-        "CloudWatch alarm HighErrorRate-payment-processor crossed threshold at 18.4 errors/min",
-        "Concurrent executions metric shows saturation at reserved limit of 50",
-        "No recent deployments found in CloudTrail — config unchanged",
-    ],
-    "mitigation_steps": [
-        "Increase reserved concurrency limit from 50 to 150 for payment-processor",
-        "Add SQS queue in front of the Lambda to absorb traffic spikes",
-        "Set a CloudWatch alarm on ConcurrentExecutions at 80% of reserved limit",
-    ],
-    "validation_steps": [
-        "Confirm error rate drops below 1% after concurrency increase",
-        "Monitor throttle count metric for 15 minutes post-change",
-    ],
-    "services_affected": ["Lambda", "CloudWatch"],
-    "recommended_follow_up": "Review traffic patterns over the last 7 days to right-size concurrency limit.",
-}
+    async def fake_run(prompt, trigger_key):
+        calls["run"] += 1
+        assert "HighErrorRate-payment-processor" in prompt
+        assert trigger_key == "alarm:HighErrorRate-payment-processor"
+        return {
+            "root_cause_category": "RESOURCE_LIMIT",
+            "root_cause_summary": "concurrency exhausted",
+            "confidence": "HIGH",
+            "evidence": ["throttles spiked"],
+            "mitigation_steps": ["increase reserved concurrency"],
+            "validation_steps": ["watch metrics"],
+            "services_affected": ["Lambda"],
+            "recommended_follow_up": "add alarm",
+        }
 
+    async def fake_persist(_prompt, _result, _session_id):
+        calls["persist"] += 1
 
-async def main():
-    from agent.config import settings
-    from agent.db import db
-    from agent.core import init_agent
+    monkeypatch.setattr("tools.cloudwatch.get_alarms", fake_get_alarms)
+    monkeypatch.setattr(poller, "_run_investigation", fake_run)
+    monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
 
-    if not settings.slack_webhook_url:
-        print("SLACK_WEBHOOK_URL not set — Slack post will be skipped.")
+    asyncio.run(poller._check_alarms())
+    asyncio.run(poller._check_alarms())
 
-    print("Initialising agent…")
-    checkpointer = await db.init()
-    init_agent(checkpointer)
-
-    print("Running _check_alarms() with a fake alarm + fake investigation…")
-    with (
-        patch("tools.cloudwatch.get_alarms", return_value=FAKE_ALARM),
-        patch("agent.poller._run_investigation", new=AsyncMock(return_value=FAKE_INVESTIGATION_RESULT)),
-    ):
-        from agent.poller import _check_alarms
-        await _check_alarms()
-
-    print("Done. Check your Slack channel.")
-    await db.close()
+    assert calls["run"] == 1
+    assert calls["persist"] == 1
 
 
-asyncio.run(main())
+def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
+    poller._last_investigated.clear()
+    calls = {"run": 0, "persist": 0}
+
+    def fake_list_lambda_functions():
+        return {"functions": [{"name": "payment-processor"}]}
+
+    def fake_get_lambda_error_rate(_name, _hours):
+        return {"error_rate_pct": 12.5}
+
+    async def fake_run(prompt, trigger_key):
+        calls["run"] += 1
+        assert "payment-processor" in prompt
+        assert trigger_key == "lambda_errors:payment-processor"
+        return {
+            "root_cause_category": "RESOURCE_LIMIT",
+            "root_cause_summary": "lambda saturation",
+            "confidence": "HIGH",
+            "evidence": ["high throttles"],
+            "mitigation_steps": ["raise concurrency"],
+            "validation_steps": ["observe errors"],
+            "services_affected": ["Lambda"],
+            "recommended_follow_up": "right-size limits",
+        }
+
+    async def fake_persist(_prompt, _result, _session_id):
+        calls["persist"] += 1
+
+    monkeypatch.setattr("tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
+    monkeypatch.setattr("tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
+    monkeypatch.setattr(poller, "_run_investigation", fake_run)
+    monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
+    monkeypatch.setattr(poller.settings, "poll_error_threshold", 5.0, raising=False)
+
+    asyncio.run(poller._check_lambda_errors())
+
+    assert calls["run"] == 1
+    assert calls["persist"] == 1

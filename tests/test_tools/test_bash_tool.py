@@ -9,7 +9,6 @@ import pytest
 
 from tools.bash_tool import run_bash_command
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:
@@ -29,6 +28,7 @@ def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:
     "aws lambda get-function --function-name my-fn",
     "aws lambda list-functions",
     "aws ec2 describe-instances",
+    "aws --region us-east-1 ec2 describe-instances",
     "aws rds describe-db-instances",
     "aws cloudtrail lookup-events --max-results 10",
     # Extended AWS services — no boto3 tool defined for these
@@ -57,10 +57,12 @@ def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:
     "aws stepfunctions list-state-machines",
     # kubectl and docker
     "kubectl get pods",
+    "kubectl -n kube-system get pods",
     "kubectl get pods -n kube-system",
     "kubectl describe pod my-pod",
     "kubectl logs my-pod",
     "docker ps",
+    "docker --context default ps",
     "docker logs my-container",
     "docker inspect my-container",
 ])
@@ -91,6 +93,7 @@ def test_allowlisted_commands_pass(mocker, cmd):
     "aws sns publish --topic-arn arn:aws:sns:us-east-1:123:my-topic --message hi",
     "aws sqs send-message --queue-url https://sqs.us-east-1.amazonaws.com/123/q",
     "aws rds modify-db-instance --db-instance-identifier my-db",
+    "aws --endpoint-url http://localhost:4566 s3api list-buckets",
     # kubectl write operations
     "kubectl delete pod my-pod",
     "kubectl apply -f deployment.yaml",
@@ -99,6 +102,10 @@ def test_allowlisted_commands_pass(mocker, cmd):
     "docker rm my-container",
     "docker stop my-container",
     "docker run my-image",
+    # command chaining / token-smuggling attempts
+    "aws logs describe-log-groups && whoami",
+    "kubectl get pods; cat /etc/passwd",
+    "docker ps | cat",
     # arbitrary shell commands
     "rm -rf /",
     "bash -c 'echo pwned'",
@@ -108,6 +115,8 @@ def test_allowlisted_commands_pass(mocker, cmd):
     # malformed / empty
     "aws",
     "aws s3",
+    "aws --region",
+    "aws logs describe-log-groups\nwhoami",
     "",
     "   ",
 ])

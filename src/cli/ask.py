@@ -1,7 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Annotated
 
 import typer
-from langchain_openai import ChatOpenAI
+from langchain_litellm import ChatLiteLLM
 from langchain_core.messages import HumanMessage, SystemMessage
 from rich.console import Console
 from rich.markdown import Markdown
@@ -16,10 +17,10 @@ def ask_cmd(
     question: Annotated[str, typer.Argument(help="Freeform question about your AWS environment.")],
 ) -> None:
     """Ask a freeform question about your AWS environment."""
-    model = ChatOpenAI(
-        model=settings.openrouter_model,
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
+    model = ChatLiteLLM(
+        model=settings.llm_model,
+        api_base=settings.llm_api_base or None,
+        api_key=settings.llm_api_key or None,
     )
 
     messages = [
@@ -30,8 +31,16 @@ def ask_cmd(
         HumanMessage(content=question),
     ]
 
-    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
-        progress.add_task("Thinking...", total=None)
-        response = model.invoke(messages)
+    try:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
+            progress.add_task("Thinking...", total=None)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(model.invoke, messages)
+                response = future.result(timeout=settings.investigation_timeout)
+    except FuturesTimeoutError:
+        console.print(
+            f"[red]Request timed out after {settings.investigation_timeout}s. Try narrowing the question scope.[/red]"
+        )
+        raise typer.Exit(code=1)
 
     console.print(Markdown(response.content))

@@ -46,7 +46,7 @@ async def _init() -> None:
 async def _run_agent(prompt: str) -> dict[str, Any]:
     """Run the agent, persist the turn to DB, notify Slack, and return the result."""
     await _init()
-    from agent.core import get_agent
+    from agent.core import ainvoke_with_timeout
     from agent.turns import save_turn, notify_slack
 
     thread_id = str(uuid.uuid4())
@@ -56,10 +56,31 @@ async def _run_agent(prompt: str) -> dict[str, Any]:
     }
     import time
     start = time.time()
-    result = await get_agent().ainvoke(
-        {"messages": [{"role": "user", "content": prompt}]},
-        config=config,
-    )
+    try:
+        result = await ainvoke_with_timeout(
+            {"messages": [{"role": "user", "content": prompt}]},
+            config,
+        )
+    except TimeoutError:
+        latency_ms = int((time.time() - start) * 1000)
+        timeout_msg = (
+            f"Investigation timed out after {settings.investigation_timeout}s. "
+            "Try narrowing the prompt or increase INVESTIGATION_TIMEOUT."
+        )
+        await save_turn(
+            thread_id,
+            prompt,
+            timeout_msg,
+            [],
+            {
+                "model": settings.llm_model,
+                "latency_ms": latency_ms,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "timed_out": True,
+            },
+        )
+        return {"type": "text", "session_id": thread_id, "text": timeout_msg}
 
     # Collect tool calls and assistant text from message history
     tool_calls_log: list[dict[str, Any]] = []

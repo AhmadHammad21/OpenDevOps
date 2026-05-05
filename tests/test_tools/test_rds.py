@@ -1,14 +1,12 @@
 import boto3
-import pytest
 from moto import mock_aws
 
-from tools.rds import DescribeDBInstancesTool, GetDBEventsTool
+from tools.rds import describe_rds_instances, get_rds_events
 
 
 @mock_aws
 def test_describe_rds_instances_empty():
-    tool = DescribeDBInstancesTool()
-    result = tool.run()
+    result = describe_rds_instances()
     assert result["instances"] == []
     assert result["count"] == 0
 
@@ -24,14 +22,12 @@ def test_describe_rds_instances_with_db():
         MasterUserPassword="password123",
         AllocatedStorage=20,
     )
-    tool = DescribeDBInstancesTool()
-    result = tool.run()
+    result = describe_rds_instances()
     assert result["count"] == 1
     assert result["instances"][0]["identifier"] == "mydb"
 
 
 @mock_aws
 def test_get_rds_events_empty():
-    tool = GetDBEventsTool()
-    result = tool.run(hours=1)
+    result = get_rds_events(hours=1)
     assert "events" in result
