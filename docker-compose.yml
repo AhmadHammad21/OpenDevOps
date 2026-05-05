@@ -1,0 +1,46 @@
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB:       opendevops
+      POSTGRES_USER:     dev
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d opendevops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Override DATABASE_URL to point at the compose db service
+      DATABASE_URL: postgresql://dev:dev@db:5432/opendevops
+    volumes:
+      # Mount host AWS credentials read-only so the bash tool can call the CLI.
+      # For production on AWS (ECS/EC2), remove this and use an IAM role instead.
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── React frontend (production build served by nginx) ──────────────────────
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

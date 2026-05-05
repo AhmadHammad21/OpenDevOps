@@ -80,12 +80,23 @@ the full schema reference.
 
 ### 5. Run
 
-**Web UI**
-
-You need two terminals running simultaneously:
+**Option A — Docker Compose (recommended, AWS CLI included)**
 
 ```bash
-# Terminal 1 — FastAPI backend (API + SSE streaming)
+docker compose up --build
+# Backend: http://localhost:8000
+# Frontend: http://localhost:80
+```
+
+The backend image installs AWS CLI v2 automatically — the bash execution tool
+works out of the box. Host AWS credentials (`~/.aws`) are mounted read-only
+into the container. For production on AWS, remove the volume mount and attach
+an IAM role to the instance/task instead.
+
+**Option B — Local dev (two terminals)**
+
+```bash
+# Terminal 1 — FastAPI backend
 uv run uvicorn src.api.app:app --reload
 ```
 
@@ -95,6 +106,9 @@ cd frontend
 npm run dev
 # Open http://localhost:5173
 ```
+
+> **Note:** local dev requires `aws` CLI installed on your machine for the bash
+> tool to work. Install it from https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 
 **CLI**
 
