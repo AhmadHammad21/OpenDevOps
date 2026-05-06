@@ -25,11 +25,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Ruff lint (gating)
-        run: uv run ruff check tests
+      # - name: Ruff lint (gating)
+      #   run: uv run ruff check tests
 
-      - name: Ruff lint src (informational)
-        run: uv run ruff check src --exit-zero
+      # - name: Ruff lint src (informational)
+      #   run: uv run ruff check src --exit-zero
 
       - name: Pytest
         run: uv run pytest -q

@@ -23,7 +23,16 @@ class Settings(BaseSettings):
     investigation_timeout: int = 120
     log_level: str = "INFO"
 
-    # PostgreSQL connection string — if unset, falls back to in-memory checkpointer
+    # Storage backend: "memory" | "sqlite" | "postgres"
+    # memory  → no persistence, zero config (default, great for CI / quick testing)
+    # sqlite  → local file-based persistence, zero external dependencies
+    # postgres → full production persistence
+    checkpoint_backend: str = "memory"
+
+    # SQLite file path — only used when checkpoint_backend = "sqlite"
+    sqlite_path: str = "./data/agent.db"
+
+    # PostgreSQL connection string — only used when checkpoint_backend = "postgres"
     database_url: str | None = None
 
     # Slack — leave unset to disable notifications
