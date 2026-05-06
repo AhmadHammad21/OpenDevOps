@@ -1,4 +1,4 @@
-"""Database layer — PostgreSQL connection pool, checkpointer, and row-save helpers."""
+"""PostgreSQL backend — full persistence, recommended for production."""
 
 from __future__ import annotations
 
@@ -7,11 +7,12 @@ from typing import Any
 
 from loguru import logger
 
+from agent.db.base import DatabaseBackend
 from agent.config import settings
 
 
-class Database:
-    """Wraps the async connection pool, LangGraph checkpointer, and all write helpers."""
+class PostgresBackend(DatabaseBackend):
+    """Async PostgreSQL connection pool, LangGraph checkpointer, and all write helpers."""
 
     def __init__(self) -> None:
         self._pool: Any = None
@@ -20,13 +21,8 @@ class Database:
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def init(self) -> Any:
-        """
-        Open the connection pool and set up the LangGraph checkpointer.
-        Returns the checkpointer so the caller can pass it to init_agent().
-        Falls back to MemorySaver when DATABASE_URL is not configured.
-        """
         if not settings.database_url:
-            logger.warning("DATABASE_URL not set — using in-memory checkpointer (no persistence)")
+            logger.warning("DATABASE_URL not set — falling back to MemorySaver")
             return self._use_memory()
 
         try:
@@ -34,8 +30,6 @@ class Database:
             from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-            # prepare_threshold=None disables psycopg3 auto-prepared statements,
-            # required for PgBouncer/Supabase connection poolers (transaction mode).
             self._pool = AsyncConnectionPool(
                 conninfo=settings.database_url,
                 open=False,
@@ -44,8 +38,6 @@ class Database:
             await self._pool.open()
             self._checkpointer = AsyncPostgresSaver(self._pool)
 
-            # CREATE INDEX CONCURRENTLY cannot run inside a transaction — use a
-            # dedicated autocommit connection just for the one-time setup call.
             setup_conn = await psycopg.AsyncConnection.connect(
                 settings.database_url, autocommit=True
             )
@@ -58,7 +50,7 @@ class Database:
             return self._checkpointer
 
         except Exception as e:
-            logger.error("DB init failed ({}) — falling back to MemorySaver", e)
+            logger.error("PostgreSQL init failed ({}) — falling back to MemorySaver", e)
             return self._use_memory()
 
     def _use_memory(self) -> Any:
@@ -75,18 +67,14 @@ class Database:
     def checkpointer(self) -> Any:
         return self._checkpointer
 
-    # ── Low-level helpers ────────────────────────────────────────────────────
-    # psycopg3 uses %s placeholders (not $1/$2). Dicts are wrapped with Jsonb()
-    # so psycopg knows to serialise them as JSONB rather than text.
+    # ── Low-level helpers ─────────────────────────────────────────────────────
 
     @staticmethod
     def _jsonb(value: Any) -> Any:
-        """Wrap a dict/list in Jsonb so psycopg3 sends it as JSONB."""
         from psycopg.types.json import Jsonb  # type: ignore
         return Jsonb(value)
 
     async def _exec(self, query: str, *params: Any) -> None:
-        """Execute a write query. No-op if pool is unavailable."""
         if self._pool is None:
             return
         try:
@@ -96,7 +84,6 @@ class Database:
             logger.error("DB write failed: {}", e)
 
     async def _fetchall(self, query: str, *params: Any) -> list[dict]:
-        """Fetch all rows as a list of dicts. Returns [] if pool is unavailable."""
         if self._pool is None:
             return []
         try:
@@ -113,7 +100,6 @@ class Database:
             return []
 
     async def _fetchrow(self, query: str, *params: Any) -> dict | None:
-        """Fetch a single row as a dict. Returns None if pool is unavailable."""
         if self._pool is None:
             return None
         try:
@@ -129,7 +115,7 @@ class Database:
             logger.error("DB read failed: {}", e)
             return None
 
-    # ── App table helpers ─────────────────────────────────────────────────────
+    # ── App helpers ───────────────────────────────────────────────────────────
 
     async def upsert_session(
         self,
@@ -138,7 +124,6 @@ class Database:
         aws_region: str,
         title: str | None = None,
     ) -> None:
-        """Create session on first turn; refresh last_active_at on every turn."""
         await self._exec(
             """
             INSERT INTO sessions (id, title, model, aws_region)
@@ -147,10 +132,7 @@ class Database:
                 last_active_at = NOW(),
                 model = EXCLUDED.model
             """,
-            uuid.UUID(session_id),
-            title,
-            model,
-            aws_region,
+            uuid.UUID(session_id), title, model, aws_region,
         )
 
     async def save_message(
@@ -160,18 +142,10 @@ class Database:
         content: str,
         metadata: dict | None = None,
     ) -> str:
-        """Insert a message row and return its UUID string."""
         msg_id = str(uuid.uuid4())
         await self._exec(
-            """
-            INSERT INTO messages (id, session_id, role, content, metadata)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            uuid.UUID(msg_id),
-            uuid.UUID(session_id),
-            role,
-            content,
-            self._jsonb(metadata or {}),
+            "INSERT INTO messages (id, session_id, role, content, metadata) VALUES (%s, %s, %s, %s, %s)",
+            uuid.UUID(msg_id), uuid.UUID(session_id), role, content, self._jsonb(metadata or {}),
         )
         return msg_id
 
@@ -194,14 +168,33 @@ class Database:
             uuid.UUID(session_id),
             uuid.UUID(message_id) if message_id else None,
             tool_name,
-            self._jsonb(args),
-            self._jsonb(result),
-            error,
-            duration_ms,
+            self._jsonb(args), self._jsonb(result), error, duration_ms,
+        )
+
+    async def save_usage_event(
+        self,
+        session_id: str,
+        message_id: str | None,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float | None,
+        latency_ms: int,
+        tool_call_count: int,
+    ) -> None:
+        await self._exec(
+            """
+            INSERT INTO usage_events
+                (session_id, message_id, model, input_tokens, output_tokens,
+                 cost_usd, latency_ms, tool_call_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            uuid.UUID(session_id),
+            uuid.UUID(message_id) if message_id else None,
+            model, input_tokens, output_tokens, cost_usd, latency_ms, tool_call_count,
         )
 
     async def list_sessions(self) -> list[dict]:
-        """Return non-deleted sessions ordered by most recently active."""
         rows = await self._fetchall(
             "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC"
         )
@@ -217,13 +210,8 @@ class Database:
         ]
 
     async def get_messages(self, session_id: str) -> list[dict]:
-        """Return messages enriched with tool_calls and usage per assistant message.
-        Returns [] if the session is soft-deleted or does not exist."""
         uid = uuid.UUID(session_id)
-
-        session = await self._fetchrow(
-            "SELECT is_deleted FROM sessions WHERE id = %s", uid
-        )
+        session = await self._fetchrow("SELECT is_deleted FROM sessions WHERE id = %s", uid)
         if session is None or session.get("is_deleted"):
             return []
 
@@ -276,11 +264,17 @@ class Database:
                 item["tool_calls"] = tc_by_msg.get(mid, [])
                 item["usage"] = usage_by_msg.get(mid)
             result.append(item)
-
         return result
 
+    async def delete_session(self, session_id: str) -> None:
+        await self._exec(
+            "UPDATE sessions SET is_deleted = TRUE, deleted_at = NOW() WHERE id = %s",
+            uuid.UUID(session_id),
+        )
+
+    # ── Analytics ─────────────────────────────────────────────────────────────
+
     async def get_dashboard_stats(self) -> dict:
-        """Return aggregated stats for the dashboard in one round-trip per query."""
         _SERVICE_MAP: dict[str, str] = {
             "get_alarms": "CloudWatch", "get_alarm_history": "CloudWatch",
             "get_metric_data": "CloudWatch", "get_log_events": "CloudWatch",
@@ -296,102 +290,59 @@ class Database:
             "submit_investigation": "Agent",
         }
 
-        # ── Summary totals ────────────────────────────────────────────────────
         summary_row = await self._fetchrow("""
             SELECT
                 (SELECT COUNT(*) FROM sessions WHERE is_deleted = FALSE) AS total_sessions,
-                (SELECT COUNT(*) FROM messages m
-                    JOIN sessions s ON s.id = m.session_id
-                    WHERE s.is_deleted = FALSE AND m.role = 'user') AS total_queries,
-                (SELECT COUNT(*) FROM tool_calls tc
-                    JOIN sessions s ON s.id = tc.session_id
-                    WHERE s.is_deleted = FALSE) AS total_tool_calls,
-                (SELECT COUNT(*) FROM tool_calls tc
-                    JOIN sessions s ON s.id = tc.session_id
-                    WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL) AS total_tool_errors,
-                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue
-                    JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE) AS total_input_tokens,
-                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue
-                    JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE) AS total_output_tokens,
-                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue
-                    JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE) AS total_cost_usd,
-                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue
-                    JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE) AS avg_latency_ms
+                (SELECT COUNT(*) FROM messages m JOIN sessions s ON s.id = m.session_id WHERE s.is_deleted = FALSE AND m.role = 'user') AS total_queries,
+                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE) AS total_tool_calls,
+                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL) AS total_tool_errors,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_output_tokens,
+                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_cost_usd,
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms
         """)
         summary = summary_row or {}
 
-        # ── Activity: sessions created per day for last 14 days ───────────────
         activity_rows = await self._fetchall("""
-            SELECT
-                DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
-                COUNT(*) AS sessions
-            FROM sessions
-            WHERE is_deleted = FALSE
-              AND last_active_at > NOW() - INTERVAL '14 days'
-            GROUP BY 1
-            ORDER BY 1
+            SELECT DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS sessions
+            FROM sessions WHERE is_deleted = FALSE AND last_active_at > NOW() - INTERVAL '14 days'
+            GROUP BY 1 ORDER BY 1
         """)
-        activity = [
-            {"date": str(r["day"]), "sessions": int(r["sessions"])}
-            for r in activity_rows
-        ]
 
-        # ── Top tools ─────────────────────────────────────────────────────────
         tool_rows = await self._fetchall("""
-            SELECT
-                tc.tool_name,
-                COUNT(*) AS call_count,
-                COUNT(*) FILTER (WHERE tc.error IS NOT NULL) AS error_count
-            FROM tool_calls tc
-            JOIN sessions s ON s.id = tc.session_id
+            SELECT tc.tool_name, COUNT(*) AS call_count,
+                   COUNT(*) FILTER (WHERE tc.error IS NOT NULL) AS error_count
+            FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
             WHERE s.is_deleted = FALSE
-            GROUP BY tc.tool_name
-            ORDER BY call_count DESC
-            LIMIT 12
+            GROUP BY tc.tool_name ORDER BY call_count DESC LIMIT 12
         """)
         top_tools = [
-            {
-                "tool": r["tool_name"],
-                "count": int(r["call_count"]),
-                "errors": int(r["error_count"]),
-            }
+            {"tool": r["tool_name"], "count": int(r["call_count"]), "errors": int(r["error_count"])}
             for r in tool_rows
         ]
 
-        # ── Service breakdown (derived from top tools) ────────────────────────
         service_totals: dict[str, int] = {}
         for t in top_tools:
             svc = _SERVICE_MAP.get(t["tool"], "Other")
             service_totals[svc] = service_totals.get(svc, 0) + t["count"]
         total_calls = sum(service_totals.values()) or 1
         service_breakdown = sorted(
-            [
-                {"service": svc, "calls": cnt, "pct": round(cnt / total_calls * 100, 1)}
-                for svc, cnt in service_totals.items()
-            ],
-            key=lambda x: x["calls"],
-            reverse=True,
+            [{"service": s, "calls": c, "pct": round(c / total_calls * 100, 1)} for s, c in service_totals.items()],
+            key=lambda x: x["calls"], reverse=True,
         )
 
-        # ── Recent sessions with per-session stats ────────────────────────────
         recent_rows = await self._fetchall("""
-            SELECT
-                s.id, s.title, s.last_active_at, s.model,
-                COUNT(DISTINCT m.id) FILTER (WHERE m.role = 'user') AS query_count,
-                COUNT(DISTINCT tc.id)                                AS tool_count,
-                COALESCE(SUM(ue.cost_usd), 0)                       AS cost_usd
+            SELECT s.id, s.title, s.last_active_at, s.model,
+                   COUNT(DISTINCT m.id) FILTER (WHERE m.role = 'user') AS query_count,
+                   COUNT(DISTINCT tc.id) AS tool_count,
+                   COALESCE(SUM(ue.cost_usd), 0) AS cost_usd
             FROM sessions s
             LEFT JOIN messages     m  ON m.session_id  = s.id
             LEFT JOIN tool_calls   tc ON tc.session_id = s.id
             LEFT JOIN usage_events ue ON ue.session_id = s.id
             WHERE s.is_deleted = FALSE
             GROUP BY s.id, s.title, s.last_active_at, s.model
-            ORDER BY s.last_active_at DESC
-            LIMIT 6
+            ORDER BY s.last_active_at DESC LIMIT 6
         """)
         recent_sessions = [
             {
@@ -406,23 +357,13 @@ class Database:
             for r in recent_rows
         ]
 
-        # ── Root cause distribution from submit_investigation calls ─────────────
         rc_rows = await self._fetchall("""
-            SELECT
-                tc.args->>'root_cause_category' AS category,
-                COUNT(*)                         AS count
-            FROM tool_calls tc
-            JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE
-              AND tc.tool_name = 'submit_investigation'
+            SELECT tc.args->>'root_cause_category' AS category, COUNT(*) AS count
+            FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE AND tc.tool_name = 'submit_investigation'
               AND tc.args->>'root_cause_category' IS NOT NULL
-            GROUP BY 1
-            ORDER BY 2 DESC
+            GROUP BY 1 ORDER BY 2 DESC
         """)
-        root_causes = [
-            {"category": r["category"], "count": int(r["count"])}
-            for r in rc_rows
-        ]
 
         return {
             "summary": {
@@ -435,114 +376,78 @@ class Database:
                 "total_cost_usd":    float(summary.get("total_cost_usd", 0) or 0),
                 "avg_latency_ms":    round(float(summary.get("avg_latency_ms", 0) or 0)),
             },
-            "activity": activity,
+            "activity": [{"date": str(r["day"]), "sessions": int(r["sessions"])} for r in activity_rows],
             "top_tools": top_tools,
             "service_breakdown": service_breakdown,
             "recent_sessions": recent_sessions,
-            "root_causes": root_causes,
+            "root_causes": [{"category": r["category"], "count": int(r["count"])} for r in rc_rows],
         }
 
     async def get_history_stats(self, days: int = 30) -> dict:
-        """Cross-session analytics — always aggregated, never loads raw message content."""
-
         alarm_rows = await self._fetchall("""
-            SELECT
-                tc.args->>'alarm_name'          AS alarm_name,
-                COUNT(DISTINCT tc.session_id)   AS session_count,
-                COUNT(*)                        AS total_lookups,
-                MAX(s.last_active_at)           AS last_seen
-            FROM tool_calls tc
-            JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE
-              AND tc.tool_name = 'get_alarm_history'
+            SELECT tc.args->>'alarm_name' AS alarm_name,
+                   COUNT(DISTINCT tc.session_id) AS session_count,
+                   COUNT(*) AS total_lookups, MAX(s.last_active_at) AS last_seen
+            FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE AND tc.tool_name = 'get_alarm_history'
               AND tc.args->>'alarm_name' IS NOT NULL
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
-            GROUP BY 1
-            ORDER BY session_count DESC, total_lookups DESC
-            LIMIT 10
+            GROUP BY 1 ORDER BY session_count DESC, total_lookups DESC LIMIT 10
         """, days)
 
         lambda_rows = await self._fetchall("""
-            SELECT
-                tc.args->>'function_name'       AS function_name,
-                COUNT(DISTINCT tc.session_id)   AS session_count,
-                COUNT(*)                        AS total_calls,
-                MAX(s.last_active_at)           AS last_seen
-            FROM tool_calls tc
-            JOIN sessions s ON s.id = tc.session_id
+            SELECT tc.args->>'function_name' AS function_name,
+                   COUNT(DISTINCT tc.session_id) AS session_count,
+                   COUNT(*) AS total_calls, MAX(s.last_active_at) AS last_seen
+            FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
             WHERE s.is_deleted = FALSE
               AND tc.tool_name IN ('get_lambda_error_rate', 'get_lambda_function_config')
               AND tc.args->>'function_name' IS NOT NULL
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
-            GROUP BY 1
-            ORDER BY session_count DESC
-            LIMIT 10
+            GROUP BY 1 ORDER BY session_count DESC LIMIT 10
         """, days)
 
         error_rows = await self._fetchall("""
-            SELECT
-                tc.tool_name,
-                LEFT(tc.error, 120)             AS error_snippet,
-                COUNT(*)                        AS count,
-                MAX(tc.created_at)              AS last_seen
-            FROM tool_calls tc
-            JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE
-              AND tc.error IS NOT NULL
+            SELECT tc.tool_name, LEFT(tc.error, 120) AS error_snippet,
+                   COUNT(*) AS count, MAX(tc.created_at) AS last_seen
+            FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
-            GROUP BY 1, 2
-            ORDER BY count DESC
-            LIMIT 10
+            GROUP BY 1, 2 ORDER BY count DESC LIMIT 10
         """, days)
 
         trend_rows = await self._fetchall("""
-            SELECT
-                DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
-                COUNT(*) AS count
-            FROM sessions
-            WHERE is_deleted = FALSE
+            SELECT DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
+                   COUNT(*) AS count
+            FROM sessions WHERE is_deleted = FALSE
               AND last_active_at > NOW() - (%s * INTERVAL '1 day')
-            GROUP BY 1
-            ORDER BY 1
+            GROUP BY 1 ORDER BY 1
         """, days)
 
         return {
             "days": days,
             "top_alarms": [
-                {
-                    "alarm_name":    r["alarm_name"],
-                    "session_count": int(r["session_count"]),
-                    "total_lookups": int(r["total_lookups"]),
-                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
-                }
+                {"alarm_name": r["alarm_name"], "session_count": int(r["session_count"]),
+                 "total_lookups": int(r["total_lookups"]),
+                 "last_seen": r["last_seen"].isoformat() if r["last_seen"] else None}
                 for r in alarm_rows
             ],
             "top_lambdas": [
-                {
-                    "function_name": r["function_name"],
-                    "session_count": int(r["session_count"]),
-                    "total_calls":   int(r["total_calls"]),
-                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
-                }
+                {"function_name": r["function_name"], "session_count": int(r["session_count"]),
+                 "total_calls": int(r["total_calls"]),
+                 "last_seen": r["last_seen"].isoformat() if r["last_seen"] else None}
                 for r in lambda_rows
             ],
             "recurring_errors": [
-                {
-                    "tool_name":     r["tool_name"],
-                    "error_snippet": r["error_snippet"],
-                    "count":         int(r["count"]),
-                    "last_seen":     r["last_seen"].isoformat() if r["last_seen"] else None,
-                }
+                {"tool_name": r["tool_name"], "error_snippet": r["error_snippet"],
+                 "count": int(r["count"]),
+                 "last_seen": r["last_seen"].isoformat() if r["last_seen"] else None}
                 for r in error_rows
             ],
-            "trend": [
-                {"date": str(r["day"]), "count": int(r["count"])}
-                for r in trend_rows
-            ],
+            "trend": [{"date": str(r["day"]), "count": int(r["count"])} for r in trend_rows],
         }
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
-        """Full-text search over session titles and first user message per session."""
         if not query.strip():
             return []
         rows = await self._fetchall("""
@@ -556,56 +461,15 @@ class Database:
                 WHERE s.is_deleted = FALSE
                   AND (s.title ILIKE '%%' || %s || '%%' OR m.content ILIKE '%%' || %s || '%%')
                 ORDER BY s.id, m.created_at ASC
-            ) sub
-            ORDER BY last_active_at DESC
-            LIMIT %s
+            ) sub ORDER BY last_active_at DESC LIMIT %s
         """, query, query, min(limit, 20))
         return [
             {
-                "id":             str(r["id"]),
-                "title":          r["title"],
+                "id": str(r["id"]),
+                "title": r["title"],
                 "last_active_at": r["last_active_at"].isoformat() if r["last_active_at"] else None,
-                "model":          r["model"],
-                "snippet":        r["snippet"],
+                "model": r["model"],
+                "snippet": r["snippet"],
             }
             for r in rows
         ]
-
-    async def delete_session(self, session_id: str) -> None:
-        """Soft-delete a session — hidden from UI, data preserved for the cleanup job."""
-        await self._exec(
-            "UPDATE sessions SET is_deleted = TRUE, deleted_at = NOW() WHERE id = %s",
-            uuid.UUID(session_id),
-        )
-
-    async def save_usage_event(
-        self,
-        session_id: str,
-        message_id: str | None,
-        model: str,
-        input_tokens: int,
-        output_tokens: int,
-        cost_usd: float | None,
-        latency_ms: int,
-        tool_call_count: int,
-    ) -> None:
-        await self._exec(
-            """
-            INSERT INTO usage_events
-                (session_id, message_id, model, input_tokens, output_tokens,
-                 cost_usd, latency_ms, tool_call_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            uuid.UUID(session_id),
-            uuid.UUID(message_id) if message_id else None,
-            model,
-            input_tokens,
-            output_tokens,
-            cost_usd,
-            latency_ms,
-            tool_call_count,
-        )
-
-
-# Module-level singleton — import this everywhere
-db = Database()

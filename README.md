@@ -16,11 +16,12 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - **Cost tracking card** — input/output tokens, per-component USD cost, total cost, latency — collapsible, closed by default
   - Pricing map for `google/gemma-4-26b-a4b-it`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o` (extend as needed)
   - Stop button cancels an in-flight request mid-stream
-- **PostgreSQL persistence** (optional) — full conversation history and tool call logs stored in Postgres via psycopg3; falls back to in-memory when `DATABASE_URL` is unset
-  - **LangGraph `AsyncPostgresSaver` checkpointer** — agent reasoning state persists across server restarts; resuming a session picks up the full conversation context, not just display messages
+- **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`docs/databases.md`](docs/databases.md)
+  - `memory` — zero config, no persistence; great for CI and quick testing
+  - `sqlite` — local file, no external services; recommended for single-server and personal use
+  - `postgres` — full production persistence via psycopg3 + `AsyncPostgresSaver`
   - Schema: `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
   - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
-  - One-shot setup script: `uv run python scripts/setup_db.py` (runs all migrations in order)
 - **Structured logging** via Loguru — used consistently across all modules (tools, agent, API, CLI); every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
 - **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
@@ -53,11 +54,22 @@ aws configure --profile devops-agent-readonly
 aws sts get-caller-identity --profile devops-agent-readonly
 ```
 
-### 4. Set up the database (optional but recommended)
+### 4. Choose a storage backend
 
-Without a database the agent still works, using in-memory storage that resets on restart.
-For persistent conversation history across restarts, set up PostgreSQL:
+Three options — pick one and add it to `.env`. Full details in [`docs/databases.md`](docs/databases.md).
 
+**Memory** (default — zero config, nothing persists on restart)
+```bash
+CHECKPOINT_BACKEND=memory
+```
+
+**SQLite** (recommended for local dev — persists to a file, no external service needed)
+```bash
+CHECKPOINT_BACKEND=sqlite
+SQLITE_PATH=./data/agent.db   # created automatically on first start
+```
+
+**PostgreSQL** (recommended for production)
 ```bash
 # Start Postgres with Docker
 docker run -d --name opendevops-pg \
@@ -68,15 +80,12 @@ docker run -d --name opendevops-pg \
   postgres:16
 
 # Add to .env
-echo "DATABASE_URL=postgresql://dev:dev@localhost:5433/opendevops" >> .env
+CHECKPOINT_BACKEND=postgres
+DATABASE_URL=postgresql://dev:dev@localhost:5433/opendevops
 
-# Create tables (safe to re-run)
+# Create app tables (safe to re-run)
 uv run python scripts/setup_db.py
 ```
-
-The script creates all app tables (`sessions`, `messages`, `tool_calls`, `usage_events`, etc.)
-and the LangGraph checkpointer tables in one shot. See [`docs/schema.md`](docs/schema.md) for
-the full schema reference.
 
 ### 5. Run
 
@@ -98,7 +107,7 @@ an IAM role to the instance/task instead.
 
 ```bash
 # Terminal 1 — FastAPI backend
-uv run uvicorn src.api.app:app --reload
+uv run --no-sync uvicorn api.app:app --reload
 ```
 
 ```bash
@@ -170,6 +179,9 @@ docs/
 | `LLM_API_BASE` | none | Custom base URL for OpenAI-compatible endpoints (e.g. Ollama, vLLM) |
 | `LLM_API_KEY` | none | API key for custom endpoints; standard provider keys (e.g. `ANTHROPIC_API_KEY`) are read automatically |
 | `OPENROUTER_API_KEY` | none | Required when using any `openrouter/` model |
+| `CHECKPOINT_BACKEND` | `memory` | Storage backend: `memory` · `sqlite` · `postgres` — see [docs/databases.md](docs/databases.md) |
+| `SQLITE_PATH` | `./data/agent.db` | SQLite file path — only used when `CHECKPOINT_BACKEND=sqlite` |
+| `DATABASE_URL` | none | PostgreSQL connection string — only used when `CHECKPOINT_BACKEND=postgres` |
 | `AWS_REGION` | `us-east-1` | AWS region |
 | `AWS_PROFILE` | none | AWS named profile (e.g. `devops-agent-readonly`) |
 | `MAX_TOOL_CALLS` | `20` | Hard cap on tool calls per investigation |
@@ -193,6 +205,7 @@ docs/
 - [x] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
 - [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
 - [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
+- [x] **Multi-backend storage** — `memory` (zero config), `sqlite` (local file, no external service), `postgres` (production); switch with one env var; see [docs/databases.md](docs/databases.md)
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [x] **Bash CLI escape hatch (Phase 1)** — `run_bash_command` is implemented for read-only AWS CLI, kubectl, and docker commands with strict allowlist validation and timeout.
 - [ ] **Bash sandbox Phase 2** — run each bash command in an isolated throwaway container (`--network none`, read-only FS, non-root, resource limits).
