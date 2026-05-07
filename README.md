@@ -107,7 +107,7 @@ an IAM role to the instance/task instead.
 
 ```bash
 # Terminal 1 — FastAPI backend
-uv run --no-sync uvicorn api.app:app --reload
+uv run uvicorn api.app:app --reload
 ```
 
 ```bash
