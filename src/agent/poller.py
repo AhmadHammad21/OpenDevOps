@@ -15,7 +15,7 @@ from typing import Any
 
 from loguru import logger
 
-from agent.config import settings
+from config import settings
 
 
 # In-memory dedup: maps a trigger key → datetime last investigated.

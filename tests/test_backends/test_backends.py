@@ -39,7 +39,7 @@ async def pg_backend() -> DatabaseBackend:
         pytest.skip("DATABASE_URL not set — skipping postgres backend tests")
 
     from agent.db.postgres import PostgresBackend
-    from agent.config import settings
+    from config import settings
     settings.database_url = url
 
     b = PostgresBackend()

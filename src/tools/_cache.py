@@ -18,7 +18,7 @@ from typing import Any, TypeVar
 from cachetools import TTLCache, cached
 from cachetools.keys import hashkey
 
-from agent.config import settings
+from config import settings
 
 F = TypeVar("F", bound=Callable[..., Any])
 

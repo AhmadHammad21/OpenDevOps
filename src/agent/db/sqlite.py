@@ -10,7 +10,7 @@ from typing import Any
 from loguru import logger
 
 from agent.db.base import DatabaseBackend
-from agent.config import settings
+from config import settings
 
 
 _DDL = """

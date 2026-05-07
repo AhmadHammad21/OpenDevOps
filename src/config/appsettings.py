@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     investigation_timeout: int = 120
     log_level: str = "INFO"
 
+    # Cap tool responses before feeding them back to the LLM.
+    # Prevents large CloudWatch / CloudTrail payloads from exhausting the context window.
+    # ~40 K chars ≈ 10 K tokens. Set to 0 to disable.
+    tool_response_max_chars: int = 40_000
+
     # Storage backend: "memory" | "sqlite" | "postgres"
     # memory  → no persistence, zero config (default, great for CI / quick testing)
     # sqlite  → local file-based persistence, zero external dependencies

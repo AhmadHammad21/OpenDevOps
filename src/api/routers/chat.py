@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from agent.config import settings
+from config import settings
 from agent.core import get_agent
 from agent.turns import calc_cost, save_turn, notify_slack
 from models.chat import ChatRequest

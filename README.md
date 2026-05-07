@@ -186,6 +186,7 @@ docs/
 | `AWS_PROFILE` | none | AWS named profile (e.g. `devops-agent-readonly`) |
 | `MAX_TOOL_CALLS` | `20` | Hard cap on tool calls per investigation |
 | `INVESTIGATION_TIMEOUT` | `120` | Timeout in seconds |
+| `TOOL_RESPONSE_MAX_CHARS` | `40000` | Truncate tool responses larger than this before feeding to the LLM; `0` disables |
 | `SLACK_WEBHOOK_URL` | none | Slack incoming webhook URL; leave unset to disable notifications |
 | `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
 | `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |

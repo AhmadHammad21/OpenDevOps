@@ -7,7 +7,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from loguru import logger
 
-from agent.config import settings
+from config import settings
 from tools._cache import tool_cached
 
 

@@ -10,7 +10,7 @@ from agent.db.base import DatabaseBackend
 
 
 def _create_backend() -> DatabaseBackend:
-    from agent.config import settings
+    from config import settings
 
     backend = settings.checkpoint_backend
 

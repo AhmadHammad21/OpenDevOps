@@ -8,10 +8,11 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from langchain_litellm import ChatLiteLLM
-from agent.config import settings
+from config import settings
 from models.agent import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
 from loguru import logger
+from tools._cap import with_cap
 from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS
 from tools.cloudwatch import ALL_CLOUDWATCH_TOOLS
 from tools.ec2 import ALL_EC2_TOOLS
@@ -60,9 +61,10 @@ def init_agent(checkpointer: Any) -> None:
         api_base=settings.llm_api_base or None,
         api_key=settings.llm_api_key or None,
     )
+    tools = [with_cap(t) for t in ALL_TOOLS] if settings.tool_response_max_chars > 0 else ALL_TOOLS
     _agent = create_deep_agent(
         model=model,
-        tools=ALL_TOOLS,
+        tools=tools,
         system_prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
     )
