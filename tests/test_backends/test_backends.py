@@ -39,7 +39,7 @@ async def pg_backend() -> DatabaseBackend:
         pytest.skip("DATABASE_URL not set — skipping postgres backend tests")
 
     from agent.db.postgres import PostgresBackend
-    from agent.config import settings
+    from config import settings
     settings.database_url = url
 
     b = PostgresBackend()
@@ -192,7 +192,8 @@ async def test_save_usage_event_does_not_raise(backend: DatabaseBackend):
 
 _DASHBOARD_KEYS = {"summary", "activity", "top_tools", "service_breakdown", "recent_sessions", "root_causes"}
 _SUMMARY_KEYS   = {"total_sessions", "total_queries", "total_tool_calls", "total_tool_errors",
-                   "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms"}
+                   "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms",
+                   "total_summarizations", "total_chars_compacted"}
 
 
 async def test_dashboard_stats_has_required_keys(backend: DatabaseBackend):

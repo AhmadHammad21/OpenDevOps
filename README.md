@@ -186,6 +186,7 @@ docs/
 | `AWS_PROFILE` | none | AWS named profile (e.g. `devops-agent-readonly`) |
 | `MAX_TOOL_CALLS` | `20` | Hard cap on tool calls per investigation |
 | `INVESTIGATION_TIMEOUT` | `120` | Timeout in seconds |
+| `TOOL_RESPONSE_MAX_CHARS` | `40000` | Truncate tool responses larger than this before feeding to the LLM; `0` disables |
 | `SLACK_WEBHOOK_URL` | none | Slack incoming webhook URL; leave unset to disable notifications |
 | `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
 | `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |
@@ -206,9 +207,12 @@ docs/
 - [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
 - [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
 - [x] **Multi-backend storage** — `memory` (zero config), `sqlite` (local file, no external service), `postgres` (production); switch with one env var; see [docs/databases.md](docs/databases.md)
+- [x] **Skills system** — on-demand investigation skills loaded from `src/skills/*/SKILL.md`; skill names injected into system prompt at startup, full content loaded only when agent calls `use_skill(name)`; ships with `lambda-throttling` skill; add your own by dropping a `SKILL.md` into `src/skills/<name>/`
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [x] **Bash CLI escape hatch (Phase 1)** — `run_bash_command` is implemented for read-only AWS CLI, kubectl, and docker commands with strict allowlist validation and timeout.
 - [ ] **Bash sandbox Phase 2** — run each bash command in an isolated throwaway container (`--network none`, read-only FS, non-root, resource limits).
+- [x] **Tool response capping** — truncates oversized AWS tool responses (CloudWatch logs, CloudTrail events) before they reach the LLM context window; configurable via `TOOL_RESPONSE_MAX_CHARS` (default 40 000 chars ≈ 10 K tokens)
+- [x] **Conversation summarization** — automatically summarize old messages when the session approaches the model's context limit; preserves recent exchanges and injects a structured summary so long investigations never fail mid-session; summarization events tracked in `usage_events.metadata` and surfaced in the dashboard
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
@@ -218,6 +222,7 @@ docs/
 
 ### Later
 - [ ] **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage
+- [ ] **Follow-up question suggestions** — after each investigation completes, generate 3 suggested follow-up questions in the background and surface them in the UI as clickable chips
 - [ ] **Session / user feedback loop** — thumbs up/down on investigations, feed signals back to the agent and to an internal quality dashboard
 - [ ] **Telegram integration** — bot that accepts `/investigate` commands and streams findings back to a chat or group
 - [ ] **Knowledge base** — attach internal runbooks, post-mortems, and architecture docs so the agent grounds answers in org-specific context

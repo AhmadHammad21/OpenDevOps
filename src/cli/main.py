@@ -4,7 +4,7 @@ import typer
 from loguru import logger
 from rich.console import Console
 
-from agent.config import settings
+from config import settings
 
 app = typer.Typer(
     name="devops-agent",

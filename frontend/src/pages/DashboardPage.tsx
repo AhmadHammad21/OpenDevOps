@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Wrench, DollarSign, Clock, AlertTriangle, Zap } from 'lucide-react';
+import { MessageSquare, Wrench, DollarSign, Clock, AlertTriangle, Zap, Scissors } from 'lucide-react';
 import { fmtCost, fmtTok, relativeTime, cn } from '../lib/utils';
 
 interface Summary {
@@ -8,6 +8,7 @@ interface Summary {
   total_tool_calls: number; total_tool_errors: number;
   total_input_tokens: number; total_output_tokens: number;
   total_cost_usd: number; avg_latency_ms: number;
+  total_summarizations: number; total_chars_compacted: number;
 }
 interface ActivityDay   { date: string; sessions: number; }
 interface TopTool        { tool: string; count: number; errors: number; }
@@ -143,6 +144,24 @@ export default function DashboardPage() {
             icon={<Clock size={15} />}
           />
         </div>
+
+        {/* Context management row */}
+        {(summary.total_summarizations > 0 || summary.total_chars_compacted > 0) && (
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              label="Sessions compacted"
+              value={summary.total_summarizations}
+              sub="conversation summarizations run"
+              icon={<Scissors size={15} />}
+            />
+            <StatCard
+              label="Context saved"
+              value={summary.total_chars_compacted > 0 ? `~${fmtTok(Math.round(summary.total_chars_compacted / 4))}` : '—'}
+              sub={`${summary.total_chars_compacted.toLocaleString()} chars compacted`}
+              icon={<Zap size={15} />}
+            />
+          </div>
+        )}
 
         {/* Activity chart */}
         <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">

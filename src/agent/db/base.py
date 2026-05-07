@@ -64,6 +64,7 @@ class DatabaseBackend(ABC):
         cost_usd: float | None,
         latency_ms: int,
         tool_call_count: int,
+        metadata: dict | None = None,
     ) -> None: ...
 
     @abstractmethod

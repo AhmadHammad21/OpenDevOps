@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 
 from agent.db.base import DatabaseBackend
-from agent.config import settings
+from config import settings
 
 
 class PostgresBackend(DatabaseBackend):
@@ -181,17 +181,19 @@ class PostgresBackend(DatabaseBackend):
         cost_usd: float | None,
         latency_ms: int,
         tool_call_count: int,
+        metadata: dict | None = None,
     ) -> None:
         await self._exec(
             """
             INSERT INTO usage_events
                 (session_id, message_id, model, input_tokens, output_tokens,
-                 cost_usd, latency_ms, tool_call_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 cost_usd, latency_ms, tool_call_count, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             uuid.UUID(session_id),
             uuid.UUID(message_id) if message_id else None,
             model, input_tokens, output_tokens, cost_usd, latency_ms, tool_call_count,
+            self._jsonb(metadata or {}),
         )
 
     async def list_sessions(self) -> list[dict]:
@@ -299,7 +301,11 @@ class PostgresBackend(DatabaseBackend):
                 (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_input_tokens,
                 (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_output_tokens,
                 (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_cost_usd,
-                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms,
+                (SELECT COUNT(*) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_summarizations,
+                (SELECT COALESCE(SUM((ue.metadata->>'chars_removed')::int), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_chars_compacted
         """)
         summary = summary_row or {}
 
@@ -375,6 +381,8 @@ class PostgresBackend(DatabaseBackend):
                 "total_output_tokens": int(summary.get("total_output_tokens", 0) or 0),
                 "total_cost_usd":    float(summary.get("total_cost_usd", 0) or 0),
                 "avg_latency_ms":    round(float(summary.get("avg_latency_ms", 0) or 0)),
+                "total_summarizations":  int(summary.get("total_summarizations", 0) or 0),
+                "total_chars_compacted": int(summary.get("total_chars_compacted", 0) or 0),
             },
             "activity": [{"date": str(r["day"]), "sessions": int(r["sessions"])} for r in activity_rows],
             "top_tools": top_tools,

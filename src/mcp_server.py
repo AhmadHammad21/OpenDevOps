@@ -20,7 +20,7 @@ from typing import Any
 from fastmcp import FastMCP
 from loguru import logger
 
-from agent.config import settings
+from config import settings
 
 mcp = FastMCP(
     name="OpenDevOps Agent",

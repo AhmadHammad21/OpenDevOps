@@ -37,7 +37,7 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
-    from agent.config import settings as _cfg
+    from config import settings as _cfg
 
     checkpointer = await db.init()
     init_agent(checkpointer)

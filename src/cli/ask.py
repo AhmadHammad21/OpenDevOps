@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from agent.config import settings
+from config import settings
 
 console = Console()
 

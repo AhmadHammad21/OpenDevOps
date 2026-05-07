@@ -6,7 +6,7 @@ from typing import Any
 
 from loguru import logger
 
-from agent.config import settings
+from config import settings
 from agent.db import db
 
 # Fallback pricing ($/M tokens) for models absent from LiteLLM's database.
