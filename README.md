@@ -211,6 +211,8 @@ docs/
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [x] **Bash CLI escape hatch (Phase 1)** — `run_bash_command` is implemented for read-only AWS CLI, kubectl, and docker commands with strict allowlist validation and timeout.
 - [ ] **Bash sandbox Phase 2** — run each bash command in an isolated throwaway container (`--network none`, read-only FS, non-root, resource limits).
+- [x] **Tool response capping** — truncates oversized AWS tool responses (CloudWatch logs, CloudTrail events) before they reach the LLM context window; configurable via `TOOL_RESPONSE_MAX_CHARS` (default 40 000 chars ≈ 10 K tokens)
+- [ ] **Conversation summarization** — automatically summarize old messages when the session approaches the model's context limit; preserves recent exchanges and injects a structured summary so long investigations never fail mid-session
 - [ ] **Optimize tool loading** — pass only relevant tools per investigation context instead of the full 19-tool set
 - [ ] **Message middleware pipeline** — compaction, summarization, intent detection, context trimmer
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
