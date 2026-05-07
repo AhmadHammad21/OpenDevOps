@@ -25,7 +25,11 @@ class MemoryBackend(DatabaseBackend):
     async def init(self) -> Any:
         from langgraph.checkpoint.memory import MemorySaver
         self._checkpointer = MemorySaver()
-        logger.info("In-memory backend initialised (no persistence)")
+        logger.warning(
+            "In-memory backend active — all data is lost on restart and memory grows "
+            "unboundedly. Use CHECKPOINT_BACKEND=sqlite or postgres for anything beyond "
+            "quick testing."
+        )
         return self._checkpointer
 
     async def close(self) -> None:

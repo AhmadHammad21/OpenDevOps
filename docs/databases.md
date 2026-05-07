@@ -7,11 +7,11 @@ OpenDevOps Agent supports three storage backends. Pick one per deployment — se
 
 ## Quick reference
 
-| Backend    | Persistence | External service | Best for                          |
-|------------|-------------|-----------------|-----------------------------------|
-| `memory`   | None        | None            | CI, quick demos, local testing    |
-| `sqlite`   | Local file  | None            | Single-server, personal use       |
-| `postgres` | Database    | PostgreSQL 14+  | Production, teams, multi-instance |
+| Backend    | Persistence | External service | Dashboard | Best for                          |
+|------------|-------------|-----------------|-----------|-----------------------------------|
+| `memory`   | None        | None            | Counts only | CI, quick demos, local testing  |
+| `sqlite`   | Local file  | None            | Full      | Single-server, personal use       |
+| `postgres` | Database    | PostgreSQL 14+  | Full      | Production, teams, multi-instance |
 
 ---
 
@@ -24,8 +24,12 @@ CHECKPOINT_BACKEND=memory
 Everything lives in Python dicts for the life of the process. On restart, all
 sessions and history are gone. The LangGraph checkpointer uses `MemorySaver`.
 
-**When to use:** CI pipelines, smoke-testing, one-off demos.  
-**Dashboard analytics:** summary counts are live; charts and history are empty.
+**When to use:** CI pipelines, smoke-testing, one-off demos.
+
+> **Dashboard limitation:** summary counts (sessions, queries, tool calls, cost) update
+> correctly, but all charts and lists — activity by day, top tools, recent sessions,
+> root causes — are always empty. This is by design. Switch to `sqlite` or `postgres`
+> if you need a working dashboard.
 
 ---
 
