@@ -355,7 +355,15 @@ class SQLiteBackend(DatabaseBackend):
                     WHERE s.is_deleted = 0) AS total_cost_usd,
                 (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue
                     JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = 0) AS avg_latency_ms
+                    WHERE s.is_deleted = 0) AS avg_latency_ms,
+                (SELECT COUNT(*) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0
+                      AND json_extract(ue.metadata, '$.summarization') = 1) AS total_summarizations,
+                (SELECT COALESCE(SUM(CAST(json_extract(ue.metadata, '$.chars_removed') AS INTEGER)), 0)
+                    FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0
+                      AND json_extract(ue.metadata, '$.summarization') = 1) AS total_chars_compacted
         """) or {}
 
         activity_rows = await self._fetchall("""
@@ -447,6 +455,8 @@ class SQLiteBackend(DatabaseBackend):
                 "total_output_tokens": int(summary.get("total_output_tokens", 0) or 0),
                 "total_cost_usd":    float(summary.get("total_cost_usd", 0) or 0),
                 "avg_latency_ms":    round(float(summary.get("avg_latency_ms", 0) or 0)),
+                "total_summarizations":  int(summary.get("total_summarizations", 0) or 0),
+                "total_chars_compacted": int(summary.get("total_chars_compacted", 0) or 0),
             },
             "activity": [
                 {"date": r["day"], "sessions": int(r["sessions"])}

@@ -194,6 +194,7 @@ class MemoryBackend(DatabaseBackend):
             sum(u["latency_ms"] for u in all_usage) // len(all_usage)
             if all_usage else 0
         )
+        summ_events  = [u for u in all_usage if isinstance(u.get("metadata"), dict) and u["metadata"].get("summarization")]
 
         return {
             "summary": {
@@ -205,6 +206,8 @@ class MemoryBackend(DatabaseBackend):
                 "total_output_tokens": sum(u["output_tokens"] for u in all_usage),
                 "total_cost_usd":    total_cost,
                 "avg_latency_ms":    avg_latency,
+                "total_summarizations":  len(summ_events),
+                "total_chars_compacted": sum(e["metadata"].get("chars_removed", 0) for e in summ_events),
             },
             "activity": [],
             "top_tools": [],

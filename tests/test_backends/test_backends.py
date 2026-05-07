@@ -192,7 +192,8 @@ async def test_save_usage_event_does_not_raise(backend: DatabaseBackend):
 
 _DASHBOARD_KEYS = {"summary", "activity", "top_tools", "service_breakdown", "recent_sessions", "root_causes"}
 _SUMMARY_KEYS   = {"total_sessions", "total_queries", "total_tool_calls", "total_tool_errors",
-                   "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms"}
+                   "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms",
+                   "total_summarizations", "total_chars_compacted"}
 
 
 async def test_dashboard_stats_has_required_keys(backend: DatabaseBackend):

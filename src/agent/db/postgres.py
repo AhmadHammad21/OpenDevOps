@@ -301,7 +301,11 @@ class PostgresBackend(DatabaseBackend):
                 (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_input_tokens,
                 (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_output_tokens,
                 (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_cost_usd,
-                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms,
+                (SELECT COUNT(*) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_summarizations,
+                (SELECT COALESCE(SUM((ue.metadata->>'chars_removed')::int), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_chars_compacted
         """)
         summary = summary_row or {}
 
@@ -377,6 +381,8 @@ class PostgresBackend(DatabaseBackend):
                 "total_output_tokens": int(summary.get("total_output_tokens", 0) or 0),
                 "total_cost_usd":    float(summary.get("total_cost_usd", 0) or 0),
                 "avg_latency_ms":    round(float(summary.get("avg_latency_ms", 0) or 0)),
+                "total_summarizations":  int(summary.get("total_summarizations", 0) or 0),
+                "total_chars_compacted": int(summary.get("total_chars_compacted", 0) or 0),
             },
             "activity": [{"date": str(r["day"]), "sessions": int(r["sessions"])} for r in activity_rows],
             "top_tools": top_tools,
