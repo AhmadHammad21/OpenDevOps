@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,11 +30,11 @@ class Settings(BaseSettings):
     # ~40 K chars ≈ 10 K tokens. Set to 0 to disable.
     tool_response_max_chars: int = 40_000
 
-    # Storage backend: "memory" | "sqlite" | "postgres"
+    # Storage backend — controls which DatabaseBackend is used.
     # memory  → no persistence, zero config (default, great for CI / quick testing)
     # sqlite  → local file-based persistence, zero external dependencies
     # postgres → full production persistence
-    checkpoint_backend: str = "memory"
+    checkpoint_backend: Literal["memory", "sqlite", "postgres"] = "memory"
 
     # SQLite file path — only used when checkpoint_backend = "sqlite"
     sqlite_path: str = "./data/agent.db"

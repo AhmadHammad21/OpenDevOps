@@ -23,6 +23,7 @@ from tools.history import ALL_HISTORY_TOOLS
 from tools.iam import ALL_IAM_TOOLS
 from tools.lambda_ import ALL_LAMBDA_TOOLS
 from tools.rds import ALL_RDS_TOOLS
+from tools.skills import ALL_SKILL_TOOLS
 
 ALL_TOOLS = (
     ALL_CLOUDWATCH_TOOLS
@@ -34,6 +35,7 @@ ALL_TOOLS = (
     + ALL_IAM_TOOLS
     + ALL_HISTORY_TOOLS
     + ALL_BASH_TOOLS
+    + ALL_SKILL_TOOLS
     + ALL_FINAL_ANSWER_TOOLS
 )
 

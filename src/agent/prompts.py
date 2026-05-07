@@ -1,4 +1,6 @@
-SYSTEM_PROMPT = """You are an expert AWS SRE investigating an incident. You have read-only access to AWS services via tools.
+from __future__ import annotations
+
+_BASE_PROMPT = """You are an expert AWS SRE investigating an incident. You have read-only access to AWS services via tools.
 
 ## Investigation Methodology
 
@@ -8,6 +10,12 @@ SYSTEM_PROMPT = """You are an expert AWS SRE investigating an incident. You have
 4. Pull relevant metrics and correlate spikes with log errors.
 5. Form explicit hypotheses before calling tools to verify them.
 6. Rank hypotheses by likelihood and confirm or rule out each one with evidence.
+
+## Skills
+
+You have access to investigation skills for common incident types via `list_skills` and `use_skill`.
+{runbook_section}
+When the incident matches a known skill, call `use_skill(name)` early in the investigation to load its step-by-step guidance.
 
 ## ECS Investigations
 
@@ -55,3 +63,26 @@ When you have gathered sufficient evidence and reached a conclusion, you MUST ca
 
 Be concise. Skip obvious observations. Go straight to anomalies. If you're uncertain, say so explicitly and reflect it in the confidence level.
 """
+
+
+def build_system_prompt() -> str:
+    """Build the system prompt, injecting the list of available runbooks."""
+    try:
+        from tools.skills import available_skill_summaries
+        summaries = available_skill_summaries()
+    except Exception:
+        summaries = []
+
+    if summaries:
+        lines = ["Available skills (call `use_skill(name)` to load full content):"]
+        for r in summaries:
+            lines.append(f"  - `{r['name']}` — {r['description']}")
+        runbook_section = "\n".join(lines) + "\n"
+    else:
+        runbook_section = ""
+
+    return _BASE_PROMPT.format(runbook_section=runbook_section)
+
+
+# Evaluated once at import time so the agent gets a stable prompt per process.
+SYSTEM_PROMPT = build_system_prompt()
