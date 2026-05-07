@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # PostgreSQL connection string — only used when checkpoint_backend = "postgres"
     database_url: str | None = None
 
+    # Conversation summarization — compacts old messages when a session gets long.
+    # Fires before each agent call when total message chars exceed the threshold.
+    # Set summarization_enabled=false or summarization_threshold_chars=0 to disable.
+    summarization_enabled: bool = True
+    summarization_threshold_chars: int = 60_000   # ~15 K tokens; trigger compaction above this
+    summarization_keep_chars: int = 20_000        # ~5 K tokens of recent messages to preserve intact
+
     # Slack — leave unset to disable notifications
     slack_webhook_url: str | None = None
 

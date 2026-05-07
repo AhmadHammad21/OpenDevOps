@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     cost_usd        REAL,
     latency_ms      INTEGER NOT NULL DEFAULT 0,
     tool_call_count INTEGER NOT NULL DEFAULT 0,
+    metadata        TEXT NOT NULL DEFAULT '{}',
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
 );
 """
@@ -103,6 +104,15 @@ class SQLiteBackend(DatabaseBackend):
             if stmt:
                 await self._conn.execute(stmt)
         await self._conn.commit()
+
+        # Migrate existing databases: add metadata column if absent
+        try:
+            await self._conn.execute(
+                "ALTER TABLE usage_events ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass  # column already exists
 
         # LangGraph checkpointer uses its own connection to the same file
         cp_conn = await aiosqlite.connect(self._path)
@@ -224,16 +234,18 @@ class SQLiteBackend(DatabaseBackend):
         cost_usd: float | None,
         latency_ms: int,
         tool_call_count: int,
+        metadata: dict | None = None,
     ) -> None:
         await self._exec(
             """
             INSERT INTO usage_events
                 (id, session_id, message_id, model, input_tokens, output_tokens,
-                 cost_usd, latency_ms, tool_call_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cost_usd, latency_ms, tool_call_count, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             str(uuid.uuid4()), session_id, message_id, model,
             input_tokens, output_tokens, cost_usd, latency_ms, tool_call_count,
+            json.dumps(metadata or {}),
         )
 
     async def list_sessions(self) -> list[dict]:

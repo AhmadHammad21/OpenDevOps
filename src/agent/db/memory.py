@@ -116,6 +116,7 @@ class MemoryBackend(DatabaseBackend):
         cost_usd: float | None,
         latency_ms: int,
         tool_call_count: int,
+        metadata: dict | None = None,
     ) -> None:
         self._usage[session_id].append({
             "session_id": session_id,
@@ -126,6 +127,7 @@ class MemoryBackend(DatabaseBackend):
             "cost_usd": cost_usd,
             "latency_ms": latency_ms,
             "tool_call_count": tool_call_count,
+            "metadata": metadata or {},
         })
 
     async def list_sessions(self) -> list[dict]:

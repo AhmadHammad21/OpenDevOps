@@ -15,6 +15,7 @@ from loguru import logger
 
 from config import settings
 from agent.core import get_agent
+from agent.summarizer import maybe_summarize
 from agent.turns import calc_cost, save_turn, notify_slack
 from models.chat import ChatRequest
 from api.streaming_labels import STREAMING_LABELS
@@ -96,6 +97,8 @@ async def _stream_chat(session_id: str, user_message: str):
         clean_buf = ""
 
     timed_out = False
+
+    await maybe_summarize(agent, config, session_id)
 
     try:
         async with asyncio.timeout(settings.investigation_timeout):

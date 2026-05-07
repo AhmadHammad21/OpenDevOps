@@ -181,17 +181,19 @@ class PostgresBackend(DatabaseBackend):
         cost_usd: float | None,
         latency_ms: int,
         tool_call_count: int,
+        metadata: dict | None = None,
     ) -> None:
         await self._exec(
             """
             INSERT INTO usage_events
                 (session_id, message_id, model, input_tokens, output_tokens,
-                 cost_usd, latency_ms, tool_call_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 cost_usd, latency_ms, tool_call_count, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             uuid.UUID(session_id),
             uuid.UUID(message_id) if message_id else None,
             model, input_tokens, output_tokens, cost_usd, latency_ms, tool_call_count,
+            self._jsonb(metadata or {}),
         )
 
     async def list_sessions(self) -> list[dict]:
