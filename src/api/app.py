@@ -11,7 +11,7 @@ from loguru import logger
 
 from agent.core import init_agent
 from agent.db import db
-from api.routers import chat, dashboard, history, sessions
+from api.routers import auth, chat, dashboard, history, sessions, users
 
 
 class _InterceptHandler(logging.Handler):
@@ -65,6 +65,8 @@ app.include_router(chat.router)
 app.include_router(sessions.router)
 app.include_router(dashboard.router)
 app.include_router(history.router)
+app.include_router(auth.router)
+app.include_router(users.router)
 
 _DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 

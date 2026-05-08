@@ -1,0 +1,63 @@
+"""JWT helpers and FastAPI auth dependencies."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
+
+from config import settings
+
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    return _pwd.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return _pwd.verify(plain, hashed)
+
+
+def create_access_token(user_id: str, role: str) -> str:
+    from jose import jwt
+
+    exp = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    return jwt.encode(
+        {"sub": user_id, "role": role, "exp": exp},
+        settings.jwt_secret,
+        algorithm="HS256",
+    )
+
+
+async def get_current_user(
+    token: Annotated[str | None, Depends(_oauth2)],
+) -> dict | None:
+    """Return {id, role} when auth is enabled + token is valid; None in dev mode."""
+    if not settings.jwt_secret:
+        return None
+    if token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        from jose import JWTError, jwt
+
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        user_id: str | None = payload.get("sub")
+        role: str = payload.get("role", "user")
+        if not user_id:
+            raise ValueError("missing sub")
+        return {"id": user_id, "role": role}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def require_admin(
+    user: Annotated[dict | None, Depends(get_current_user)],
+) -> dict | None:
+    if user is not None and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user

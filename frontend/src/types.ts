@@ -81,6 +81,14 @@ export interface Session {
   last_active_at: string;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'user';
+  created_at: string;
+}
+
 export interface MessageRecord {
   id: string;
   role: 'user' | 'assistant';

@@ -57,5 +57,9 @@ class Settings(BaseSettings):
     poll_error_threshold: float = 5.0       # % Lambda error rate that triggers investigation
     poll_reinvestigate_hours: int = 1       # don't re-investigate the same alarm within N hours
 
+    # Auth — leave jwt_secret unset to disable auth (dev / memory-backend mode)
+    jwt_secret: str | None = None
+    jwt_expire_minutes: int = 1440  # 24 hours
+
 
 settings = Settings()

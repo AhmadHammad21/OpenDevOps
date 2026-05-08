@@ -1,30 +1,82 @@
-import type { Session, MessageRecord, HistoryStats, SearchResult } from '../types';
+import type { Session, MessageRecord, HistoryStats, SearchResult, User } from '../types';
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem('auth-token');
+}
+
+export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> ?? {}),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
 
 export async function fetchSessions(): Promise<Session[]> {
-  const res = await fetch('/sessions');
+  const res = await apiFetch('/sessions');
   if (!res.ok) throw new Error('Failed to load sessions');
   return res.json() as Promise<Session[]>;
 }
 
 export async function fetchMessages(sessionId: string): Promise<MessageRecord[]> {
-  const res = await fetch(`/sessions/${sessionId}/messages`);
+  const res = await apiFetch(`/sessions/${sessionId}/messages`);
   if (!res.ok) throw new Error('Failed to load messages');
   return res.json() as Promise<MessageRecord[]>;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await fetch(`/sessions/${sessionId}`, { method: 'DELETE' });
+  await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
 }
 
-export async function fetchHistory(days: number = 30): Promise<HistoryStats> {
-  const res = await fetch(`/history?days=${days}`);
+export async function fetchHistory(days = 30): Promise<HistoryStats> {
+  const res = await apiFetch(`/history?days=${days}`);
   if (!res.ok) throw new Error('Failed to load history');
   return res.json() as Promise<HistoryStats>;
 }
 
 export async function searchHistory(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`/history/search?q=${encodeURIComponent(query)}&limit=10`);
+  const res = await apiFetch(`/history/search?q=${encodeURIComponent(query)}&limit=10`);
   if (!res.ok) throw new Error('Failed to search history');
   const data = await res.json() as { results: SearchResult[] };
   return data.results;
+}
+
+// ── User management (admin only) ─────────────────────────────────────────
+
+export async function fetchUsers(): Promise<User[]> {
+  const res = await apiFetch('/users');
+  if (!res.ok) throw new Error('Failed to load users');
+  return res.json() as Promise<User[]>;
+}
+
+export async function createUser(data: { email: string; name: string; password: string; role: string }): Promise<User> {
+  const res = await apiFetch('/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json() as { detail?: string };
+    throw new Error(err.detail ?? 'Failed to create user');
+  }
+  return res.json() as Promise<User>;
+}
+
+export async function updateUser(id: string, data: { name?: string; role?: string; password?: string }): Promise<User> {
+  const res = await apiFetch(`/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json() as { detail?: string };
+    throw new Error(err.detail ?? 'Failed to update user');
+  }
+  return res.json() as Promise<User>;
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  const res = await apiFetch(`/users/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete user');
 }

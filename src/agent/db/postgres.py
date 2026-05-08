@@ -455,6 +455,63 @@ class PostgresBackend(DatabaseBackend):
             "trend": [{"date": str(r["day"]), "count": int(r["count"])} for r in trend_rows],
         }
 
+    # ── User / auth ───────────────────────────────────────────────────────────
+
+    async def count_users(self) -> int:
+        row = await self._fetchrow("SELECT COUNT(*) AS n FROM users")
+        return int(row["n"]) if row else 0
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        return await self._fetchrow("SELECT * FROM users WHERE email = %s", email)
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        return await self._fetchrow("SELECT * FROM users WHERE id = %s", uuid.UUID(user_id))
+
+    async def create_user(
+        self, email: str, name: str, password_hash: str, role: str
+    ) -> dict | None:
+        row = await self._fetchrow(
+            """
+            INSERT INTO users (email, name, password_hash, role)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, email, name, role, created_at
+            """,
+            email, name, password_hash, role,
+        )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def list_users(self) -> list[dict]:
+        rows = await self._fetchall(
+            "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "email": r["email"],
+                "name": r["name"],
+                "role": r["role"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        sets = ", ".join(f"{k} = %s" for k in fields)
+        values = [*fields.values(), uuid.UUID(user_id)]
+        row = await self._fetchrow(
+            f"UPDATE users SET {sets}, updated_at = NOW() WHERE id = %s"
+            " RETURNING id, email, name, role, created_at",
+            *values,
+        )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def delete_user(self, user_id: str) -> None:
+        await self._exec("DELETE FROM users WHERE id = %s", uuid.UUID(user_id))
+
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():
             return []
