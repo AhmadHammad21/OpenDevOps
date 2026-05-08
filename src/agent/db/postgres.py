@@ -458,7 +458,7 @@ class PostgresBackend(DatabaseBackend):
     # ── User / auth ───────────────────────────────────────────────────────────
 
     async def count_users(self) -> int:
-        row = await self._fetchrow("SELECT COUNT(*) AS n FROM users")
+        row = await self._fetchrow("SELECT COUNT(*) AS n FROM users WHERE password_hash IS NOT NULL")
         return int(row["n"]) if row else 0
 
     async def get_user_by_email(self, email: str) -> dict | None:
