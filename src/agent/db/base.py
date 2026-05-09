@@ -86,3 +86,29 @@ class DatabaseBackend(ABC):
 
     @abstractmethod
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]: ...
+
+    # ── User / auth ────────────────────────────────────────────────────────────
+    # Default implementations return empty/zero — real auth requires PostgreSQL.
+
+    async def count_users(self) -> int:
+        return 0
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        return None
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        return None
+
+    async def create_user(
+        self, email: str, name: str, password_hash: str, role: str
+    ) -> dict | None:
+        return None
+
+    async def list_users(self) -> list[dict]:
+        return []
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        return None
+
+    async def delete_user(self, user_id: str) -> None:
+        pass

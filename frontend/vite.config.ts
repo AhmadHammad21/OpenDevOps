@@ -14,7 +14,12 @@ export default defineConfig({
         },
       },
       '/sessions': 'http://localhost:8000',
-      '/stats': 'http://localhost:8000',
+      '/stats':    'http://localhost:8000',
+      '/auth':     'http://localhost:8000',
+      '/users':    'http://localhost:8000',
+      '/settings': 'http://localhost:8000',
+      '/history':  'http://localhost:8000',
+      '/debug':    'http://localhost:8000',
     },
   },
   build: {

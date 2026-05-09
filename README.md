@@ -6,21 +6,23 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
-- **19 read-only AWS tools** across CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM — plain Python functions, schemas inferred automatically
+- **21 read-only AWS tools** across CloudWatch (6), CloudTrail (2), ECS (4), Lambda (4), EC2 (2), RDS (2), IAM (1), plus bash escape hatch, cross-session history analytics, skills, and `submit_investigation` — plain Python functions, schemas inferred automatically
 - **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
-- **Web UI** — FastAPI backend with a chat interface that shows:
+- **Web UI** — React + Vite SPA served by FastAPI:
+  - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button
   - **Session history sidebar** — lists all past conversations; click any to resume with full tool call inspector and cost card restored; new chat and delete (soft) buttons
-  - Live tool calls (name, args, result) — collapsible, closed by default
-  - **Cost tracking card** — input/output tokens, per-component USD cost, total cost, latency — collapsible, closed by default
-  - Pricing map for `google/gemma-4-26b-a4b-it`, `anthropic/claude-3.5-sonnet`, `openai/gpt-4o` (extend as needed)
-  - Stop button cancels an in-flight request mid-stream
+  - **Dashboard** — session counts, tool call stats, cost/latency, context saved, activity chart, service breakdown, root cause distribution, recent sessions
+  - **History page** — keyword search across all past sessions
+  - **Settings page** — real-time read-only view of active configuration (env vars + agent config) fetched from the backend
+  - **Team page** — admin-only user management: add, remove, and change roles
+- **Auth & RBAC** — optional password-based auth with `admin` and `user` roles; JWT tokens; first registered user auto-becomes admin; disabled by default (set `JWT_SECRET` to enable) — see [docs/auth.md](docs/auth.md)
 - **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`docs/databases.md`](docs/databases.md)
   - `memory` — zero config, no persistence; great for CI and quick testing
   - `sqlite` — local file, no external services; recommended for single-server and personal use
   - `postgres` — full production persistence via psycopg3 + `AsyncPostgresSaver`
-  - Schema: `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
+  - Schema: `users`, `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
   - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
 - **Structured logging** via Loguru — used consistently across all modules (tools, agent, API, CLI); every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
@@ -155,20 +157,32 @@ src/
 ├── tools/             # 19 read-only AWS tool functions
 ├── api/
 │   ├── app.py         # FastAPI app factory — mounts routers, serves frontend
+│   ├── auth.py        # JWT helpers + FastAPI auth dependencies
 │   └── routers/
+│       ├── auth.py    # POST /auth/register|login · GET /auth/status|me
 │       ├── chat.py    # POST /chat — SSE streaming endpoint
-│       └── sessions.py# GET/DELETE /sessions — session history
+│       ├── sessions.py# GET/DELETE /sessions — session history
+│       ├── users.py   # GET/POST/PATCH/DELETE /users (admin only)
+│       ├── settings.py# GET /settings — read-only config view
+│       ├── history.py # GET /history/* — cross-session analytics
+│       └── dashboard.py# GET /stats
 ├── cli/               # Typer CLI commands
-└── integrations/      # Future: Slack, PagerDuty
+├── config/
+│   └── appsettings.py # Pydantic Settings — single source of truth for all env vars
+├── models/            # Pydantic models: agent, chat, sessions, users
+├── skills/            # Markdown runbooks (lambda-throttling + add your own)
+└── integrations/
+    └── slack_webhook.py
 frontend/
-└── src/               # React UI source (Vite)
+└── src/
+    ├── pages/         # ChatPage, DashboardPage, HistoryPage, SettingsPage, UsersPage, LoginPage
+    └── components/    # Sidebar, Header, ProtectedRoute, AgentMessage, ...
 migrations/
-└── 001_initial.sql    # App schema (sessions, messages, tool_calls, usage_events)
-scripts/
-├── setup_db.py        # One-shot DB setup (runs migrations + LangGraph checkpointer)
-└── test_db_connection.py # DB connectivity smoke test (.env-driven)
-docs/
-└── schema.md          # Full schema reference with ER diagram
+├── 001_initial.sql    # Base schema
+├── 002_soft_delete.sql
+├── 003_usage_events_metadata.sql
+└── 004_users_rbac.sql # password_hash + role on users
+docs/                  # Feature reference — auth, schema, skills, databases, UI, ...
 ```
 
 ## Configuration
@@ -191,6 +205,11 @@ docs/
 | `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
 | `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |
 | `POLL_REINVESTIGATE_HOURS` | `1` | Cooldown period — skip re-investigating the same alarm within N hours |
+| `SUMMARIZATION_ENABLED` | `true` | Auto-compact sessions when they exceed the threshold |
+| `SUMMARIZATION_THRESHOLD_CHARS` | `60000` | Total session chars before compaction fires (~15K tokens) |
+| `SUMMARIZATION_KEEP_CHARS` | `20000` | Recent chars to preserve intact during compaction (~5K tokens) |
+| `JWT_SECRET` | none | Secret key for JWT signing; leave unset to disable auth entirely |
+| `JWT_EXPIRE_MINUTES` | `1440` | JWT token lifetime in minutes (default 24 h) |
 
 ## TODO / Roadmap
 
@@ -199,7 +218,7 @@ docs/
 - [x] **Schema / models layer** — centralized `src/models/` package for all Pydantic models: agent domain, memory state, and API request/response schemas
 - [ ] **Soft-deleted session cleanup job** — product version only; OSS users manage their own DB
 - [x] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
-- [ ] **User roles** — `superadmin`, `admin`, `user`; role-based access to features and dashboards
+- [x] **User roles** — `admin` / `user` roles with JWT auth, first-user bootstrap, admin-only user management UI; optional (disabled when `JWT_SECRET` unset) — see [docs/auth.md](docs/auth.md)
 
 ### Medium-term
 - [x] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
@@ -233,7 +252,7 @@ docs/
 ### Product (SaaS)
 - [ ] **Redis cache** — replace in-process `cachetools` with Redis; shared across workers, survives restarts, per-org cache namespacing to prevent data leakage between tenants
 - [ ] **Soft-deleted session cleanup** — scheduled job (Inngest or APScheduler) to purge `is_deleted = TRUE` sessions older than a configurable retention window (default 30 days); GDPR right-to-erasure compliance
-- [ ] **Auth & user roles** — `superadmin`, `admin`, `user`; JWT-based auth, role-based access control, org-scoped AWS credential management
+- [ ] **Org-scoped AWS credential management** — per-org credential vault; agents use org-scoped profiles instead of a single global `AWS_PROFILE`
 - [ ] **Per-org AWS credential store** — encrypted credential vault per organization; agents use org-scoped profiles instead of a single global `AWS_PROFILE`
 - [ ] **Billing & usage metering** — track token usage and tool calls per org/user; expose cost dashboards; integrate with Stripe for usage-based billing
 

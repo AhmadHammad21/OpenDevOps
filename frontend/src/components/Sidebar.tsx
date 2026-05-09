@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 import type { Session } from '../types';
 
 interface Props {
@@ -68,6 +69,9 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
 export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, onDelete }: Props) {
   const [hovSession, setHovSession] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { user, isAdmin, authRequired, logout } = useAuth();
+  const displayName = user?.name || 'You';
+  const displayRole = isAdmin ? 'Admin' : 'User';
 
   const currentChatTo = currentSessionId ? `/chat/${currentSessionId}` : '/';
 
@@ -149,28 +153,33 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
         )}
       </div>
 
-      {/* Admin section */}
-      <div className="border-t border-gray-200 dark:border-[#27272F] shrink-0">
-        <div className="px-3.5 pt-2 pb-1">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.09em]">Admin</span>
-        </div>
-        <NavItem to="/settings" icon={<Users    size={14} />} label="Team" />
+      {/* Bottom nav */}
+      <div className="border-t border-gray-200 dark:border-[#27272F] pt-1 shrink-0">
+        {isAdmin && <NavItem to="/users" icon={<Users size={14} />} label="Team" />}
         <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
       </div>
 
       {/* User footer */}
-      <div
-        className="flex items-center gap-2 px-3.5 py-2.5 border-t border-gray-200 dark:border-[#27272F] cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272F] transition-colors shrink-0"
-        onClick={() => navigate('/settings')}
-      >
-        <div className="w-[26px] h-[26px] rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-semibold shrink-0">
-          JD
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-t border-gray-200 dark:border-[#27272F] shrink-0">
+        <div
+          className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272F] rounded-md px-1 py-0.5 transition-colors"
+          onClick={() => navigate('/settings')}
+        >
+          <div className="w-[26px] h-[26px] rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-semibold shrink-0">
+            {displayName.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{displayName}</div>
+            <div className="text-[11px] text-gray-400 dark:text-[#64748B]">{displayRole}</div>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[12px] font-medium text-gray-900 dark:text-[#F1F5F9]">Jane Doe</div>
-          <div className="text-[11px] text-gray-400 dark:text-[#64748B]">Admin</div>
-        </div>
-        <LogOut size={13} className="text-gray-400 dark:text-[#64748B] shrink-0" />
+        <button
+          onClick={logout}
+          title="Sign out"
+          className="p-1 rounded text-gray-400 dark:text-[#64748B] hover:text-red-500 dark:hover:text-[#F87171] transition-colors shrink-0"
+        >
+          <LogOut size={13} />
+        </button>
       </div>
     </aside>
   );

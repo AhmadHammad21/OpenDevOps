@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import UserMessage from '../components/UserMessage';
 import AgentMessage from '../components/AgentMessage';
 import InputArea from '../components/InputArea';
-import { fetchMessages } from '../lib/api';
+import { fetchMessages, getAuthToken } from '../lib/api';
 import type { Message, AgentMessage as AgentMsg, MessageRecord } from '../types';
 
 function recordsToMessages(records: MessageRecord[]): Message[] {
@@ -75,9 +75,13 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
     let contentAcc = '';
 
     try {
+      const token = getAuthToken();
       const resp = await fetch('/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ session_id: sessionId, message: text }),
         signal: ctrl.signal,
       });

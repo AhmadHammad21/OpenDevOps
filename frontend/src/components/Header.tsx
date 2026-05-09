@@ -1,6 +1,7 @@
-import { History, Settings } from 'lucide-react';
+import { History, LogOut, Settings } from 'lucide-react';
 import { Link, useMatch } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 function DarkToggle() {
   const { theme, toggle } = useTheme();
@@ -25,6 +26,7 @@ function DarkToggle() {
 export default function Header() {
   const match = useMatch('/chat/:sessionId');
   const sessionId = match?.params.sessionId;
+  const { authRequired, logout, user } = useAuth();
 
   return (
     <header className="px-5 py-2.5 border-b border-gray-200 dark:border-[#27272F] bg-white dark:bg-[#18181C] flex items-center justify-between shrink-0">
@@ -51,6 +53,15 @@ export default function Header() {
           <Settings size={15} />
         </Link>
         <DarkToggle />
+        {authRequired && (
+          <button
+            onClick={logout}
+            title={`Sign out${user?.id ? '' : ''}`}
+            className="text-gray-400 dark:text-[#64748B] hover:text-red-500 dark:hover:text-[#F87171] transition-colors p-0.5"
+          >
+            <LogOut size={15} />
+          </button>
+        )}
       </div>
     </header>
   );

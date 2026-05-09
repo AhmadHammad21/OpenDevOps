@@ -6,8 +6,25 @@ import ChatPage from './pages/ChatPage';
 import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
+import UsersPage from './pages/UsersPage';
+import LoginPage from './pages/LoginPage';
+import ProtectedRoute from './components/ProtectedRoute';
 import { fetchSessions, deleteSession as apiDeleteSession } from './lib/api';
+import { useAuth } from './context/AuthContext';
 import type { Session } from './types';
+
+function LogoutPage() {
+  const { logout, authRequired } = useAuth();
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    logout();
+    setDone(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!done) return null;
+  return <Navigate to={authRequired ? '/login' : '/'} replace />;
+}
 
 function RedirectToSession() {
   const stored = localStorage.getItem('devops-session-id');
@@ -19,7 +36,7 @@ function RedirectToSession() {
   return <Navigate to={`/chat/${id}`} replace />;
 }
 
-export default function App() {
+function AppLayout() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const chatMatch = useMatch('/chat/:sessionId');
@@ -65,8 +82,23 @@ export default function App() {
           <Route path="/dashboard"       element={<DashboardPage />} />
           <Route path="/history"         element={<HistoryPage />} />
           <Route path="/settings"        element={<SettingsPage />} />
+          <Route path="/users"           element={<UsersPage />} />
         </Routes>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login"  element={<LoginPage />} />
+      <Route path="/logout" element={<LogoutPage />} />
+      <Route path="/*" element={
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      } />
+    </Routes>
   );
 }
