@@ -36,6 +36,8 @@ async def get_settings(
         {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
         {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
         {"key": "JWT_SECRET",          "value": _mask(settings.jwt_secret),                                   "secret": True},
+        {"key": "SNS_TOPIC_ARN",       "value": _mask(settings.sns_topic_arn),                                "secret": True},
+        {"key": "SQS_QUEUE_URL",       "value": _mask(settings.sqs_queue_url),                               "secret": True},
     ]
 
     agent = [
@@ -44,7 +46,8 @@ async def get_settings(
         {"key": "TOOL_RESPONSE_MAX_CHARS",       "label": "Tool response cap",      "value": str(settings.tool_response_max_chars),     "hint": "Chars before tool output is truncated"},
         {"key": "SUMMARIZATION_ENABLED",         "label": "Auto-summarize",         "value": str(settings.summarization_enabled).lower(),"hint": "Compact sessions that exceed the threshold"},
         {"key": "SUMMARIZATION_THRESHOLD_CHARS", "label": "Summarize threshold",   "value": str(settings.summarization_threshold_chars),"hint": "Total chars in session before compaction fires"},
-        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",   "value": str(settings.poll_interval_minutes),       "hint": "0 = proactive polling disabled"},
+        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",    "value": str(settings.poll_interval_minutes),        "hint": "0 = proactive polling disabled"},
+        {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 
     return {"env": env, "agent": agent}

@@ -512,6 +512,60 @@ class PostgresBackend(DatabaseBackend):
     async def delete_user(self, user_id: str) -> None:
         await self._exec("DELETE FROM users WHERE id = %s", uuid.UUID(user_id))
 
+    # ── Alerts ────────────────────────────────────────────────────────────────
+
+    async def add_alert(
+        self,
+        service: str,
+        error: str,
+        resolution: str,
+        confidence: str,
+        sns_sent: bool,
+    ) -> str:
+        row = await self._fetchrow(
+            "INSERT INTO alerts (service, error, resolution, confidence, sns_sent) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            service, error, resolution, confidence, sns_sent,
+        )
+        return str(row["id"]) if row else ""
+
+    async def get_alerts(self, limit: int = 50) -> list[dict]:
+        rows = await self._fetchall(
+            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "FROM alerts ORDER BY created_at DESC LIMIT %s",
+            min(limit, 200),
+        )
+        return [
+            {
+                "id": str(r["id"]),
+                "service": r["service"],
+                "error": r["error"],
+                "resolution": r["resolution"],
+                "confidence": r["confidence"],
+                "sns_sent": bool(r["sns_sent"]),
+                "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+
+    async def get_alert(self, alert_id: str) -> dict | None:
+        row = await self._fetchrow(
+            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "FROM alerts WHERE id = %s",
+            uuid.UUID(alert_id),
+        )
+        if not row:
+            return None
+        return {
+            "id": str(row["id"]),
+            "service": row["service"],
+            "error": row["error"],
+            "resolution": row["resolution"],
+            "confidence": row["confidence"],
+            "sns_sent": bool(row["sns_sent"]),
+            "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():
             return []

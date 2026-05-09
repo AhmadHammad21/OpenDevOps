@@ -12,6 +12,7 @@ from loguru import logger
 from agent.core import init_agent
 from agent.db import db
 from api.routers import auth, chat, dashboard, history, sessions, settings, users
+from api.routers import init as init_router, monitoring
 
 
 class _InterceptHandler(logging.Handler):
@@ -34,6 +35,18 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
     logging.getLogger(_name).handlers = [_InterceptHandler()]
 
 
+def start_event_consumer(app_instance: "FastAPI | None" = None) -> None:
+    """Start the SQS event consumer as a background task (idempotent)."""
+    import asyncio
+    target = app_instance or app
+    existing: asyncio.Task | None = getattr(target, "_consumer_task", None)
+    if existing and not existing.done():
+        return
+    from agent.event_consumer import event_consumer_loop
+    target._consumer_task = asyncio.create_task(event_consumer_loop())  # type: ignore[attr-defined]
+    logger.info("Event consumer task started")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import asyncio
@@ -48,6 +61,17 @@ async def lifespan(_app: FastAPI):
         poller_task = asyncio.create_task(polling_loop())
         logger.info("Proactive poller started (interval={}min)", _cfg.poll_interval_minutes)
 
+    # Event consumer — started if explicitly enabled, SQS URL is set, or init wizard completed
+    if _cfg.event_consumer_enabled or _cfg.sqs_queue_url:
+        start_event_consumer(_app)
+    else:
+        try:
+            from agent.init_store import is_initialized
+            if is_initialized():
+                start_event_consumer(_app)
+        except Exception:
+            pass
+
     yield
 
     if poller_task:
@@ -56,6 +80,15 @@ async def lifespan(_app: FastAPI):
             await poller_task
         except asyncio.CancelledError:
             pass
+
+    consumer_task: asyncio.Task | None = getattr(_app, "_consumer_task", None)
+    if consumer_task:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+
     await db.close()
 
 
@@ -68,6 +101,8 @@ app.include_router(history.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(settings.router)
+app.include_router(init_router.router)
+app.include_router(monitoring.router)
 
 _DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 

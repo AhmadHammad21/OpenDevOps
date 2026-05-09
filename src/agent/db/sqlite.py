@@ -59,6 +59,18 @@ CREATE TABLE IF NOT EXISTS usage_events (
     metadata        TEXT NOT NULL DEFAULT '{}',
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id          TEXT PRIMARY KEY,
+    service     TEXT NOT NULL,
+    error       TEXT NOT NULL,
+    resolution  TEXT NOT NULL DEFAULT '',
+    confidence  TEXT NOT NULL DEFAULT 'LOW',
+    sns_sent    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS alerts_service_idx ON alerts(service);
 """
 
 _SERVICE_MAP: dict[str, str] = {
@@ -113,6 +125,19 @@ class SQLiteBackend(DatabaseBackend):
             await self._conn.commit()
         except Exception:
             pass  # column already exists
+
+        # Migrate existing databases: create alerts table if absent
+        try:
+            await self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS alerts ("
+                "id TEXT PRIMARY KEY, service TEXT NOT NULL, error TEXT NOT NULL, "
+                "resolution TEXT NOT NULL DEFAULT '', confidence TEXT NOT NULL DEFAULT 'LOW', "
+                "sns_sent INTEGER NOT NULL DEFAULT 0, "
+                "created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass
 
         # LangGraph checkpointer uses its own connection to the same file
         cp_conn = await aiosqlite.connect(self._path)
@@ -565,6 +590,60 @@ class SQLiteBackend(DatabaseBackend):
                 {"date": r["day"], "count": int(r["count"])}
                 for r in trend_rows
             ],
+        }
+
+    # ── Alerts ────────────────────────────────────────────────────────────────
+
+    async def add_alert(
+        self,
+        service: str,
+        error: str,
+        resolution: str,
+        confidence: str,
+        sns_sent: bool,
+    ) -> str:
+        alert_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO alerts (id, service, error, resolution, confidence, sns_sent) VALUES (?, ?, ?, ?, ?, ?)",
+            alert_id, service, error, resolution, confidence, 1 if sns_sent else 0,
+        )
+        return alert_id
+
+    async def get_alerts(self, limit: int = 50) -> list[dict]:
+        rows = await self._fetchall(
+            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "FROM alerts ORDER BY created_at DESC LIMIT ?",
+            min(limit, 200),
+        )
+        return [
+            {
+                "id": r["id"],
+                "service": r["service"],
+                "error": r["error"],
+                "resolution": r["resolution"],
+                "confidence": r["confidence"],
+                "sns_sent": bool(r["sns_sent"]),
+                "timestamp": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    async def get_alert(self, alert_id: str) -> dict | None:
+        row = await self._fetchone(
+            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "FROM alerts WHERE id = ?",
+            alert_id,
+        )
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "service": row["service"],
+            "error": row["error"],
+            "resolution": row["resolution"],
+            "confidence": row["confidence"],
+            "sns_sent": bool(row["sns_sent"]),
+            "timestamp": row["created_at"],
         }
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:

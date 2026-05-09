@@ -8,6 +8,9 @@ import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import UsersPage from './pages/UsersPage';
 import LoginPage from './pages/LoginPage';
+import MonitoringPage from './pages/MonitoringPage';
+import AlertDetailPage from './pages/AlertDetailPage';
+import InitPage from './pages/InitPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import { fetchSessions, deleteSession as apiDeleteSession } from './lib/api';
 import { useAuth } from './context/AuthContext';
@@ -77,12 +80,14 @@ function AppLayout() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
         <Header />
         <Routes>
-          <Route path="/"                element={<RedirectToSession />} />
-          <Route path="/chat/:sessionId" element={<ChatPage onSessionsChange={loadSessions} onNew={newChat} />} />
-          <Route path="/dashboard"       element={<DashboardPage />} />
-          <Route path="/history"         element={<HistoryPage />} />
-          <Route path="/settings"        element={<SettingsPage />} />
-          <Route path="/users"           element={<UsersPage />} />
+          <Route path="/"                       element={<RedirectToSession />} />
+          <Route path="/chat/:sessionId"        element={<ChatPage onSessionsChange={loadSessions} onNew={newChat} />} />
+          <Route path="/dashboard"              element={<DashboardPage />} />
+          <Route path="/history"               element={<HistoryPage />} />
+          <Route path="/settings"              element={<SettingsPage />} />
+          <Route path="/users"                 element={<UsersPage />} />
+          <Route path="/monitoring"            element={<MonitoringPage />} />
+          <Route path="/monitoring/:alertId"   element={<AlertDetailPage />} />
         </Routes>
       </div>
     </div>
@@ -94,6 +99,7 @@ export default function App() {
     <Routes>
       <Route path="/login"  element={<LoginPage />} />
       <Route path="/logout" element={<LogoutPage />} />
+      <Route path="/init"   element={<InitPage />} />
       <Route path="/*" element={
         <ProtectedRoute>
           <AppLayout />

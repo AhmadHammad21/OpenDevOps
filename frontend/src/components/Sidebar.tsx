@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut } from 'lucide-react';
+import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio, Zap } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -92,6 +92,7 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
       <div className="pt-2 shrink-0">
         <NavItem to="/dashboard"    icon={<LayoutDashboard size={14} />} label="Dashboard" />
         <NavItem to={currentChatTo} icon={<MessageSquare   size={14} />} label="Chat"       matchPrefix="/chat" />
+        <NavItem to="/monitoring"   icon={<Radio           size={14} />} label="Monitoring" />
         <NavItem to="/history"      icon={<Terminal        size={14} />} label="Agent logs" />
         <NavItem to="/dashboard"    icon={<GitBranch       size={14} />} label="Pipelines"  disabled />
       </div>
@@ -156,6 +157,7 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
       {/* Bottom nav */}
       <div className="border-t border-gray-200 dark:border-[#27272F] pt-1 shrink-0">
         {isAdmin && <NavItem to="/users" icon={<Users size={14} />} label="Team" />}
+        {isAdmin && <NavItem to="/init"  icon={<Zap   size={14} />} label="Setup Wizard" />}
         <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
       </div>
 

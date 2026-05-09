@@ -61,5 +61,13 @@ class Settings(BaseSettings):
     jwt_secret: str | None = None
     jwt_expire_minutes: int = 1440  # 24 hours
 
+    # SNS / event consumer — leave unset to disable
+    sns_topic_arn: str | None = None
+    event_consumer_enabled: bool = False
+    sqs_queue_url: str | None = None
+
+    # Directory for file-based state (init.json)
+    data_dir: str = "data"
+
 
 settings = Settings()
