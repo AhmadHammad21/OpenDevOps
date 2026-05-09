@@ -23,6 +23,7 @@ class CreateUserBody(BaseModel):
 class SetupBody(BaseModel):
     sns_topic_arn: str = ""
     aws_region: str = "us-east-1"
+    sqs_queue_url: str = ""
 
 
 class SkipBody(BaseModel):
@@ -58,6 +59,8 @@ async def setup(body: SetupBody):
     data = load_init()
     data["sns_topic_arn"] = body.sns_topic_arn
     data["aws_region"] = body.aws_region
+    if body.sqs_queue_url:
+        data["sqs_queue_url"] = body.sqs_queue_url
     save_init(data)
     logger.info("Init setup saved")
     return data

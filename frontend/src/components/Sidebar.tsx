@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio, Zap } from 'lucide-react';
+import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -157,7 +157,6 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
       {/* Bottom nav */}
       <div className="border-t border-gray-200 dark:border-[#27272F] pt-1 shrink-0">
         {isAdmin && <NavItem to="/users" icon={<Users size={14} />} label="Team" />}
-        {isAdmin && <NavItem to="/init"  icon={<Zap   size={14} />} label="Setup Wizard" />}
         <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
       </div>
 

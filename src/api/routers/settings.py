@@ -36,8 +36,6 @@ async def get_settings(
         {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
         {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
         {"key": "JWT_SECRET",          "value": _mask(settings.jwt_secret),                                   "secret": True},
-        {"key": "SNS_TOPIC_ARN",       "value": _mask(settings.sns_topic_arn),                                "secret": True},
-        {"key": "SQS_QUEUE_URL",       "value": _mask(settings.sqs_queue_url),                               "secret": True},
     ]
 
     agent = [

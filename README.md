@@ -10,12 +10,18 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
+- **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
+- **Context enrichment** — before the LLM runs, deterministic boto3 calls fetch facts about the affected resource (alarm details, recent logs, function config, etc.) to reduce tool call count and speed up investigations
+- **SNS alert delivery** — after each event-driven investigation, findings are published to a configured SNS topic as structured JSON; fires alongside Slack so both channels receive results simultaneously
+- **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level, affected service, root cause summary, SNS status; each alert has a detail page with an **Investigate** button that opens a pre-seeded chat — see [docs/monitoring.md](docs/monitoring.md)
+- **AWS Configuration settings tab** — admin-only editable tab in Settings for SNS Topic ARN, SQS Queue URL, and AWS Region; shared org-wide (server-side `init.json`); includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
-  - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button
+  - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button; supports `?prompt=` deeplink for pre-seeded investigations from the Monitoring dashboard
   - **Session history sidebar** — lists all past conversations; click any to resume with full tool call inspector and cost card restored; new chat and delete (soft) buttons
+  - **Monitoring page** — live incident feed from event-driven detection; alert detail with investigate deeplink
   - **Dashboard** — session counts, tool call stats, cost/latency, context saved, activity chart, service breakdown, root cause distribution, recent sessions
   - **History page** — keyword search across all past sessions
-  - **Settings page** — real-time read-only view of active configuration (env vars + agent config) fetched from the backend
+  - **Settings page** — AWS Configuration (editable, admin-only), Environment (read-only env vars), Agent config, Integrations
   - **Team page** — admin-only user management: add, remove, and change roles
 - **Auth & RBAC** — optional password-based auth with `admin` and `user` roles; JWT tokens; first registered user auto-becomes admin; disabled by default (set `JWT_SECRET` to enable) — see [docs/auth.md](docs/auth.md)
 - **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`docs/databases.md`](docs/databases.md)
@@ -210,6 +216,10 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 | `SUMMARIZATION_KEEP_CHARS` | `20000` | Recent chars to preserve intact during compaction (~5K tokens) |
 | `JWT_SECRET` | none | Secret key for JWT signing; leave unset to disable auth entirely |
 | `JWT_EXPIRE_MINUTES` | `1440` | JWT token lifetime in minutes (default 24 h) |
+| `SNS_TOPIC_ARN` | none | SNS topic to publish investigation findings to after each event-driven run |
+| `SQS_QUEUE_URL` | none | SQS queue URL for the event consumer to poll; also set via Settings → AWS Configuration |
+| `EVENT_CONSUMER_ENABLED` | `false` | Explicitly enable the SQS event consumer (also auto-starts if `SQS_QUEUE_URL` is set) |
+| `DATA_DIR` | `data` | Directory for server-side state files (`init.json`) |
 
 ## TODO / Roadmap
 
@@ -238,6 +248,11 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [ ] **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
 - [x] **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
 - [x] **Slack notifications** — reactive: posts a color-coded Block Kit message to a Slack webhook after every investigation; proactive: background poller checks CloudWatch alarms and Lambda error rates on a configurable interval, auto-investigates new anomalies, and posts findings without any human trigger; set `SLACK_WEBHOOK_URL` and `POLL_INTERVAL_MINUTES` in `.env` to enable
+- [x] **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules covering CloudWatch alarms, ECS, Lambda, RDS, EC2, CodePipeline, and AWS Health; runs in parallel with the metric poller; see [docs/event_detection.md](docs/event_detection.md)
+- [x] **SNS alert delivery** — findings published to SNS after each event-driven investigation; fires alongside Slack; structured JSON payload for easy downstream processing
+- [x] **Context enrichment** — deterministic boto3 calls per event type before LLM runs; reduces tool call count by front-loading relevant resource facts
+- [x] **Monitoring dashboard** — live incident feed, per-service health summary, alert detail page, investigate deeplink to pre-seeded chat; see [docs/monitoring.md](docs/monitoring.md)
+- [x] **AWS Configuration settings tab** — admin-only editable tab for SNS/SQS/region config; shared org-wide via server-side `init.json`; inline IAM permission checker
 
 ### Later
 - [ ] **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage

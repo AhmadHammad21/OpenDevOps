@@ -1,45 +1,120 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Eye, EyeOff, Key } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
 
-interface EnvVar  { key: string; value: string; secret: boolean }
+interface EnvVar   { key: string; value: string; secret: boolean }
 interface AgentVar { key: string; label: string; value: string; hint: string }
 interface SettingsData { env: EnvVar[]; agent: AgentVar[] }
+interface PermResult   { passed: boolean | null; error: string | null }
 
-type Tab = 'env' | 'agent' | 'integrations';
+type Tab = 'env' | 'agent' | 'integrations' | 'aws';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'env',          label: 'Environment' },
-  { id: 'agent',        label: 'Agent config' },
-  { id: 'integrations', label: 'Integrations' },
-];
+const SVC: Record<string, { label: string; desc: string }> = {
+  cloudwatch: { label: 'CloudWatch',  desc: 'Alarms, metrics, logs' },
+  cloudtrail: { label: 'CloudTrail',  desc: 'API event history' },
+  ecs:        { label: 'ECS',         desc: 'Container services' },
+  lambda:     { label: 'Lambda',      desc: 'Serverless functions' },
+  ec2:        { label: 'EC2',         desc: 'Instance status' },
+  rds:        { label: 'RDS',         desc: 'Database events' },
+  iam:        { label: 'IAM / STS',   desc: 'Identity & access' },
+  sns:        { label: 'SNS',         desc: 'Alert publishing' },
+  sqs:        { label: 'SQS',         desc: 'Event queue' },
+  events:     { label: 'EventBridge', desc: 'Event rules' },
+};
 
 const INTEGRATIONS = [
-  { name: 'GitHub',    desc: 'Connect your repositories',  connected: false },
-  { name: 'Slack',     desc: 'Get incident notifications', connected: false },
-  { name: 'PagerDuty', desc: 'Alert on failures',          connected: false },
-  { name: 'Datadog',   desc: 'Send metrics and traces',    connected: false },
+  { name: 'GitHub',    desc: 'Connect your repositories',  icon: '🐱' },
+  { name: 'Slack',     desc: 'Get incident notifications', icon: '💬' },
+  { name: 'PagerDuty', desc: 'Alert on failures',          icon: '📟' },
+  { name: 'Datadog',   desc: 'Send metrics and traces',    icon: '📊' },
 ];
 
+const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#818CF8]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#3F3F47]';
+
 export default function SettingsPage() {
-  const [tab, setTab]     = useState<Tab>('env');
+  const { isAdmin }   = useAuth();
+  const [tab, setTab] = useState<Tab>(isAdmin ? 'aws' : 'env');
   const [shown, setShown] = useState<Record<string, boolean>>({});
   const [data, setData]   = useState<SettingsData | null>(null);
+
+  // AWS tab state
+  const [snsArn,      setSnsArn]      = useState('');
+  const [sqsUrl,      setSqsUrl]      = useState('');
+  const [awsRegion,   setAwsRegion]   = useState('');
+  const [awsSaving,   setAwsSaving]   = useState(false);
+  const [awsChecking, setAwsChecking] = useState(false);
+  const [perms,       setPerms]       = useState<Record<string, PermResult>>({});
+
+  const TABS: { id: Tab; label: string }[] = [
+    ...(isAdmin ? [{ id: 'aws' as Tab, label: 'AWS Configuration' }] : []),
+    { id: 'env',          label: 'Environment' },
+    { id: 'agent',        label: 'Agent config' },
+    { id: 'integrations', label: 'Integrations' },
+  ];
 
   useEffect(() => {
     apiFetch('/settings')
       .then(r => r.json())
       .then(d => setData(d as SettingsData))
-      .catch(() => { /* silently ignore — show nothing */ });
+      .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (tab !== 'aws') return;
+    apiFetch('/api/init/status')
+      .then(r => r.json())
+      .then(d => {
+        setSnsArn(d.sns_topic_arn || '');
+        setSqsUrl(d.sqs_queue_url || '');
+        setAwsRegion(d.aws_region || '');
+      })
+      .catch(() => {});
+  }, [tab]);
+
   const toggleShow = (k: string) => setShown(p => ({ ...p, [k]: !p[k] }));
+
+  const saveAwsConfig = async () => {
+    setAwsSaving(true);
+    try {
+      await apiFetch('/api/init/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sns_topic_arn: snsArn, sqs_queue_url: sqsUrl, aws_region: awsRegion }),
+      });
+      toast.success('AWS configuration saved');
+    } catch {
+      toast.error('Failed to save configuration');
+    } finally {
+      setAwsSaving(false);
+    }
+  };
+
+  const checkPerms = async () => {
+    setAwsChecking(true);
+    try {
+      const r = await apiFetch('/api/init/check-permissions', { method: 'POST' });
+      const d = await r.json() as { permissions: Record<string, PermResult> };
+      setPerms(d.permissions);
+    } catch {
+      toast.error('Permission check failed');
+    } finally {
+      setAwsChecking(false);
+    }
+  };
+
+  const passed = Object.values(perms).filter(r => r.passed).length;
+  const total  = Object.keys(perms).length;
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#0F0F12] min-h-0">
       <div className="bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7 py-[14px]">
         <div className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">Settings</div>
-        <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">Read-only view of your agent configuration. Edit values in your <code className="font-mono text-[12px] bg-gray-100 dark:bg-[#27272F] px-1 rounded">.env</code> file and restart the server to apply changes.</div>
+        <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">
+          View your agent configuration. Edit <code className="font-mono text-[12px] bg-gray-100 dark:bg-[#27272F] px-1 rounded">.env</code> and restart to apply environment changes.
+        </div>
       </div>
 
       <div className="flex bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7">
@@ -58,6 +133,7 @@ export default function SettingsPage() {
 
       <div className="px-7 py-6 max-w-[760px]">
 
+        {/* Environment tab */}
         {tab === 'env' && (
           <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
@@ -88,6 +164,7 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Agent config tab */}
         {tab === 'agent' && (
           <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
@@ -107,13 +184,14 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Integrations tab */}
         {tab === 'integrations' && (
           <>
             <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-4">
               {INTEGRATIONS.map((intg, i) => (
                 <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
                   <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0">
-                    <span className="text-sm">{intg.name === 'Slack' ? '💬' : intg.name === 'GitHub' ? '🐱' : intg.name === 'PagerDuty' ? '📟' : '📊'}</span>
+                    <span className="text-sm">{intg.icon}</span>
                   </div>
                   <div className="flex-1">
                     <div className="text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9]">{intg.name}</div>
@@ -131,6 +209,109 @@ export default function SettingsPage() {
             </a>
           </>
         )}
+
+        {/* AWS Configuration tab */}
+        {tab === 'aws' && (
+          <div className="space-y-5">
+
+            {/* Config card */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Event Detection</span>
+                <button
+                  onClick={saveAwsConfig}
+                  disabled={awsSaving}
+                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md transition-colors"
+                >
+                  {awsSaving ? <Loader2 size={11} className="animate-spin" /> : 'Save'}
+                </button>
+              </div>
+
+              <div className="divide-y divide-gray-100 dark:divide-[#27272F]">
+                {[
+                  { label: 'SNS Topic ARN', hint: 'Alerts are published here after each investigation', value: snsArn, set: setSnsArn, placeholder: 'arn:aws:sns:us-east-1:123456789012:alerts' },
+                  { label: 'SQS Queue URL', hint: 'Event consumer polls this queue for CloudWatch alarms', value: sqsUrl, set: setSqsUrl, placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789012/opendevops' },
+                  { label: 'AWS Region',    hint: 'Region for SNS, SQS, and EventBridge resources', value: awsRegion, set: setAwsRegion, placeholder: 'us-east-1' },
+                ].map(({ label, hint, value, set, placeholder }) => (
+                  <div key={label} className="flex items-start gap-4 px-4 py-[11px]">
+                    <div className="flex-[0_0_200px] pt-0.5">
+                      <div className="text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{label}</div>
+                      <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-0.5 leading-relaxed">{hint}</div>
+                    </div>
+                    <input
+                      value={value}
+                      onChange={e => set(e.target.value)}
+                      placeholder={placeholder}
+                      className={inputCls}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Permissions card */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">AWS Permissions</span>
+                <button
+                  onClick={checkPerms}
+                  disabled={awsChecking}
+                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 text-gray-600 dark:text-[#94A3B8] border border-gray-200 dark:border-[#27272F] rounded-md hover:bg-gray-50 dark:hover:bg-[#27272F] disabled:opacity-50 transition-colors"
+                >
+                  {awsChecking
+                    ? <><Loader2 size={11} className="animate-spin" /> Checking…</>
+                    : <><Shield size={11} /> {total > 0 ? 'Re-check' : 'Run checks'}</>
+                  }
+                </button>
+              </div>
+
+              {total === 0 && !awsChecking && (
+                <div className="px-4 py-5 text-[13px] text-gray-400 dark:text-[#64748B] text-center">
+                  Click <span className="font-medium">"Run checks"</span> to verify IAM permissions for each AWS service.
+                </div>
+              )}
+
+              {total > 0 && (
+                <>
+                  <div className="px-4 py-[9px] border-b border-gray-100 dark:border-[#27272F] flex items-center gap-3">
+                    <div className="flex-1 h-1.5 bg-gray-100 dark:bg-[#27272F] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                        style={{ width: `${(passed / total) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] font-semibold text-gray-500 dark:text-[#64748B] tabular-nums">{passed}/{total} passed</span>
+                  </div>
+
+                  {Object.entries(perms).map(([svc, r], i) => (
+                    <div key={svc} className={cn(
+                      'flex items-center gap-3 px-4 py-[9px]',
+                      i < total - 1 ? 'border-b border-gray-100 dark:border-[#27272F]' : ''
+                    )}>
+                      <div className="shrink-0">
+                        {r.passed
+                          ? <CheckCircle size={14} className="text-emerald-500" />
+                          : r.passed === null
+                            ? <AlertTriangle size={14} className="text-amber-500" />
+                            : <XCircle size={14} className="text-red-500" />
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{SVC[svc]?.label || svc}</span>
+                        <span className="text-[12px] text-gray-400 dark:text-[#64748B] ml-2">{SVC[svc]?.desc}</span>
+                        {!r.passed && r.error && (
+                          <p className="text-[11px] text-red-500 dark:text-red-400 truncate mt-0.5">{r.error}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+          </div>
+        )}
+
       </div>
     </div>
   );
