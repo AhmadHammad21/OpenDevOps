@@ -70,16 +70,45 @@ See [`dashboard.md`](dashboard.md) for full details on each panel.
 
 ## Settings page
 
-Currently shows the active configuration read from the backend:
+Shows the active configuration fetched in real time from `GET /settings`. Three tabs:
 
-- Active LLM model
-- Storage backend type (memory / sqlite / postgres)
-- AWS region
-- Tool response cap limit
-- Summarization settings
+**Environment** — all env vars with their live values. Sensitive fields (`LLM_API_KEY`,
+`DATABASE_URL`, `JWT_SECRET`, etc.) are masked by default; click the eye icon to reveal
+the truncated preview. Non-sensitive fields (`LLM_MODEL`, `AWS_REGION`, etc.) are shown
+as-is.
 
-Settings are read-only in the UI — change them by editing `.env` and restarting
-the server.
+**Agent config** — agent behaviour settings: max tool calls, timeout, tool response cap,
+summarization threshold, poll interval.
+
+**Integrations** — Slack, GitHub, PagerDuty, Datadog connection stubs (not yet wired up).
+
+Settings are read-only — change values by editing `.env` and restarting the server.
+
+---
+
+## Login page
+
+Shown when `JWT_SECRET` is set in `.env`. Accessible at `/login`.
+
+- **Register tab** — create the first account (auto-admin) or subsequent accounts
+- **Login tab** — email + password; stores the JWT in `localStorage` on success
+
+If auth is disabled (`JWT_SECRET` unset), the login page is skipped entirely and all
+users get full access.
+
+---
+
+## Team page
+
+Admin-only. Accessible from the sidebar (hidden for `user` role). Shows all registered
+users in a table with name, email, role, and created date.
+
+- **Add user** — create a new user with email, name, password, and role
+- **Change role** — inline dropdown to promote/demote between `admin` and `user`
+- **Delete user** — removes the account immediately
+
+Non-admins who navigate to `/users` see an "Admin access required" message instead of
+the table.
 
 ---
 
