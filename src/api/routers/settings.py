@@ -25,15 +25,17 @@ async def get_settings(
     _user: Annotated[dict | None, Depends(get_current_user)],
 ) -> dict:
     env = [
-        {"key": "LLM_MODEL",        "value": settings.llm_model,                          "secret": False},
-        {"key": "LLM_API_BASE",     "value": settings.llm_api_base or "(not set)",        "secret": False},
-        {"key": "LLM_API_KEY",      "value": _mask(settings.llm_api_key),                 "secret": True},
-        {"key": "AWS_REGION",       "value": settings.aws_region,                         "secret": False},
-        {"key": "AWS_PROFILE",      "value": settings.aws_profile or "(not set)",         "secret": False},
-        {"key": "CHECKPOINT_BACKEND","value": settings.checkpoint_backend,                "secret": False},
-        {"key": "DATABASE_URL",     "value": _mask(settings.database_url),                "secret": True},
-        {"key": "SLACK_WEBHOOK_URL","value": _mask(settings.slack_webhook_url),           "secret": True},
-        {"key": "JWT_SECRET",       "value": _mask(settings.jwt_secret),                  "secret": True},
+        {"key": "LLM_MODEL",           "value": settings.llm_model,                                           "secret": False},
+        {"key": "OPENROUTER_API_KEY",  "value": _mask(settings.openrouter_api_key or None),                   "secret": True},
+        {"key": "OPENROUTER_BASE_URL", "value": settings.openrouter_base_url or "(not set)",                  "secret": False},
+        {"key": "LLM_API_KEY",         "value": _mask(settings.llm_api_key),                                  "secret": True},
+        {"key": "LLM_API_BASE",        "value": settings.llm_api_base or "(not set)",                         "secret": False},
+        {"key": "AWS_REGION",          "value": settings.aws_region,                                          "secret": False},
+        {"key": "AWS_PROFILE",         "value": settings.aws_profile or "(not set)",                          "secret": False},
+        {"key": "CHECKPOINT_BACKEND",  "value": settings.checkpoint_backend,                                  "secret": False},
+        {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
+        {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
+        {"key": "JWT_SECRET",          "value": _mask(settings.jwt_secret),                                   "secret": True},
     ]
 
     agent = [
