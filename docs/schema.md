@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 13+. Run `migrations/001_initial.sql` to create all tables.
+PostgreSQL 13+. Run migrations in order from `migrations/` to set up the schema.
 
 LangGraph's own tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) are
 created automatically by `AsyncPostgresSaver.setup()` on startup — they live in the same
@@ -8,55 +8,45 @@ database but are not listed here.
 
 ---
 
+## Running migrations
+
+```bash
+psql $DATABASE_URL -f migrations/001_initial.sql
+psql $DATABASE_URL -f migrations/002_soft_delete.sql
+psql $DATABASE_URL -f migrations/003_usage_events_metadata.sql
+psql $DATABASE_URL -f migrations/004_users_rbac.sql
+```
+
+All migrations are idempotent (`IF NOT EXISTS`, `IF column does not already exist`).
+
+---
+
 ## Tables
 
-### `organizations`
-Top-level tenant. A single-user install can have one default org.
+### `users`
+User accounts with password-based auth and RBAC roles.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID PK | `gen_random_uuid()` |
-| `name` | TEXT | Display name |
-| `slug` | TEXT UNIQUE | URL-safe identifier |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
-
----
-
-### `users`
-User accounts, scoped to an org.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | UUID PK | |
-| `org_id` | UUID FK → organizations | Cascade delete |
+| `org_id` | UUID FK → organizations | Nullable — unused in OSS single-tenant |
 | `email` | TEXT UNIQUE | |
 | `name` | TEXT | |
+| `password_hash` | TEXT | bcrypt hash. NULL for pre-RBAC rows |
+| `role` | TEXT | `admin` or `user`. Default `user` |
 | `created_at` | TIMESTAMPTZ | |
 | `updated_at` | TIMESTAMPTZ | |
 
----
+**Constraint:** `role IN ('admin', 'user')`
 
-### `aws_profiles`
-Named AWS connection configs per org. Enables multi-account support (Phase 3).
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | UUID PK | |
-| `org_id` | UUID FK → organizations | |
-| `name` | TEXT | Unique per org |
-| `aws_region` | TEXT | Default `us-east-1` |
-| `aws_profile` | TEXT | Named profile in `~/.aws/credentials` |
-| `description` | TEXT | |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
+**First registered user** (first row with a `password_hash`) automatically gets `role = 'admin'`.
 
 ---
 
 ### `sessions`
 One session = one LangGraph `thread_id`. The `id` column **is** the `thread_id` passed to LangGraph.
 
-`user_id` and `org_id` are nullable so the app works before auth is wired up.
+`user_id` and `org_id` are nullable so the app works with auth disabled.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -65,12 +55,14 @@ One session = one LangGraph `thread_id`. The `id` column **is** the `thread_id` 
 | `org_id` | UUID FK → organizations | Nullable |
 | `aws_profile_id` | UUID FK → aws_profiles | Nullable |
 | `title` | TEXT | Auto-set from first 80 chars of first user message |
-| `model` | TEXT | OpenRouter model ID used |
+| `model` | TEXT | LiteLLM model ID used |
 | `aws_region` | TEXT | AWS region at time of session |
+| `is_deleted` | BOOLEAN | Soft delete — `false` by default |
+| `deleted_at` | TIMESTAMPTZ | Set when soft-deleted |
 | `created_at` | TIMESTAMPTZ | |
 | `last_active_at` | TIMESTAMPTZ | Updated on every agent turn |
 
-**Indexes:** `user_id`, `org_id`, `last_active_at DESC`
+**Indexes:** `user_id`, `org_id`, `last_active_at DESC`, `is_deleted` (partial, where false)
 
 ---
 
@@ -83,7 +75,7 @@ Every user and assistant message in a session, in order.
 | `session_id` | UUID FK → sessions | Cascade delete |
 | `role` | TEXT | `user` or `assistant` |
 | `content` | TEXT | Full message text |
-| `metadata` | JSONB | LangChain `run_id`, `tags`, `RunnableConfig` extras, any runtime context |
+| `metadata` | JSONB | LangChain `run_id`, `tags`, `RunnableConfig` extras |
 | `created_at` | TIMESTAMPTZ | |
 
 **Indexes:** `(session_id, created_at)`
@@ -91,7 +83,7 @@ Every user and assistant message in a session, in order.
 ---
 
 ### `tool_calls`
-Every AWS tool invocation per agent turn. Multiple rows per assistant message.
+Every AWS tool invocation per agent turn.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -116,71 +108,50 @@ One row per completed agent turn: token counts, cost, latency.
 |---|---|---|
 | `id` | UUID PK | |
 | `session_id` | UUID FK → sessions | |
-| `message_id` | UUID FK → messages | Links to the assistant message |
-| `model` | TEXT | OpenRouter model ID |
+| `message_id` | UUID FK → messages | |
+| `model` | TEXT | LiteLLM model ID |
 | `input_tokens` | INTEGER | |
 | `output_tokens` | INTEGER | |
-| `cost_usd` | NUMERIC(14,8) | Computed from pricing map |
+| `cost_usd` | NUMERIC(14,8) | Computed from LiteLLM pricing map |
 | `latency_ms` | INTEGER | Wall-clock time for the full turn |
 | `tool_call_count` | INTEGER | Number of tool calls in this turn |
+| `metadata` | JSONB | Per-event context (e.g. `summarization: true`, `chars_removed`) |
 | `created_at` | TIMESTAMPTZ | |
 
 **Indexes:** `session_id`, `created_at DESC`
 
 ---
 
-### `findings`
-Structured root-cause analysis extracted from the agent's final answer (Phase 2).
+### `organizations` *(future — Phase 3)*
+Top-level tenant for multi-org / SaaS support. Table exists in the schema but is not used by the application in the current OSS release.
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | UUID PK | |
-| `session_id` | UUID FK → sessions | |
-| `message_id` | UUID FK → messages | |
-| `root_cause_category` | TEXT | `SYSTEM_CHANGE`, `INPUT_ANOMALY`, `RESOURCE_LIMIT`, `COMPONENT_FAILURE`, `DEPENDENCY_ISSUE`, `UNKNOWN` |
-| `root_cause_summary` | TEXT | |
-| `confidence` | TEXT | `HIGH`, `MEDIUM`, `LOW` |
-| `services_affected` | TEXT[] | |
-| `mitigation_steps` | TEXT[] | |
-| `evidence` | TEXT[] | |
-| `raw_json` | JSONB | Full structured JSON block from agent |
-| `created_at` | TIMESTAMPTZ | |
+### `aws_profiles` *(future — Phase 3)*
+Per-org named AWS connection configs for multi-account support. Table exists but not yet wired up.
 
-**Indexes:** `session_id`, `root_cause_category`
+### `findings` *(future — Phase 2)*
+Structured root-cause analysis rows extracted from agent final answers. Table exists but not yet populated.
 
----
-
-### `api_keys` *(Phase 3)*
-Hashed API keys for programmatic/CLI access.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | UUID PK | |
-| `org_id` | UUID FK → organizations | |
-| `user_id` | UUID FK → users | Nullable |
-| `name` | TEXT | Human label |
-| `key_hash` | TEXT UNIQUE | bcrypt/sha256 hash — plaintext never stored |
-| `last_used_at` | TIMESTAMPTZ | |
-| `expires_at` | TIMESTAMPTZ | Nullable = no expiry |
-| `created_at` | TIMESTAMPTZ | |
+### `api_keys` *(future — Phase 3)*
+Hashed API keys for programmatic access. Table exists but not yet implemented.
 
 ---
 
 ## Entity Relationship
 
 ```
-organizations
-    ├── users
-    ├── aws_profiles
-    └── sessions ──── messages ──── tool_calls
-                  │            └── usage_events
-                  └── findings
+users
+sessions ──── messages ──── tool_calls
+         └─────────────── usage_events
 ```
+
+---
 
 ## Key Design Decisions
 
 - `sessions.id` is the LangGraph `thread_id` — no join needed to link conversation history to app data.
-- `messages.metadata JSONB` stores arbitrary LangChain runtime context (run ID, tags, RunnableConfig extras) without schema changes.
-- `tool_calls.error` is a separate TEXT column (not just checking `result.error`) so you can query failed calls with a simple `WHERE error IS NOT NULL`.
-- `usage_events.cost_usd` is computed by the app from the pricing map — not trusted from the API.
-- `user_id` / `org_id` on sessions are nullable intentionally: the app is fully functional before any auth system is built.
+- `messages.metadata JSONB` stores arbitrary LangChain runtime context without schema changes.
+- `tool_calls.error` is a separate TEXT column (not just checking `result.error`) so failed calls are queryable with `WHERE error IS NOT NULL`.
+- `usage_events.cost_usd` is computed by the app from the LiteLLM pricing map — not trusted from the API.
+- `usage_events.metadata` tracks per-turn context like whether the turn triggered conversation summarization.
+- `user_id` / `org_id` on sessions are nullable intentionally: the app works without auth (`JWT_SECRET` unset).
+- `password_hash` on users is nullable: pre-RBAC rows and future OAuth users won't have one.

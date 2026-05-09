@@ -153,11 +153,8 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
         )}
       </div>
 
-      {/* Admin section */}
-      <div className="border-t border-gray-200 dark:border-[#27272F] shrink-0">
-        <div className="px-3.5 pt-2 pb-1">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.09em]">Admin</span>
-        </div>
+      {/* Bottom nav */}
+      <div className="border-t border-gray-200 dark:border-[#27272F] pt-1 shrink-0">
         {isAdmin && <NavItem to="/users" icon={<Users size={14} />} label="Team" />}
         <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
       </div>
