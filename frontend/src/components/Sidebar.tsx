@@ -86,6 +86,9 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
           </svg>
         </div>
         <span className="text-[14px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">OpenDevOps</span>
+        <span className="text-[10px] text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B] border border-indigo-200 dark:border-[#3730A3] rounded px-1.5 py-px font-semibold tracking-[0.04em]">
+          BETA
+        </span>
       </div>
 
       {/* Primary nav */}

@@ -3,6 +3,7 @@ import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Lo
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
 
 interface EnvVar   { key: string; value: string; secret: boolean }
@@ -10,7 +11,7 @@ interface AgentVar { key: string; label: string; value: string; hint: string }
 interface SettingsData { env: EnvVar[]; agent: AgentVar[] }
 interface PermResult   { passed: boolean | null; error: string | null }
 
-type Tab = 'env' | 'agent' | 'integrations' | 'aws';
+type Tab = 'env' | 'agent' | 'integrations' | 'aws' | 'preferences';
 
 const SVC: Record<string, { label: string; desc: string }> = {
   cloudwatch: { label: 'CloudWatch',  desc: 'Alarms, metrics, logs' },
@@ -36,6 +37,7 @@ const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1]
 
 export default function SettingsPage() {
   const { isAdmin }   = useAuth();
+  const { theme, toggle } = useTheme();
   const [tab, setTab] = useState<Tab>(isAdmin ? 'aws' : 'env');
   const [shown, setShown] = useState<Record<string, boolean>>({});
   const [data, setData]   = useState<SettingsData | null>(null);
@@ -53,6 +55,7 @@ export default function SettingsPage() {
     { id: 'env',          label: 'Environment' },
     { id: 'agent',        label: 'Agent config' },
     { id: 'integrations', label: 'Integrations' },
+    { id: 'preferences',  label: 'Preferences' },
   ];
 
   useEffect(() => {
@@ -309,6 +312,34 @@ export default function SettingsPage() {
               )}
             </div>
 
+          </div>
+        )}
+
+        {/* Preferences tab */}
+        {tab === 'preferences' && (
+          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
+              <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Appearance</span>
+            </div>
+            <div className="flex items-center justify-between px-4 py-[14px]">
+              <div>
+                <div className="text-[13px] font-medium text-gray-700 dark:text-[#CBD5E1]">Dark mode</div>
+                <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-0.5">Switch between light and dark theme</div>
+              </div>
+              <button
+                onClick={toggle}
+                title="Toggle dark mode"
+                className="relative w-9 h-5 rounded-full shrink-0 transition-colors duration-200"
+                style={{ background: theme === 'dark' ? '#818CF8' : '#E5E7EB' }}
+              >
+                <span
+                  className="absolute top-[2px] w-4 h-4 rounded-full bg-white flex items-center justify-center text-[9px] transition-all duration-200"
+                  style={{ left: theme === 'dark' ? '18px' : '2px' }}
+                >
+                  {theme === 'dark' ? '🌙' : '☀️'}
+                </span>
+              </button>
+            </div>
           </div>
         )}
 

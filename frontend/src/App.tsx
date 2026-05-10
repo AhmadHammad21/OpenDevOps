@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useMatch } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import Header from './components/Header';
 import ChatPage from './pages/ChatPage';
 import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
@@ -78,7 +77,6 @@ function AppLayout() {
         onDelete={deleteSession}
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-        <Header />
         <Routes>
           <Route path="/"                       element={<RedirectToSession />} />
           <Route path="/chat/:sessionId"        element={<ChatPage onSessionsChange={loadSessions} onNew={newChat} />} />
