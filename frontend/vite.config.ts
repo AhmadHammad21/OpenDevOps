@@ -18,7 +18,7 @@ export default defineConfig({
       '/auth':            'http://localhost:8000',
       '/api/users':       'http://localhost:8000',
       '/api/settings':    'http://localhost:8000',
-      '/history':         'http://localhost:8000',
+      '/api/history':      'http://localhost:8000',
       '/debug':           'http://localhost:8000',
       '/api/monitoring':  'http://localhost:8000',
       '/api/init':        'http://localhost:8000',

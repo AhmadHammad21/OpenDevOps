@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from agent.db import db
 
-router = APIRouter(prefix="/history", tags=["history"])
+router = APIRouter(prefix="/api/history", tags=["history"])
 
 
 @router.get("")

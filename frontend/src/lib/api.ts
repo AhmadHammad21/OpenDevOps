@@ -30,13 +30,13 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function fetchHistory(days = 30): Promise<HistoryStats> {
-  const res = await apiFetch(`/history?days=${days}`);
+  const res = await apiFetch(`/api/history?days=${days}`);
   if (!res.ok) throw new Error('Failed to load history');
   return res.json() as Promise<HistoryStats>;
 }
 
 export async function searchHistory(query: string): Promise<SearchResult[]> {
-  const res = await apiFetch(`/history/search?q=${encodeURIComponent(query)}&limit=10`);
+  const res = await apiFetch(`/api/history/search?q=${encodeURIComponent(query)}&limit=10`);
   if (!res.ok) throw new Error('Failed to search history');
   const data = await res.json() as { results: SearchResult[] };
   return data.results;
