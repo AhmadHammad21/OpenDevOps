@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['"Geist Mono"', '"SF Mono"', '"Fira Code"', 'monospace'],
+        sans: ['"Inter Variable"', 'Inter', '"SF Pro Display"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', '"Open Sans"', '"Helvetica Neue"', 'sans-serif'],
+        mono: ['"SF Mono"', '"Fira Code"', '"Cascadia Code"', 'Consolas', 'monospace'],
       },
     },
   },

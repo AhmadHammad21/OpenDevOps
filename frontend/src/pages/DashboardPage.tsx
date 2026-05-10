@@ -289,7 +289,7 @@ export default function DashboardPage() {
                     className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0 group"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[13px] text-gray-700 dark:text-[#CBD5E1] truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors font-medium">
+                      <span className="text-[14px] text-gray-700 dark:text-[#CBD5E1] truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors font-medium">
                         {s.title ?? 'Untitled'}
                       </span>
                       <span className="text-[10px] text-gray-400 dark:text-[#64748B] shrink-0 flex items-center gap-1">

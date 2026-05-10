@@ -109,7 +109,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
             <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
         </div>
-        <span className="text-[14px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">OpenDevOps</span>
+        <span className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">OpenDevOps</span>
         <span className="text-[10px] text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B] border border-indigo-200 dark:border-[#3730A3] rounded px-1.5 py-px font-semibold tracking-[0.04em]">
           BETA
         </span>
@@ -241,10 +241,10 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
         </div>
         <button
           onClick={logout}
-          title="Sign out"
-          className="p-1 rounded text-gray-400 dark:text-[#64748B] hover:text-red-500 dark:hover:text-[#F87171] transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded text-[13px] font-medium text-gray-400 dark:text-[#64748B] hover:text-red-500 dark:hover:text-[#F87171] transition-colors shrink-0"
         >
-          <LogOut size={13} />
+          <LogOut size={14} />
+          <span>Sign out</span>
         </button>
       </div>
     </aside>

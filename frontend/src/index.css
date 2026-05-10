@@ -36,7 +36,7 @@
 
 /* Prose for agent messages — light theme */
 .prose-chat {
-  @apply prose prose-sm max-w-none;
+  @apply prose prose-base max-w-none;
   @apply prose-p:my-1.5 prose-headings:font-semibold prose-headings:text-gray-900;
   @apply prose-code:text-indigo-600 prose-code:bg-indigo-50 prose-code:border prose-code:border-indigo-100 prose-code:rounded prose-code:px-1 prose-code:py-px prose-code:text-[12px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none;
   @apply prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200 prose-pre:text-xs prose-pre:font-mono;

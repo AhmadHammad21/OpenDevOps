@@ -31,7 +31,7 @@ export default function EmptyState({ onChip }: Props) {
           <button
             key={chip}
             onClick={() => onChip(chip)}
-            className="text-[12px] px-3 py-[5px] bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-full text-gray-500 dark:text-[#94A3B8] hover:text-indigo-500 dark:hover:text-[#818CF8] hover:border-indigo-200 dark:hover:border-[#3730A3] hover:bg-indigo-50 dark:hover:bg-[#1E1B4B] transition-all cursor-pointer"
+            className="text-[14px] px-4 py-2 bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-full text-gray-500 dark:text-[#94A3B8] hover:text-indigo-500 dark:hover:text-[#818CF8] hover:border-indigo-200 dark:hover:border-[#3730A3] hover:bg-indigo-50 dark:hover:bg-[#1E1B4B] transition-all cursor-pointer"
           >
             {chip}
           </button>
