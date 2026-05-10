@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import os
+
 from fastapi import APIRouter, Depends
 
 from api.auth import get_current_user
@@ -30,8 +32,10 @@ async def get_settings(
         {"key": "OPENROUTER_BASE_URL", "value": settings.openrouter_base_url or "(not set)",                  "secret": False},
         {"key": "LLM_API_KEY",         "value": _mask(settings.llm_api_key),                                  "secret": True},
         {"key": "LLM_API_BASE",        "value": settings.llm_api_base or "(not set)",                         "secret": False},
-        {"key": "AWS_REGION",          "value": settings.aws_region,                                          "secret": False},
-        {"key": "AWS_PROFILE",         "value": settings.aws_profile or "(not set)",                          "secret": False},
+        {"key": "AWS_REGION",             "value": settings.aws_region,                                          "secret": False},
+        {"key": "AWS_PROFILE",            "value": settings.aws_profile or "(not set)",                          "secret": False},
+        {"key": "AWS_ACCESS_KEY_ID",      "value": _mask(os.environ.get("AWS_ACCESS_KEY_ID")),                  "secret": True},
+        {"key": "AWS_SECRET_ACCESS_KEY",  "value": _mask(os.environ.get("AWS_SECRET_ACCESS_KEY")),              "secret": True},
         {"key": "CHECKPOINT_BACKEND",  "value": settings.checkpoint_backend,                                  "secret": False},
         {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
         {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
