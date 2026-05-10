@@ -45,13 +45,13 @@ export async function searchHistory(query: string): Promise<SearchResult[]> {
 // ── User management (admin only) ─────────────────────────────────────────
 
 export async function fetchUsers(): Promise<User[]> {
-  const res = await apiFetch('/users');
+  const res = await apiFetch('/api/users');
   if (!res.ok) throw new Error('Failed to load users');
   return res.json() as Promise<User[]>;
 }
 
 export async function createUser(data: { email: string; name: string; password: string; role: string }): Promise<User> {
-  const res = await apiFetch('/users', {
+  const res = await apiFetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -64,7 +64,7 @@ export async function createUser(data: { email: string; name: string; password: 
 }
 
 export async function updateUser(id: string, data: { name?: string; role?: string; password?: string }): Promise<User> {
-  const res = await apiFetch(`/users/${id}`, {
+  const res = await apiFetch(`/api/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -77,7 +77,7 @@ export async function updateUser(id: string, data: { name?: string; role?: strin
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  const res = await apiFetch(`/users/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete user');
 }
 

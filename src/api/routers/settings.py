@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from api.auth import get_current_user
 from config import settings
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 def _mask(value: str | None, show_prefix: int = 4) -> str:

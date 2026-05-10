@@ -10,7 +10,7 @@ from agent.db import db
 from api.auth import hash_password, require_admin
 from models.users import UserCreate, UserOut, UserUpdate
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 @router.get("", response_model=list[UserOut])

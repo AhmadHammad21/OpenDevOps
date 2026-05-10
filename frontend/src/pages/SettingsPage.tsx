@@ -59,7 +59,7 @@ export default function SettingsPage() {
   ];
 
   useEffect(() => {
-    apiFetch('/settings')
+    apiFetch('/api/settings')
       .then(r => r.json())
       .then(d => setData(d as SettingsData))
       .catch(() => {});
