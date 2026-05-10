@@ -68,21 +68,33 @@ See [`dashboard.md`](dashboard.md) for full details on each panel.
 
 ---
 
+## Monitoring page
+
+Shows the live incident feed produced by the event-driven consumer. See [`monitoring.md`](monitoring.md) for full details.
+
+Accessible from the sidebar for all authenticated users. Each card shows the affected service, root cause summary, confidence level, and timestamp. Click any card to open the Alert Detail page, which includes an **Investigate** button that opens a new chat session with the incident context pre-loaded.
+
+---
+
 ## Settings page
 
-Shows the active configuration fetched in real time from `GET /settings`. Three tabs:
+Shows active configuration. Four tabs (admins see all four; regular users see the last three):
 
-**Environment** — all env vars with their live values. Sensitive fields (`LLM_API_KEY`,
-`DATABASE_URL`, `JWT_SECRET`, etc.) are masked by default; click the eye icon to reveal
-the truncated preview. Non-sensitive fields (`LLM_MODEL`, `AWS_REGION`, etc.) are shown
-as-is.
+**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are saved to `data/init.json` server-side and shared across all admin users. Includes a **Run checks** button that validates IAM permissions for every AWS service the agent uses.
 
-**Agent config** — agent behaviour settings: max tool calls, timeout, tool response cap,
-summarization threshold, poll interval.
+**Environment** — read-only view of all `.env` values. Sensitive fields (`LLM_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, etc.) are masked by default; click the eye icon to reveal. SNS and SQS values are intentionally omitted here — manage them in the AWS Configuration tab.
+
+**Agent config** — read-only agent behaviour settings: max tool calls, timeout, tool response cap, summarization threshold, poll interval, event consumer status.
 
 **Integrations** — Slack, GitHub, PagerDuty, Datadog connection stubs (not yet wired up).
 
-Settings are read-only — change values by editing `.env` and restarting the server.
+---
+
+## First-run setup page
+
+Accessible at `/init` before any users exist. Creates the first admin account. After login, complete AWS setup in **Settings → AWS Configuration**.
+
+The page redirects away automatically once an admin account exists.
 
 ---
 

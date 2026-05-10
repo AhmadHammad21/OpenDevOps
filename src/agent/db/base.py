@@ -112,3 +112,22 @@ class DatabaseBackend(ABC):
 
     async def delete_user(self, user_id: str) -> None:
         pass
+
+    # ── Alerts (event-driven investigations) ──────────────────────────────────
+    # Default no-op implementations — SQLite and Postgres override these.
+
+    async def add_alert(
+        self,
+        service: str,
+        error: str,
+        resolution: str,
+        confidence: str,
+        sns_sent: bool,
+    ) -> str:
+        return ""
+
+    async def get_alerts(self, limit: int = 50) -> list[dict]:
+        return []
+
+    async def get_alert(self, alert_id: str) -> dict | None:
+        return None

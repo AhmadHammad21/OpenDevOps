@@ -123,8 +123,8 @@ export default function LoginPage() {
             </button>
 
             {mode === 'register' && (
-              <p className="text-[11px] text-gray-400 dark:text-[#64748B] text-center">
-                First account created becomes the admin.
+              <p className="text-[11px] text-gray-400 dark:text-[#64748B] text-center leading-relaxed">
+                First account created becomes the admin. Configure SNS, SQS, and AWS permissions in <span className="font-medium text-gray-500 dark:text-[#94A3B8]">Settings → AWS Configuration</span> after login.
               </p>
             )}
           </form>

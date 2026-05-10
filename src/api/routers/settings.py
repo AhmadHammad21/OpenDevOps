@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import os
+
 from fastapi import APIRouter, Depends
 
 from api.auth import get_current_user
@@ -30,8 +32,10 @@ async def get_settings(
         {"key": "OPENROUTER_BASE_URL", "value": settings.openrouter_base_url or "(not set)",                  "secret": False},
         {"key": "LLM_API_KEY",         "value": _mask(settings.llm_api_key),                                  "secret": True},
         {"key": "LLM_API_BASE",        "value": settings.llm_api_base or "(not set)",                         "secret": False},
-        {"key": "AWS_REGION",          "value": settings.aws_region,                                          "secret": False},
-        {"key": "AWS_PROFILE",         "value": settings.aws_profile or "(not set)",                          "secret": False},
+        {"key": "AWS_REGION",             "value": settings.aws_region,                                          "secret": False},
+        {"key": "AWS_PROFILE",            "value": settings.aws_profile or "(not set)",                          "secret": False},
+        {"key": "AWS_ACCESS_KEY_ID",      "value": _mask(os.environ.get("AWS_ACCESS_KEY_ID")),                  "secret": True},
+        {"key": "AWS_SECRET_ACCESS_KEY",  "value": _mask(os.environ.get("AWS_SECRET_ACCESS_KEY")),              "secret": True},
         {"key": "CHECKPOINT_BACKEND",  "value": settings.checkpoint_backend,                                  "secret": False},
         {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
         {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
@@ -44,7 +48,8 @@ async def get_settings(
         {"key": "TOOL_RESPONSE_MAX_CHARS",       "label": "Tool response cap",      "value": str(settings.tool_response_max_chars),     "hint": "Chars before tool output is truncated"},
         {"key": "SUMMARIZATION_ENABLED",         "label": "Auto-summarize",         "value": str(settings.summarization_enabled).lower(),"hint": "Compact sessions that exceed the threshold"},
         {"key": "SUMMARIZATION_THRESHOLD_CHARS", "label": "Summarize threshold",   "value": str(settings.summarization_threshold_chars),"hint": "Total chars in session before compaction fires"},
-        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",   "value": str(settings.poll_interval_minutes),       "hint": "0 = proactive polling disabled"},
+        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",    "value": str(settings.poll_interval_minutes),        "hint": "0 = proactive polling disabled"},
+        {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 
     return {"env": env, "agent": agent}

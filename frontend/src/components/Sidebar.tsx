@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut } from 'lucide-react';
+import { Plus, X, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -92,6 +92,7 @@ export default function Sidebar({ sessions, currentSessionId, onNew, onSwitch, o
       <div className="pt-2 shrink-0">
         <NavItem to="/dashboard"    icon={<LayoutDashboard size={14} />} label="Dashboard" />
         <NavItem to={currentChatTo} icon={<MessageSquare   size={14} />} label="Chat"       matchPrefix="/chat" />
+        <NavItem to="/monitoring"   icon={<Radio           size={14} />} label="Monitoring" />
         <NavItem to="/history"      icon={<Terminal        size={14} />} label="Agent logs" />
         <NavItem to="/dashboard"    icon={<GitBranch       size={14} />} label="Pipelines"  disabled />
       </div>

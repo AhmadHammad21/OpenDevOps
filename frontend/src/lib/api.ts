@@ -1,4 +1,4 @@
-import type { Session, MessageRecord, HistoryStats, SearchResult, User } from '../types';
+import type { Session, MessageRecord, HistoryStats, SearchResult, User, Alert, ServiceStatus } from '../types';
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('auth-token');
@@ -79,4 +79,24 @@ export async function updateUser(id: string, data: { name?: string; role?: strin
 export async function deleteUser(id: string): Promise<void> {
   const res = await apiFetch(`/users/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete user');
+}
+
+// ── Monitoring ────────────────────────────────────────────────────────────
+
+export async function fetchAlerts(limit = 50): Promise<Alert[]> {
+  const res = await apiFetch(`/api/monitoring/alerts?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to load alerts');
+  return res.json() as Promise<Alert[]>;
+}
+
+export async function fetchAlert(id: string): Promise<Alert> {
+  const res = await apiFetch(`/api/monitoring/alerts/${id}`);
+  if (!res.ok) throw new Error('Alert not found');
+  return res.json() as Promise<Alert>;
+}
+
+export async function fetchServices(): Promise<ServiceStatus[]> {
+  const res = await apiFetch('/api/monitoring/services');
+  if (!res.ok) throw new Error('Failed to load services');
+  return res.json() as Promise<ServiceStatus[]>;
 }

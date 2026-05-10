@@ -1,8 +1,14 @@
+import sys
 from typing import Annotated
 
 import typer
 import uvicorn
 from rich.console import Console
+
+# psycopg3 async requires SelectorEventLoop on Windows (ProactorEventLoop is the default)
+if sys.platform == "win32":
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 console = Console()
 

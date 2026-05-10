@@ -21,6 +21,7 @@ class MemoryBackend(DatabaseBackend):
         self._messages: dict[str, list[dict]] = defaultdict(list)
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
+        self._alerts: list[dict] = []
 
     async def init(self) -> Any:
         from langgraph.checkpoint.memory import MemorySaver
@@ -224,6 +225,37 @@ class MemoryBackend(DatabaseBackend):
             "recurring_errors": [],
             "trend": [],
         }
+
+    # ── Alerts ────────────────────────────────────────────────────────────────
+
+    async def add_alert(
+        self,
+        service: str,
+        error: str,
+        resolution: str,
+        confidence: str,
+        sns_sent: bool,
+    ) -> str:
+        alert_id = str(uuid.uuid4())
+        self._alerts.append({
+            "id": alert_id,
+            "service": service,
+            "error": error,
+            "resolution": resolution,
+            "confidence": confidence,
+            "sns_sent": sns_sent,
+            "timestamp": self._now(),
+        })
+        return alert_id
+
+    async def get_alerts(self, limit: int = 50) -> list[dict]:
+        return list(reversed(self._alerts))[:min(limit, 200)]
+
+    async def get_alert(self, alert_id: str) -> dict | None:
+        for a in self._alerts:
+            if a["id"] == alert_id:
+                return a
+        return None
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

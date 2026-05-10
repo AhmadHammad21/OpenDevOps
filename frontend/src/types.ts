@@ -97,3 +97,20 @@ export interface MessageRecord {
   usage: Usage | null;
   created_at: string;
 }
+
+export interface Alert {
+  id: string;
+  service: string;
+  error: string;
+  resolution: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  sns_sent: boolean;
+  timestamp: string;
+}
+
+export interface ServiceStatus {
+  name: string;
+  status: 'healthy' | 'error' | 'unknown';
+  last_check: string;
+  last_error: string | null;
+}

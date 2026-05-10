@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
@@ -37,10 +37,12 @@ interface Props {
 
 export default function ChatPage({ onSessionsChange, onNew }: Props) {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages,  setMessages] = useState<Message[]>([]);
   const [busy,      setBusy]     = useState(false);
   const abortRef                 = useRef<AbortController | null>(null);
   const bottomRef                = useRef<HTMLDivElement>(null);
+  const autoPromptFired          = useRef(false);
 
   useEffect(() => {
     if (sessionId) localStorage.setItem('devops-session-id', sessionId);
@@ -55,6 +57,17 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
   }, [sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+
+  // Auto-submit a pre-seeded prompt from the Monitoring dashboard deeplink
+  useEffect(() => {
+    const prompt = searchParams.get('prompt');
+    if (prompt && !autoPromptFired.current && !busy) {
+      autoPromptFired.current = true;
+      setSearchParams({}, { replace: true });
+      send(prompt);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const patch = (id: string, update: Partial<AgentMsg>) =>
     setMessages(prev => prev.map(m => m.id === id ? { ...m, ...update } as AgentMsg : m));
