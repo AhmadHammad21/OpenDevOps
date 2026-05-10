@@ -158,7 +158,16 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
     }
   };
 
-  const stop = () => abortRef.current?.abort();
+  const stop = () => {
+    abortRef.current?.abort();
+    if (sessionId) {
+      const token = getAuthToken();
+      fetch(`/chat/${sessionId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).catch(() => {});
+    }
+  };
 
   if (!sessionId) return <Navigate to="/" replace />;
 

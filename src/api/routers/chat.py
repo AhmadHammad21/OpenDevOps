@@ -22,6 +22,9 @@ from api.streaming_labels import STREAMING_LABELS
 
 router = APIRouter(tags=["chat"])
 
+# Maps session_id → Event; set by DELETE /chat/{session_id} to stop an active stream.
+_cancel_events: dict[str, asyncio.Event] = {}
+
 
 def _field(obj: Any, key: str, default: Any = None) -> Any:
     """Read a field from either a dict or a typed object (e.g. ToolCallChunk)."""
@@ -80,6 +83,9 @@ async def _stream_chat(session_id: str, user_message: str):
     logger.info("▶  [{sid}]  USER: {msg}", sid=sid, msg=user_message)
     logger.info("{sep}", sep=_SEP)
 
+    cancel_event = asyncio.Event()
+    _cancel_events[session_id] = cancel_event
+
     def _flush_text_buf():
         nonlocal text_buf, clean_buf
         if text_buf.strip():
@@ -107,6 +113,10 @@ async def _stream_chat(session_id: str, user_message: str):
                 config=config,
                 stream_mode="messages",
             ):
+                if cancel_event.is_set():
+                    logger.info("[{sid}]  cancelled by user", sid=sid)
+                    yield f"data: {json.dumps({'type': 'cancelled'})}\n\n"
+                    return
                 um = getattr(chunk, "usage_metadata", None)
                 if um:
                     usage_meta = um
@@ -208,6 +218,9 @@ async def _stream_chat(session_id: str, user_message: str):
         )
         yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
+    finally:
+        _cancel_events.pop(session_id, None)
+
     _flush_text_buf()
 
     usage: dict[str, Any] = {
@@ -250,3 +263,13 @@ async def chat(req: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.delete("/chat/{session_id}")
+async def cancel_chat(session_id: str) -> dict[str, bool]:
+    """Signal the active stream for this session to stop at the next chunk."""
+    event = _cancel_events.get(session_id)
+    if event:
+        event.set()
+        return {"cancelled": True}
+    return {"cancelled": False}
