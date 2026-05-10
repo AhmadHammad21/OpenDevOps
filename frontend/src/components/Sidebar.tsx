@@ -32,7 +32,7 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
 
   if (disabled) {
     return (
-      <div className="w-full flex items-center gap-2 px-3.5 py-[7px] text-[13px] font-medium text-gray-300 dark:text-[#3F3F47] cursor-not-allowed select-none relative">
+      <div className="w-full flex items-center gap-2 px-3.5 py-[7px] text-[14px] font-medium text-gray-300 dark:text-[#3F3F47] cursor-not-allowed select-none relative">
         <span className="shrink-0">{icon}</span>
         <span className="flex-1">{label}</span>
       </div>
@@ -43,7 +43,7 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
     <Link
       to={to}
       className={cn(
-        'relative w-full flex items-center gap-2 px-3.5 py-[7px] text-[13px] font-medium transition-all duration-100',
+        'relative w-full flex items-center gap-2 px-3.5 py-[7px] text-[14px] font-medium transition-all duration-100',
         active
           ? 'text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B]'
           : 'text-gray-500 dark:text-[#94A3B8] hover:bg-gray-100 dark:hover:bg-[#27272F] hover:text-gray-700 dark:hover:text-[#F1F5F9]',
@@ -163,12 +163,12 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                   className="flex flex-col px-3.5 py-[7px] pr-8 min-w-0"
                 >
                   <span className={cn(
-                    'text-[13px] truncate',
+                    'text-[14px] truncate',
                     s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#F1F5F9]' : 'text-gray-700 dark:text-[#CBD5E1]',
                   )}>
                     {s.title ?? 'Untitled session'}
                   </span>
-                  <span className="text-[11px] text-gray-400 dark:text-[#64748B] mt-px">
+                  <span className="text-[12px] text-gray-400 dark:text-[#64748B] mt-px">
                     {s.last_active_at ? relativeTime(s.last_active_at) : ''}
                   </span>
                 </Link>
@@ -195,7 +195,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                     >
                       <button
                         onClick={() => handleDelete(s.id)}
-                        className="w-full flex items-center gap-2 px-3 py-[7px] text-[13px] text-red-500 dark:text-[#F87171] hover:bg-red-50 dark:hover:bg-[#2D1515] transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-red-500 dark:text-[#F87171] hover:bg-red-50 dark:hover:bg-[#2D1515] transition-colors"
                       >
                         <Trash2 size={13} />
                         Delete
@@ -235,8 +235,8 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
             {displayName.slice(0, 2).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{displayName}</div>
-            <div className="text-[11px] text-gray-400 dark:text-[#64748B]">{displayRole}</div>
+            <div className="text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{displayName}</div>
+            <div className="text-[12px] text-gray-400 dark:text-[#64748B]">{displayRole}</div>
           </div>
         </div>
         <button
