@@ -13,8 +13,8 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
   return fetch(url, { ...options, headers });
 }
 
-export async function fetchSessions(): Promise<Session[]> {
-  const res = await apiFetch('/sessions');
+export async function fetchSessions(limit = 15, offset = 0): Promise<Session[]> {
+  const res = await apiFetch(`/sessions?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error('Failed to load sessions');
   return res.json() as Promise<Session[]>;
 }
