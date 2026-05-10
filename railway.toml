@@ -1,0 +1,6 @@
+[build]
+dockerfile = "Dockerfile.railway"
+
+[deploy]
+healthcheckPath = "/openapi.json"
+restartPolicyType = "on_failure"
