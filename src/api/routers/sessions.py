@@ -1,6 +1,6 @@
 """Session management endpoints."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from agent.db import db
 from models.sessions import MessageRecord, SessionSummary
@@ -9,8 +9,11 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("", response_model=list[SessionSummary])
-async def list_sessions() -> list[SessionSummary]:
-    return await db.list_sessions()
+async def list_sessions(
+    limit: int = Query(default=15, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[SessionSummary]:
+    return await db.list_sessions(limit=limit, offset=offset)
 
 
 @router.get("/{session_id}/messages", response_model=list[MessageRecord])

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useMatch } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import Header from './components/Header';
 import ChatPage from './pages/ChatPage';
 import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
@@ -39,15 +38,33 @@ function RedirectToSession() {
   return <Navigate to={`/chat/${id}`} replace />;
 }
 
+const PAGE_SIZE = 15;
+
 function AppLayout() {
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions]   = useState<Session[]>([]);
+  const [hasMore,  setHasMore]    = useState(false);
+  const [offset,   setOffset]     = useState(0);
   const chatMatch = useMatch('/chat/:sessionId');
   const currentSessionId = chatMatch?.params.sessionId ?? '';
 
   const loadSessions = useCallback(async () => {
-    try { setSessions(await fetchSessions()); } catch { /* silent */ }
+    try {
+      const data = await fetchSessions(PAGE_SIZE, 0);
+      setSessions(data);
+      setOffset(PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
+    } catch { /* silent */ }
   }, []);
+
+  const loadMoreSessions = useCallback(async () => {
+    try {
+      const data = await fetchSessions(PAGE_SIZE, offset);
+      setSessions(prev => [...prev, ...data]);
+      setOffset(prev => prev + PAGE_SIZE);
+      setHasMore(data.length === PAGE_SIZE);
+    } catch { /* silent */ }
+  }, [offset]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
@@ -72,13 +89,14 @@ function AppLayout() {
     <div className="flex w-full h-screen overflow-hidden bg-gray-50 dark:bg-[#0F0F12]">
       <Sidebar
         sessions={sessions}
+        hasMore={hasMore}
         currentSessionId={currentSessionId}
         onNew={newChat}
         onSwitch={switchSession}
         onDelete={deleteSession}
+        onLoadMore={loadMoreSessions}
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-        <Header />
         <Routes>
           <Route path="/"                       element={<RedirectToSession />} />
           <Route path="/chat/:sessionId"        element={<ChatPage onSessionsChange={loadSessions} onNew={newChat} />} />

@@ -79,11 +79,11 @@ export default function HistoryPage() {
       <div className="bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7 py-[14px] flex items-center justify-between shrink-0 gap-4">
         <div>
           <div className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">Investigation History</div>
-          <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">Cross-session patterns, top resources, recurring errors</div>
+          <div className="text-[14px] text-gray-500 dark:text-[#94A3B8] mt-0.5">Cross-session patterns, top resources, recurring errors</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {/* Days filter */}
-          <div className="flex rounded-[5px] border border-gray-200 dark:border-[#3F3F47] overflow-hidden text-[12px] font-medium">
+          <div className="flex rounded-[5px] border border-gray-200 dark:border-[#3F3F47] overflow-hidden text-[13px] font-medium">
             {DAYS_OPTIONS.map(d => (
               <button
                 key={d}
@@ -98,7 +98,7 @@ export default function HistoryPage() {
           </div>
           <button
             onClick={() => { loadStats(days); loadSessions(); }}
-            className="flex items-center gap-1.5 text-[12px] font-medium text-gray-600 dark:text-[#94A3B8] bg-white dark:bg-[#18181C] hover:bg-gray-50 dark:hover:bg-[#27272F] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors"
+            className="flex items-center gap-1.5 text-[13px] font-medium text-gray-600 dark:text-[#94A3B8] bg-white dark:bg-[#18181C] hover:bg-gray-50 dark:hover:bg-[#27272F] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors"
           >
             <RefreshCw size={12} />
             Refresh
@@ -115,7 +115,7 @@ export default function HistoryPage() {
             placeholder="Search past investigations…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-[13px] bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#3F3F47] rounded-lg text-gray-900 dark:text-[#F1F5F9] placeholder-gray-400 dark:placeholder-[#64748B] focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:focus:ring-[#4F46E5] transition"
+            className="w-full pl-8 pr-3 py-2 text-[14px] bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#3F3F47] rounded-lg text-gray-900 dark:text-[#F1F5F9] placeholder-gray-400 dark:placeholder-[#64748B] focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:focus:ring-[#4F46E5] transition"
           />
           {searching && (
             <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -142,7 +142,7 @@ export default function HistoryPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <MessageSquare size={14} className="text-indigo-400 dark:text-[#818CF8] shrink-0 mt-0.5" />
-                    <span className="text-[13px] text-gray-900 dark:text-[#F1F5F9] font-medium truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors">
+                    <span className="text-[14px] text-gray-900 dark:text-[#F1F5F9] font-medium truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors">
                       {r.title ?? 'Untitled session'}
                     </span>
                   </div>
@@ -152,7 +152,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
                 {r.snippet && (
-                  <p className="mt-1.5 ml-5 text-[12px] text-gray-500 dark:text-[#94A3B8] line-clamp-2 leading-relaxed">{r.snippet}</p>
+                  <p className="mt-1.5 ml-5 text-[13px] text-gray-500 dark:text-[#94A3B8] line-clamp-2 leading-relaxed">{r.snippet}</p>
                 )}
               </Link>
             ))}
@@ -172,7 +172,7 @@ export default function HistoryPage() {
                 ) : stats.top_alarms.map((a, i) => (
                   <div key={i} className="px-4 py-2.5 flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-mono text-gray-800 dark:text-[#CBD5E1] truncate">{a.alarm_name}</span>
+                      <span className="text-[13px] font-mono text-gray-800 dark:text-[#CBD5E1] truncate">{a.alarm_name}</span>
                       <span className="text-[11px] text-gray-400 dark:text-[#64748B] shrink-0">{a.session_count} session{a.session_count !== 1 ? 's' : ''}</span>
                     </div>
                     <div className="h-1 rounded-full bg-gray-100 dark:bg-[#27272F] overflow-hidden">
@@ -196,7 +196,7 @@ export default function HistoryPage() {
                 ) : stats.top_lambdas.map((l, i) => (
                   <div key={i} className="px-4 py-2.5 flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-mono text-gray-800 dark:text-[#CBD5E1] truncate">{l.function_name}</span>
+                      <span className="text-[13px] font-mono text-gray-800 dark:text-[#CBD5E1] truncate">{l.function_name}</span>
                       <span className="text-[11px] text-gray-400 dark:text-[#64748B] shrink-0">{l.session_count} session{l.session_count !== 1 ? 's' : ''}</span>
                     </div>
                     <div className="h-1 rounded-full bg-gray-100 dark:bg-[#27272F] overflow-hidden">
@@ -272,7 +272,7 @@ export default function HistoryPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <MessageSquare size={14} className="text-indigo-400 dark:text-[#818CF8] shrink-0 mt-0.5" />
-                      <span className="text-[13px] text-gray-900 dark:text-[#F1F5F9] font-medium truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors">
+                      <span className="text-[14px] text-gray-900 dark:text-[#F1F5F9] font-medium truncate group-hover:text-indigo-500 dark:group-hover:text-[#818CF8] transition-colors">
                         {s.title ?? 'Untitled session'}
                       </span>
                     </div>

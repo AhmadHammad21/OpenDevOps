@@ -8,20 +8,20 @@ export default defineConfig({
     proxy: {
       '/chat': {
         target: 'http://localhost:8000',
-        // Only proxy POST — GET /chat/:sessionId is a React Router route, not an API call
+        // Only proxy POST and DELETE — GET /chat/:sessionId is a React Router route
         bypass(req) {
-          if (req.method !== 'POST') return req.url;
+          if (req.method === 'GET') return req.url;
         },
       },
-      '/sessions':       'http://localhost:8000',
-      '/stats':          'http://localhost:8000',
-      '/auth':           'http://localhost:8000',
-      '/users':          'http://localhost:8000',
-      '/settings':       'http://localhost:8000',
-      '/history':        'http://localhost:8000',
-      '/debug':          'http://localhost:8000',
-      '/api/monitoring': 'http://localhost:8000',
-      '/api/init':       'http://localhost:8000',
+      '/sessions':        'http://localhost:8000',
+      '/stats':           'http://localhost:8000',
+      '/auth':            'http://localhost:8000',
+      '/api/users':       'http://localhost:8000',
+      '/api/settings':    'http://localhost:8000',
+      '/api/history':      'http://localhost:8000',
+      '/debug':           'http://localhost:8000',
+      '/api/monitoring':  'http://localhost:8000',
+      '/api/init':        'http://localhost:8000',
     },
   },
   build: {

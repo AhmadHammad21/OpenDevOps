@@ -131,9 +131,10 @@ class MemoryBackend(DatabaseBackend):
             "metadata": metadata or {},
         })
 
-    async def list_sessions(self) -> list[dict]:
+    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
         active = [s for s in self._sessions.values() if not s.get("is_deleted")]
-        return sorted(active, key=lambda s: s["last_active_at"], reverse=True)
+        sorted_sessions = sorted(active, key=lambda s: s["last_active_at"], reverse=True)
+        return sorted_sessions[offset: offset + limit]
 
     async def get_messages(self, session_id: str) -> list[dict]:
         session = self._sessions.get(session_id)

@@ -13,8 +13,8 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
   return fetch(url, { ...options, headers });
 }
 
-export async function fetchSessions(): Promise<Session[]> {
-  const res = await apiFetch('/sessions');
+export async function fetchSessions(limit = 15, offset = 0): Promise<Session[]> {
+  const res = await apiFetch(`/sessions?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error('Failed to load sessions');
   return res.json() as Promise<Session[]>;
 }
@@ -30,13 +30,13 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function fetchHistory(days = 30): Promise<HistoryStats> {
-  const res = await apiFetch(`/history?days=${days}`);
+  const res = await apiFetch(`/api/history?days=${days}`);
   if (!res.ok) throw new Error('Failed to load history');
   return res.json() as Promise<HistoryStats>;
 }
 
 export async function searchHistory(query: string): Promise<SearchResult[]> {
-  const res = await apiFetch(`/history/search?q=${encodeURIComponent(query)}&limit=10`);
+  const res = await apiFetch(`/api/history/search?q=${encodeURIComponent(query)}&limit=10`);
   if (!res.ok) throw new Error('Failed to search history');
   const data = await res.json() as { results: SearchResult[] };
   return data.results;
@@ -45,13 +45,13 @@ export async function searchHistory(query: string): Promise<SearchResult[]> {
 // ── User management (admin only) ─────────────────────────────────────────
 
 export async function fetchUsers(): Promise<User[]> {
-  const res = await apiFetch('/users');
+  const res = await apiFetch('/api/users');
   if (!res.ok) throw new Error('Failed to load users');
   return res.json() as Promise<User[]>;
 }
 
 export async function createUser(data: { email: string; name: string; password: string; role: string }): Promise<User> {
-  const res = await apiFetch('/users', {
+  const res = await apiFetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -64,7 +64,7 @@ export async function createUser(data: { email: string; name: string; password: 
 }
 
 export async function updateUser(id: string, data: { name?: string; role?: string; password?: string }): Promise<User> {
-  const res = await apiFetch(`/users/${id}`, {
+  const res = await apiFetch(`/api/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -77,7 +77,7 @@ export async function updateUser(id: string, data: { name?: string; role?: strin
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  const res = await apiFetch(`/users/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete user');
 }
 

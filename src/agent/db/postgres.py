@@ -196,9 +196,10 @@ class PostgresBackend(DatabaseBackend):
             self._jsonb(metadata or {}),
         )
 
-    async def list_sessions(self) -> list[dict]:
+    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC"
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
+            limit, offset,
         )
         return [
             {

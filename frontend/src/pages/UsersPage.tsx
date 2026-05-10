@@ -90,7 +90,7 @@ export default function UsersPage() {
             </span>
             <button
               onClick={() => { setShowAdd(s => !s); setAddError(''); }}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F1F5F9] px-2.5 py-[5px] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] bg-white dark:bg-[#18181C] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors"
+              className="flex items-center gap-1.5 text-[13px] font-medium text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F1F5F9] px-2.5 py-[5px] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] bg-white dark:bg-[#18181C] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors"
             >
               <UserPlus size={12} /> Add user
             </button>
@@ -113,8 +113,8 @@ export default function UsersPage() {
             users.map((u, i) => (
               <div key={u.id} className={`flex items-center gap-2 px-4 py-[10px] ${i < users.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{u.name}</div>
-                  <div className="text-[11px] text-gray-400 dark:text-[#64748B] truncate">{u.email}</div>
+                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{u.name}</div>
+                  <div className="text-[12px] text-gray-400 dark:text-[#64748B] truncate">{u.email}</div>
                 </div>
                 <div className="w-24">
                   {currentUser?.id === u.id ? (
@@ -150,22 +150,22 @@ export default function UsersPage() {
               <div className="text-[12px] font-semibold text-gray-700 dark:text-[#CBD5E1]">Add new user</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Name</label>
+                  <label className="block text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Name</label>
                   <input value={addName} onChange={e => setAddName(e.target.value)} required placeholder="Full name"
-                    className="w-full text-[12px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
+                    className="w-full text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Email</label>
+                  <label className="block text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Email</label>
                   <input type="email" value={addEmail} onChange={e => setAddEmail(e.target.value)} required placeholder="email@example.com"
-                    className="w-full text-[12px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
+                    className="w-full text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Password</label>
+                  <label className="block text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Password</label>
                   <input type="password" value={addPw} onChange={e => setAddPw(e.target.value)} required minLength={8} placeholder="Min 8 chars"
-                    className="w-full text-[12px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
+                    className="w-full text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Role</label>
+                  <label className="block text-[12px] font-medium text-gray-500 dark:text-[#94A3B8] mb-1">Role</label>
                   <select value={addRole} onChange={e => setAddRole(e.target.value as 'admin' | 'user')}
                     className="w-full text-[12px] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2 py-1.5 text-gray-900 dark:text-[#F1F5F9] outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] transition-all cursor-pointer">
                     <option value="user">user</option>
