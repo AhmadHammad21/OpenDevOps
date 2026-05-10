@@ -3,5 +3,4 @@ dockerfile = "Dockerfile.railway"
 
 [deploy]
 healthcheckPath = "/openapi.json"
-healthcheckTimeout = 30
 restartPolicyType = "on_failure"
