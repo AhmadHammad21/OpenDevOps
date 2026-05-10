@@ -149,28 +149,32 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
             {sessions.map(s => (
               <div
                 key={s.id}
-                onClick={() => onSwitch(s.id)}
                 className={cn(
-                  'group px-3.5 py-[7px] cursor-pointer relative transition-all duration-100 border-l-2 select-none flex items-center gap-1',
+                  'group relative transition-all duration-100 border-l-2 select-none',
                   s.id === currentSessionId
                     ? 'border-indigo-500 dark:border-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B]'
                     : 'border-transparent hover:bg-gray-100 dark:hover:bg-[#27272F]',
                 )}
               >
-                <div className="flex-1 min-w-0">
-                  <div className={cn(
+                {/* Real <a> link — enables right-click → Open in new tab */}
+                <Link
+                  to={`/chat/${s.id}`}
+                  onClick={() => localStorage.setItem('devops-session-id', s.id)}
+                  className="flex flex-col px-3.5 py-[7px] pr-8 min-w-0"
+                >
+                  <span className={cn(
                     'text-[13px] truncate',
                     s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#F1F5F9]' : 'text-gray-700 dark:text-[#CBD5E1]',
                   )}>
                     {s.title ?? 'Untitled session'}
-                  </div>
-                  <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-px">
+                  </span>
+                  <span className="text-[11px] text-gray-400 dark:text-[#64748B] mt-px">
                     {s.last_active_at ? relativeTime(s.last_active_at) : ''}
-                  </div>
-                </div>
+                  </span>
+                </Link>
 
-                {/* Three-dot menu */}
-                <div className="relative shrink-0">
+                {/* Three-dot menu — outside <a> to keep valid HTML */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
                   <button
                     onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === s.id ? null : s.id); }}
                     className={cn(
@@ -190,7 +194,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                       className="absolute right-0 top-full mt-0.5 z-50 bg-white dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-lg shadow-lg py-1 min-w-[120px]"
                     >
                       <button
-                        onClick={e => { e.stopPropagation(); handleDelete(s.id); }}
+                        onClick={() => handleDelete(s.id)}
                         className="w-full flex items-center gap-2 px-3 py-[7px] text-[13px] text-red-500 dark:text-[#F87171] hover:bg-red-50 dark:hover:bg-[#2D1515] transition-colors"
                       >
                         <Trash2 size={13} />
