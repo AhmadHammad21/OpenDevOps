@@ -2,227 +2,278 @@
 
 ## Project Overview
 
-**OpenDevOps Agent** — an open-source AWS incident investigation agent powered by any LLM via LiteLLM/OpenRouter. It investigates alarms, analyzes root causes, and produces structured mitigation plans.
+OpenDevOps Agent is an open-source AWS incident investigation tool powered by any LLM via LiteLLM. It runs a LangGraph ReAct loop (via DeepAgents) that calls 27 tools — 21 structured boto3 AWS tools plus bash, history analytics, skills, and a structured final-answer tool — then streams results to a React/Vite chat UI over SSE. Auth, multi-user RBAC, event-driven incident detection (EventBridge → SQS), and proactive anomaly polling are all built in and optional.
 
-**Core principle:** Every feature must be independently useful. Read-only AWS access only.
+---
+
+## Automatic Behavior Rules
+
+**Always do these when making changes:**
+
+- **New env var:** add to both `src/config/appsettings.py` (source of truth, Pydantic field with default) AND `.env.example` (with a comment). Never read env vars directly — always go through `settings`.
+- **New DB column or table:** create a new numbered migration in `migrations/` (e.g. `006_name.sql`). Never add columns inline in Python code.
+- **New tool:** add it to `ALL_TOOLS` in `src/agent/core.py`. Tool functions must be plain synchronous Python functions — DeepAgents infers the JSON schema from type hints and docstrings.
+- **New API route that matches a React Router path:** prefix it with `/api/` to avoid the SPA fallback conflict. The `/{full_path:path}` catch-all in `app.py` intercepts any GET that matches a registered FastAPI route first.
+- **New skill:** drop a `SKILL.md` file into `src/skills/<name>/SKILL.md`. It is picked up automatically at startup — no code changes needed. Use the frontmatter format (`name`, `description`) from the existing `lambda-throttling` skill.
+- **Docs sync:** if a feature has a corresponding file in `docs/`, update it when the feature changes. The `docs/` folder is the public documentation source.
+
+---
+
+## Common Commands
+
+```bash
+# Install / update dependencies
+uv sync
+
+# Run the web UI (FastAPI backend + serves built frontend)
+uv run devops-agent ui
+
+# CLI investigation
+uv run devops-agent investigate "Lambda high error rate on payment service"
+uv run devops-agent ask "Why would an ECS task OOM?"
+uv run devops-agent report --days 7
+
+# MCP server
+uv run devops-agent mcp              # stdio transport (Claude Desktop, Cursor)
+uv run devops-agent mcp --http       # HTTP+SSE transport, port 8001
+
+# Tests
+uv run pytest
+uv run pytest tests/test_api/ -v
+
+# Lint / format
+uv run ruff check src/
+uv run ruff format src/
+
+# Full stack with PostgreSQL (Docker Compose)
+docker compose up
+
+# Frontend dev server (port 5173, proxies API to localhost:8000)
+cd frontend && npm install && npm run dev
+
+# Frontend production build (output to frontend/dist/ — served by FastAPI)
+cd frontend && npm run build
+```
 
 ---
 
 ## Current State
 
-Everything below is **already built and working:**
+Everything below is built and working in the codebase:
 
-- **Agent framework:** DeepAgents (thin wrapper over LangGraph ReAct loop) with LiteLLM for multi-provider LLM support (OpenRouter, Anthropic, OpenAI, Ollama, custom endpoints)
-- **21 read-only AWS tools** across CloudWatch (6), CloudTrail (2), ECS (4), Lambda (4), EC2 (2), RDS (2), IAM (1), plus bash escape hatch, history cross-session analytics, skills system, and `submit_investigation` final answer tool
-- **3 storage backends:** memory (default, CI-safe), SQLite (local persistence), PostgreSQL (production)
-- **Streaming FastAPI backend:** SSE real-time token streaming + tool call events
-- **React/TypeScript/Vite frontend:** Chat page (streaming), session sidebar, history search, dashboard analytics, settings page
-- **CLI:** `investigate`, `ask`, `report`, `ui`, `mcp` commands via Typer
-- **MCP server:** Exposes `investigate`, `ask`, `list_sessions` to Claude Desktop, Cursor, etc.
-- **Tool response capping:** `with_cap()` wrapper truncates responses > `TOOL_RESPONSE_MAX_CHARS` (default 40K chars) before passing to LLM
-- **In-process caching:** `@tool_cached` — 2-min TTL, 256-entry LRU, keyed on function + AWS profile + region + args
-- **Conversation summarization:** Auto-compacts long sessions when total chars > threshold; tracked in `usage_events.metadata` and shown on dashboard
-- **Skills system:** Markdown runbooks in `src/skills/*/SKILL.md`; agent calls `list_skills()` / `use_skill(name)` at runtime
-- **Slack integration:** Reactive notifications after investigations + proactive polling loop for CloudWatch/Lambda anomalies
-- **Dashboard:** Session counts, tool call stats, cost/latency, context saved, activity chart, service breakdown, root cause distribution, recent sessions
+### Agent & Tools
+- **Framework:** DeepAgents (`create_deep_agent`) wrapping a LangGraph ReAct loop. `ChatLiteLLM` as the model interface — supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint via a single `LLM_MODEL` env var.
+- **27 tools total** registered in `ALL_TOOLS` in `src/agent/core.py`:
+  - CloudWatch (6): `get_alarms`, `get_alarm_history`, `get_metric_data`, `get_log_events`, `describe_log_groups`, `query_logs_insights`
+  - CloudTrail (2): trail events + event lookup
+  - ECS (4): clusters, services, service detail, tasks
+  - Lambda (4): list, config, error rate, concurrent executions
+  - EC2 (2): list instances, instance details
+  - RDS (2): list DBs, DB details
+  - IAM (1): describe role + policies
+  - Bash (1): `run_bash_command` — allowlisted read-only `aws`, `kubectl`, `docker` commands; never `shell=True`; 30s hard timeout
+  - History (2): `get_investigation_history`, `search_past_investigations`
+  - Skills (2): `list_skills`, `use_skill`
+  - Final answer (1): `submit_investigation` — structured output required to end every investigation
+- **Tool response capping:** `with_cap()` wraps every tool at startup when `TOOL_RESPONSE_MAX_CHARS > 0`; truncates oversized responses and appends a notice to the LLM.
+- **Tool caching:** `@tool_cached` — in-process TTL LRU cache (2-min TTL, 256 entries max); cache key includes function name + AWS profile + region.
+- **Skills system:** one skill ships (`lambda-throttling`). The system prompt is built at import time by scanning `src/skills/*/SKILL.md` — skill names are injected; full content is loaded lazily when the agent calls `use_skill(name)`.
+- **Summarization:** `maybe_summarize()` runs before each agent call; compacts old messages when total chars exceed `SUMMARIZATION_THRESHOLD_CHARS`; tracks the event in `usage_events` with `metadata.summarization=True`.
+- **Cancellation:** `DELETE /chat/{session_id}` sets an `asyncio.Event` that stops the streaming loop at the next chunk boundary.
+
+### Storage
+- Three backends all implementing `DatabaseBackend` ABC: `memory` (default, zero config), `sqlite` (aiosqlite + LangGraph SQLite checkpointer), `postgres` (psycopg3 async + `AsyncPostgresSaver`).
+- LangGraph checkpointer tables are created automatically by `AsyncPostgresSaver.setup()`. Application tables come from `migrations/001–005_*.sql`.
+- Schema tables: `organizations`, `users`, `aws_profiles`, `sessions`, `messages`, `tool_calls`, `usage_events`, `findings`, `api_keys`, `alerts`.
+- Soft delete is in place on sessions (`is_deleted`, `deleted_at` from migration 002).
+
+### API
+- FastAPI SSE endpoint at `POST /chat`; streams `token`, `tool_status`, `tool_call`, `error`, `done`, `cancelled` events.
+- SPA fallback: `GET /{full_path:path}` returns `frontend/dist/index.html` so React Router works on refresh.
+- All routes that could conflict with React Router paths use the `/api/` prefix: `/api/settings`, `/api/users`, `/api/history`, `/api/monitoring`, `/api/init`.
+- Auth: optional JWT (HS256 via python-jose + bcrypt). Disabled when `JWT_SECRET` is unset — `get_current_user()` returns `None` in that case, meaning all routes are public.
+
+### Event-Driven Detection
+- `event_consumer_loop()` long-polls SQS (20s wait), processes EventBridge events (CloudWatch alarm, ECS task failure, Lambda async error, RDS event, EC2 state change, CodePipeline failure, AWS Health), runs a full agent investigation per event, delivers results to SNS + Slack, persists to `alerts` table.
+- `context_collectors.collect_context()` pre-fetches resource facts deterministically before the LLM runs to reduce tool call count.
+- Starts automatically on app startup if `event_consumer_enabled=True`, `sqs_queue_url` is set, or `init.json` marks the wizard as completed.
+
+### Proactive Polling
+- `polling_loop()` runs every `POLL_INTERVAL_MINUTES` minutes (disabled by default at 0); checks CloudWatch alarms in ALARM state and Lambda error rates above `POLL_ERROR_THRESHOLD`; auto-investigates new anomalies and posts to Slack. In-memory dedup via `_last_investigated` map.
+
+### Frontend
+- React 18 + TypeScript + Vite + Tailwind CSS + `@tailwindcss/typography`
+- Font: Inter Variable (Google Fonts) with Linear's full fallback stack
+- Routes: `/`, `/chat/:sessionId`, `/dashboard`, `/monitoring`, `/monitoring/:alertId`, `/history`, `/settings`, `/users`, `/login`
+- Chat page: SSE streaming, tool call inspector, cost/latency card, stop button, suggestion chips on empty state, `?prompt=` deeplink support
+- Sidebar: paginated session list (15 at a time), three-dot menu with delete, real `<a>` links for native right-click
+- Settings: Environment, Agent Config, Integrations (UI stubs), AWS Configuration (editable, admin only), Preferences (dark mode)
+
+### Auth & MCP
+- RBAC: `admin` and `user` roles. First registered user auto-becomes admin. `JWT_SECRET` unset = auth disabled.
+- MCP server via fastmcp: `investigate`, `ask`, `list_sessions` tools. Stdio and HTTP+SSE transports.
 
 ---
 
 ## Current Priorities
 
-From `README.md` TODO:
+Incomplete items from the README roadmap (do not mark complete here — update README when done):
 
-1. **Custom tools via URL** — let users plug in extra tools without touching source
-2. **Bash sandbox Phase 2** — throwaway Docker container instead of subprocess allowlist
-3. **Optimize tool loading** — pass only relevant tools per context (reduce prompt size)
-4. **Observability** — OpenTelemetry traces
-5. **Follow-up question suggestions** — auto-generate 3 drill-down questions after each investigation
-6. **Knowledge base** — attach runbooks, post-mortems, architecture docs beyond the skills system
-7. **Multi-account AWS support**
-8. **Auth & user roles** (product/SaaS path)
+- **Custom tools via URL** — register external tools by OpenAPI endpoint; agent discovers them alongside built-in tools
+- **Bash sandbox Phase 2** — throwaway Docker container per command: `--network none`, read-only FS, non-root, `--memory 256m`, killed immediately after; current Phase 1 (subprocess allowlist) is in `src/tools/bash_tool.py`
+- **Optimize tool loading** — pass only contextually relevant tools instead of the full 27-tool set per invocation
+- **OpenTelemetry traces** — spans for agent steps, tool call latency, token usage; OTLP export
+- **Follow-up question suggestions** — add `follow_up_questions: list[str]` to `submit_investigation` schema (same call, no extra LLM cost); surface as chips in the chat UI after investigation completes
+- **Session / user feedback loop** — thumbs up/down on investigations; `feedback` column in `usage_events` (needs migration 006)
+- **Slack Integration UI** — Slack backend is fully implemented (`src/integrations/slack_webhook.py`); Settings → Integrations "Connect" button is currently a non-functional stub
+- **Session rename** — `PATCH /sessions/{id}` + inline edit in sidebar three-dot menu
+- **Multi-account AWS** — `aws_profiles` table already in schema; needs Settings UI + per-session profile selector
+- **Knowledge base** — attach runbooks, post-mortems, architecture docs beyond the skills system
 
 ---
 
 ## What NOT to Change Without Discussion
 
-- **Agent framework:** `deepagents` + `langgraph` — the ReAct loop, checkpointing, and tool dispatch all depend on this. Do not swap for a different framework.
-- **SSE streaming contract:** The event types (`content`, `tool_call_started`, `tool_call_completed`, `tool_call_error`, `done`) are consumed by the frontend. Changing names or payload shapes breaks the UI.
-- **LangGraph checkpointer integration:** The checkpointer is passed into `create_deep_agent()` and is what makes session continuity work. Don't bypass it or write messages to the DB outside of the normal `save_*` calls.
-- **Tool function signatures:** Tool functions are plain Python functions — DeepAgents infers the JSON schema from their signatures and docstrings. Adding `*args`, `**kwargs`, or removing type hints will break schema inference.
-- **Database schema:** Tables `sessions`, `messages`, `tool_calls`, `usage_events` have a defined shape. New columns need a migration in `migrations/`. Don't add columns inline.
-- **`docs/` folder:** All `.md` files in `docs/` are the source for the public documentation site. Keep them accurate when changing features.
+| Contract | Why it matters |
+|---|---|
+| **SSE event types:** `token`, `tool_status`, `tool_call`, `error`, `done`, `cancelled` | Frontend `ChatPage.tsx` switches on these exact strings. Renaming or adding new required fields is a breaking change. |
+| **Tool function signatures** | DeepAgents infers JSON schema from Python type hints + docstrings. Adding `*args`, `**kwargs`, removing type hints, or making parameters non-primitive breaks schema inference silently. |
+| **`DatabaseBackend` ABC** (`src/agent/db/base.py`) | All three backends must implement the same interface. Adding a method requires implementing it in all three backends plus `memory.py` defaults. |
+| **LangGraph checkpointer wiring** | The checkpointer is passed into `create_deep_agent()` and drives session continuity via `thread_id = session_id`. Do not write messages to the DB outside `save_*` calls or bypass the checkpointer. |
+| **Agent framework (DeepAgents + LangGraph)** | The ReAct loop, tool dispatch, checkpointing, and `recursion_limit` contract all depend on this. Do not swap. |
+| **DB schema migrations** | Tables have a defined shape. New columns need a new file in `migrations/`. Never add columns inline in Python or modify existing migration files. |
+| **Auth opt-out pattern** | `get_current_user()` returns `None` when `jwt_secret` is unset (dev/memory mode). New routes that call `Depends(get_current_user)` must handle `None` gracefully — do not hard-require auth in non-admin routes. |
+| **psycopg3 placeholder syntax** | psycopg3 uses `%s` (not `$1`/`$2`). Using asyncpg-style params causes silent failures with no Python exception. |
 
 ---
 
 ## Tech Stack
 
-| Layer | Choice |
+| Layer | Library / Version |
 |---|---|
 | Language | Python 3.11+ |
-| Agent framework | DeepAgents + LangGraph |
-| LLM abstraction | LiteLLM (100+ providers; default OpenRouter) |
-| AWS SDK | boto3 (read-only) |
-| Web backend | FastAPI + Uvicorn (SSE streaming) |
-| CLI | Typer + Rich |
-| Config | Pydantic Settings + `.env` |
-| Storage | memory / aiosqlite / psycopg async |
-| Frontend | React 18 + TypeScript + Vite + Tailwind CSS |
-| Caching | cachetools (in-process TTL cache) |
-| Testing | pytest + moto |
-| Package manager | **uv — always use `uv run` and `uv add`, never bare `pip`** |
-| Logging | Loguru |
-
----
-
-## Project Structure
-
-```
-src/
-├── agent/
-│   ├── core.py             # Agent init (create_deep_agent) + invocation
-│   ├── prompts.py          # System prompt — investigation methodology
-│   ├── summarizer.py       # Conversation compaction (auto-summarize long sessions)
-│   ├── turns.py            # Turn persistence, cost calc, Slack notify
-│   ├── poller.py           # Background anomaly detection loop
-│   └── db/
-│       ├── base.py         # DatabaseBackend ABC
-│       ├── memory.py       # In-memory (MemorySaver)
-│       ├── sqlite.py       # SQLite (aiosqlite + LangGraph checkpointer)
-│       └── postgres.py     # PostgreSQL (psycopg async + AsyncPostgresSaver)
-├── api/
-│   ├── app.py              # FastAPI factory, lifespan, static files
-│   ├── sessions.py         # Session state helpers
-│   ├── streaming_labels.py # Contextual loading copy for SSE status events
-│   └── routers/
-│       ├── chat.py         # POST /chat → SSE stream
-│       ├── sessions.py     # GET/DELETE /sessions
-│       ├── history.py      # GET /history/* (cross-session analytics)
-│       └── dashboard.py    # GET /stats
-├── cli/
-│   ├── main.py             # Typer entrypoint
-│   ├── investigate.py      # investigate command
-│   ├── ask.py              # ask command
-│   ├── report.py           # report command
-│   ├── ui.py               # ui command (start web server)
-│   └── mcp.py              # mcp command (start MCP server)
-├── tools/
-│   ├── cloudwatch.py       # 6 tools: alarms, metrics, logs, insights, log groups, alarm history
-│   ├── cloudtrail.py       # 2 tools: trail events, event lookup
-│   ├── ecs.py              # 4 tools: clusters, services, service detail, tasks
-│   ├── lambda_.py          # 4 tools: list, config, error rate, concurrent execs
-│   ├── ec2.py              # 2 tools: list instances, instance details
-│   ├── rds.py              # 2 tools: list DBs, DB details
-│   ├── iam.py              # 1 tool: describe role + policies
-│   ├── bash_tool.py        # run_bash_command (allowlisted read-only AWS CLI/kubectl/docker)
-│   ├── history.py          # get_investigation_history, search_past_investigations
-│   ├── skills.py           # list_skills, use_skill
-│   ├── final_answer.py     # submit_investigation (structured output)
-│   ├── _cache.py           # @tool_cached decorator
-│   └── _cap.py             # with_cap() response truncation wrapper
-├── config/
-│   └── appsettings.py      # Pydantic Settings (single source of truth)
-├── models/
-│   ├── agent.py            # Investigation, InvestigationResult, RootCauseCategory, Confidence
-│   ├── chat.py             # ChatRequest
-│   └── sessions.py         # SessionSummary, MessageRecord, ToolCallRecord, UsageRecord
-├── integrations/
-│   └── slack_webhook.py    # Block Kit notification sender
-├── skills/
-│   └── lambda-throttling/SKILL.md   # Runbook: Lambda throttling investigation
-└── mcp_server.py           # MCP HTTP+SSE server (fastmcp)
-
-frontend/src/
-├── pages/
-│   ├── ChatPage.tsx        # Streaming chat, tool call inspector, cost card
-│   ├── DashboardPage.tsx   # Analytics dashboard
-│   ├── HistoryPage.tsx     # Cross-session search
-│   └── SettingsPage.tsx    # Read-only config view
-└── components/             # AgentMessage, InputArea, Sidebar, ToolCallsBox, UsageBox, ...
-
-migrations/
-├── 001_initial.sql         # All tables + indexes
-├── 002_soft_delete.sql     # is_deleted, deleted_at columns on sessions
-└── 003_usage_events_metadata.sql   # JSONB metadata column on usage_events
-
-docs/                       # Public documentation source (one .md per feature)
-```
+| Agent framework | `deepagents` + `langgraph>=0.2.0` |
+| LLM abstraction | `litellm>=1.83.0` via `langchain-litellm` (`ChatLiteLLM`) |
+| AWS SDK | `boto3>=1.34.0` (sync; all tools are synchronous) |
+| Web backend | `fastapi>=0.111.0` + `uvicorn>=0.30.0` |
+| CLI | `typer>=0.12.0` + `rich>=13.7.0` |
+| Config | `pydantic-settings>=2.3.0` + `pydantic>=2.7.0` |
+| Storage | `aiosqlite>=0.20.0` / `psycopg[binary,pool]>=3.1.0` + LangGraph checkpointers |
+| Auth | `python-jose[cryptography]>=3.3.0` + `bcrypt>=5.0.0` |
+| MCP server | `fastmcp>=3.2.4` |
+| Tool cache | `cachetools>=5.3.0` (TTLCache, in-process) |
+| Logging | `loguru>=0.7.0` (never `print`) |
+| HTTP client | `httpx>=0.27.0` |
+| Testing | `pytest>=8.0.0`, `pytest-asyncio>=0.23.0`, `moto>=5.0.0`, `pytest-mock>=3.14.0` |
+| Linting | `ruff>=0.4.0` (line-length 100, Python 3.11 target, `asyncio_mode = "auto"`) |
+| Package manager | **uv** — always `uv run` and `uv add`, never bare `pip` |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS 3, `@tailwindcss/typography` |
+| Font | Inter Variable (Google Fonts) — Linear-style fallback stack in `tailwind.config.js` |
 
 ---
 
 ## Environment Variables
 
+All read from `src/config/appsettings.py` (Pydantic Settings — single source of truth). `.env.example` mirrors every variable.
+
 ```bash
-# LLM
-LLM_MODEL=openrouter/anthropic/claude-3.5-sonnet   # LiteLLM format
-LLM_API_KEY=sk-or-...
-LLM_API_BASE=https://openrouter.ai/api/v1           # omit for direct Anthropic/OpenAI
+# LLM — LiteLLM model string format
+LLM_MODEL=openrouter/openai/gpt-4o     # default
+LLM_API_BASE=                          # optional custom base URL
+LLM_API_KEY=                           # optional custom API key
+OPENROUTER_API_KEY=                    # used when LLM_MODEL starts with "openrouter/"
 
 # AWS
-AWS_REGION=us-east-1
-AWS_PROFILE=devops-agent-readonly                   # optional
-
-# Storage backend
-CHECKPOINT_BACKEND=memory                           # memory | sqlite | postgres
-SQLITE_PATH=./data/agent.db
-DATABASE_URL=postgresql://user:pass@host/db         # postgres only
+AWS_REGION=us-east-1                   # default
+AWS_PROFILE=                           # optional named ~/.aws profile
 
 # Agent behavior
-MAX_TOOL_CALLS=20
-INVESTIGATION_TIMEOUT=120
-TOOL_RESPONSE_MAX_CHARS=40000
+MAX_TOOL_CALLS=20                      # recursion_limit = MAX_TOOL_CALLS * 3 + 15
+INVESTIGATION_TIMEOUT=120              # seconds before asyncio.TimeoutError
+LOG_LEVEL=INFO
+TOOL_RESPONSE_MAX_CHARS=40000          # 0 = disabled; ~10K tokens at 4 chars/token
+
+# Storage backend — pick exactly one
+CHECKPOINT_BACKEND=memory              # memory | sqlite | postgres
+SQLITE_PATH=./data/agent.db            # only when backend=sqlite
+DATABASE_URL=                          # only when backend=postgres (psycopg3 DSN)
 
 # Conversation summarization
 SUMMARIZATION_ENABLED=true
-SUMMARIZATION_THRESHOLD_CHARS=60000
-SUMMARIZATION_KEEP_CHARS=20000
+SUMMARIZATION_THRESHOLD_CHARS=60000   # trigger when session exceeds this (~15K tokens)
+SUMMARIZATION_KEEP_CHARS=20000        # preserve this many recent chars intact (~5K tokens)
 
-# Slack + proactive polling
-SLACK_WEBHOOK_URL=https://hooks.slack.com/...
-POLL_INTERVAL_MINUTES=0                             # 0 = disabled
-POLL_ERROR_THRESHOLD=5.0                            # Lambda error % to trigger investigation
-POLL_REINVESTIGATE_HOURS=1
+# Auth — leave unset to disable entirely (all routes public)
+JWT_SECRET=                            # set to enable auth; required for /api/users
+JWT_EXPIRE_MINUTES=1440                # 24 hours
+
+# Slack notifications
+SLACK_WEBHOOK_URL=                     # leave unset to disable
+
+# Proactive polling
+POLL_INTERVAL_MINUTES=0               # 0 = disabled
+POLL_ERROR_THRESHOLD=5.0              # Lambda error rate % to trigger investigation
+POLL_REINVESTIGATE_HOURS=1            # dedup window
+
+# Event-driven detection
+SNS_TOPIC_ARN=                         # SNS publish target after investigations
+SQS_QUEUE_URL=                         # SQS queue for EventBridge events
+EVENT_CONSUMER_ENABLED=false           # also auto-starts if SQS_QUEUE_URL is set or init.json exists
+
+# Misc
+DATA_DIR=data                          # server-side state files (init.json)
 ```
 
 ---
 
 ## Core Architecture
 
+### Request flow (web chat)
 ```
-User message (CLI or /chat POST)
-  → maybe_summarize() if session is long
-  → agent.ainvoke(messages, thread_id=session_id)
-      LangGraph ReAct loop:
-        LLM reasons → picks tool → invoke tool
-          @tool_cached (TTL cache check)
-          with_cap() (truncate if > TOOL_RESPONSE_MAX_CHARS)
-          boto3 / subprocess call
-          return result to LLM
-        repeat until submit_investigation() or MAX_TOOL_CALLS
-  → stream tokens + tool events via SSE
-  → save turn (session, messages, tool_calls, usage_event) to DB backend
-  → maybe notify Slack
+POST /chat  →  maybe_summarize()  →  agent.astream()
+  LangGraph ReAct loop:
+    LLM reasons  →  picks tool  →  @tool_cached check  →  with_cap()  →  boto3 / subprocess
+    result injected back to LLM  →  repeat until submit_investigation() or MAX_TOOL_CALLS
+  SSE events streamed per chunk:
+    token  |  tool_status  |  tool_call  |  error  |  done  |  cancelled
+  After stream ends:
+    save_turn()  →  upsert_session + save_message + save_tool_calls + save_usage_event
+    notify_slack()  →  only if submit_investigation was called
 ```
 
-The checkpointer (memory / SQLite / Postgres) stores full LangGraph thread state. Each `/chat` call resumes the thread by `thread_id = session_id`, so the agent sees full history without the API passing it explicitly.
+### Event-driven flow
+```
+EventBridge rules (9 event types)
+  →  SQS queue  →  event_consumer_loop() (long-poll, 20s wait)
+    →  _is_real_failure() filter
+    →  collect_context() (deterministic boto3 pre-fetch, no LLM)
+    →  agent.ainvoke() (full ReAct loop)
+    →  _deliver(): SNS publish + Slack post + add_alert() → alerts table
+```
+
+### Startup sequence
+```
+db.init()  →  init_agent(checkpointer)
+  optional: asyncio.create_task(polling_loop())       if POLL_INTERVAL_MINUTES > 0
+  optional: asyncio.create_task(event_consumer_loop()) if SQS configured or init.json present
+```
+
+### Session continuity
+The LangGraph checkpointer stores full thread state keyed by `session_id`. Every `/chat` call resumes the thread by passing `thread_id = session_id` in config — the agent sees complete history without the API explicitly passing messages.
 
 ---
 
 ## Code Style Rules
 
-- Type hints everywhere — no untyped functions
-- Pydantic models for structured data in/out
-- Tool functions are **synchronous** (boto3 is sync) — async lives in the API layer
-- Credentials only via env vars or AWS profiles — never hardcoded
-- Tool functions: small and single-purpose, one boto3 call each, always return a dict, never raise
-- Use `logger` (Loguru) not `print`
-- Format/lint with **ruff**
-- `uv run`, `uv add` — never bare `pip`
-
----
-
-## Git Workflow
-
-- `main` — stable, merged via PR
-- Feature branches: `feat/<name>`, `fix/<name>`, `docs/<name>`
-- Commit format: `feat:`, `fix:`, `docs:`, `test:`, `ci:`
-- Do not commit `.env` files or AWS credentials
+- **Type hints everywhere** — no untyped functions, no `Any` without import
+- **Tool functions are synchronous** — boto3 is sync; `async` lives only in the API and DB layers
+- **Tools always return `dict`, never raise** — catch `BotoCoreError`, `ClientError`, and `Exception`; return `{"error": str(e), ...}` with safe empty defaults
+- **Never use `shell=True`** in subprocess — `bash_tool.py` uses `shlex.split()` + list-form `subprocess.run()`
+- **Credentials via env or AWS profiles only** — never hardcoded, never in source
+- **`logger` (Loguru) for all output** — never `print()`
+- **`uv run` / `uv add`** — never bare `pip install`
+- **ruff** for lint and format — `line-length = 100`, `target-version = "py311"`, rules `E F I UP`
+- **psycopg3 uses `%s` placeholders** — not `$1`/`$2` (that is asyncpg)
+- **Route prefix rule** — any API route whose path matches a React Router path must use `/api/` prefix to avoid the SPA fallback catch-all intercepting browser GETs on refresh
+- **Migrations are append-only** — never modify existing `.sql` files; add a new numbered file
+- **No `shell=True`, no write commands in bash tool** — the allowlist is the contract; never bypass it

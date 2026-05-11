@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio, Trash2, ChevronDown, MoreHorizontal } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, LayoutDashboard, MessageSquare, Terminal, GitBranch, Users, Settings, LogOut, Radio, Trash2, ChevronDown, MoreHorizontal, Pencil } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn, relativeTime } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -10,8 +11,8 @@ interface Props {
   hasMore: boolean;
   currentSessionId: string;
   onNew: () => void;
-  onSwitch: (id: string) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onLoadMore: () => void;
 }
 
@@ -68,24 +69,36 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
   );
 }
 
-export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, onSwitch, onDelete, onLoadMore }: Props) {
+export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, onDelete, onRename, onLoadMore }: Props) {
   const navigate = useNavigate();
   const { user, isAdmin, logout } = useAuth();
   const displayName = user?.name || 'You';
   const displayRole = isAdmin ? 'Admin' : 'User';
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+
+  const [openMenuId, setOpenMenuId]     = useState<string | null>(null);
+  const [menuPos, setMenuPos]           = useState<{ top: number; left: number } | null>(null);
+  const [renamingId, setRenamingId]     = useState<string | null>(null);
+  const [renameValue, setRenameValue]   = useState('');
+
+  const menuRef    = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const renameRef  = useRef<HTMLInputElement>(null);
 
   const currentChatTo = currentSessionId ? `/chat/${currentSessionId}` : '/';
 
+  // Close dropdown on click-outside (excludes both the menu and the trigger button)
   useEffect(() => {
     if (!openMenuId) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
+      const target = e.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setOpenMenuId(null);
+      setMenuPos(null);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenMenuId(null); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpenMenuId(null); setMenuPos(null); }
+    };
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -94,10 +107,46 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
     };
   }, [openMenuId]);
 
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingId) renameRef.current?.focus();
+  }, [renamingId]);
+
+  const openMenu = (e: React.MouseEvent<HTMLButtonElement>, sessionId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    triggerRef.current = e.currentTarget;
+    if (openMenuId === sessionId) {
+      setOpenMenuId(null);
+      setMenuPos(null);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.right });
+      setOpenMenuId(sessionId);
+    }
+  };
+
   const handleDelete = (sessionId: string) => {
     setOpenMenuId(null);
+    setMenuPos(null);
     onDelete(sessionId);
   };
+
+  const startRename = (session: Session) => {
+    setOpenMenuId(null);
+    setMenuPos(null);
+    setRenameValue(session.title ?? '');
+    setRenamingId(session.id);
+  };
+
+  const commitRename = async () => {
+    if (!renamingId) return;
+    const trimmed = renameValue.trim();
+    if (trimmed) await onRename(renamingId, trimmed);
+    setRenamingId(null);
+  };
+
+  const cancelRename = () => setRenamingId(null);
 
   return (
     <aside className="w-[240px] shrink-0 bg-white dark:bg-[#18181C] border-r border-gray-200 dark:border-[#27272F] flex flex-col h-full overflow-hidden">
@@ -156,53 +205,57 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                     : 'border-transparent hover:bg-gray-100 dark:hover:bg-[#27272F]',
                 )}
               >
-                {/* Real <a> link — enables right-click → Open in new tab */}
-                <Link
-                  to={`/chat/${s.id}`}
-                  onClick={() => localStorage.setItem('devops-session-id', s.id)}
-                  className="flex flex-col px-3.5 py-[7px] pr-8 min-w-0"
-                >
-                  <span className={cn(
-                    'text-[14px] truncate',
-                    s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#F1F5F9]' : 'text-gray-700 dark:text-[#CBD5E1]',
-                  )}>
-                    {s.title ?? 'Untitled session'}
-                  </span>
-                  <span className="text-[12px] text-gray-400 dark:text-[#64748B] mt-px">
-                    {s.last_active_at ? relativeTime(s.last_active_at) : ''}
-                  </span>
-                </Link>
-
-                {/* Three-dot menu — outside <a> to keep valid HTML */}
-                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <button
-                    onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === s.id ? null : s.id); }}
-                    className={cn(
-                      'p-1 rounded transition-colors text-gray-400 dark:text-[#64748B]',
-                      'hover:text-gray-600 dark:hover:text-[#94A3B8] hover:bg-gray-200 dark:hover:bg-[#3F3F47]',
-                      'opacity-0 group-hover:opacity-100',
-                      openMenuId === s.id && 'opacity-100',
-                    )}
-                    title="Options"
+                {renamingId === s.id ? (
+                  /* Inline rename input */
+                  <div className="px-3.5 py-[7px] pr-8">
+                    <input
+                      ref={renameRef}
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      onBlur={commitRename}
+                      className="w-full text-[14px] bg-white dark:bg-[#27272F] border border-indigo-400 dark:border-[#818CF8] rounded px-2 py-0.5 text-gray-900 dark:text-[#F1F5F9] outline-none"
+                    />
+                  </div>
+                ) : (
+                  /* Real <a> link — enables right-click → Open in new tab */
+                  <Link
+                    to={`/chat/${s.id}`}
+                    onClick={() => localStorage.setItem('devops-session-id', s.id)}
+                    className="flex flex-col px-3.5 py-[7px] pr-8 min-w-0"
                   >
-                    <MoreHorizontal size={13} />
-                  </button>
+                    <span className={cn(
+                      'text-[14px] truncate',
+                      s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#F1F5F9]' : 'text-gray-700 dark:text-[#CBD5E1]',
+                    )}>
+                      {s.title ?? 'Untitled session'}
+                    </span>
+                    <span className="text-[12px] text-gray-400 dark:text-[#64748B] mt-px">
+                      {s.last_active_at ? relativeTime(s.last_active_at) : ''}
+                    </span>
+                  </Link>
+                )}
 
-                  {openMenuId === s.id && (
-                    <div
-                      ref={menuRef}
-                      className="absolute right-0 top-full mt-0.5 z-50 bg-white dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-lg shadow-lg py-1 min-w-[120px]"
+                {/* Three-dot menu button — outside <a> to keep valid HTML */}
+                {renamingId !== s.id && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <button
+                      onClick={e => openMenu(e, s.id)}
+                      className={cn(
+                        'p-1 rounded transition-colors text-gray-400 dark:text-[#64748B]',
+                        'hover:text-gray-600 dark:hover:text-[#94A3B8] hover:bg-gray-200 dark:hover:bg-[#3F3F47]',
+                        'opacity-0 group-hover:opacity-100',
+                        openMenuId === s.id && 'opacity-100',
+                      )}
+                      title="Options"
                     >
-                      <button
-                        onClick={() => handleDelete(s.id)}
-                        className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-red-500 dark:text-[#F87171] hover:bg-red-50 dark:hover:bg-[#2D1515] transition-colors"
-                      >
-                        <Trash2 size={13} />
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
+                      <MoreHorizontal size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
 
@@ -247,6 +300,34 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
           <span>Sign out</span>
         </button>
       </div>
+
+      {/* Three-dot dropdown — rendered as portal so overflow-y-auto doesn't clip it */}
+      {openMenuId && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left - 140 }}
+          className="z-[9999] bg-white dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-lg shadow-lg py-1 min-w-[140px]"
+        >
+          <button
+            onClick={() => {
+              const session = sessions.find(s => s.id === openMenuId);
+              if (session) startRename(session);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-gray-700 dark:text-[#CBD5E1] hover:bg-gray-100 dark:hover:bg-[#27272F] transition-colors"
+          >
+            <Pencil size={13} />
+            Rename
+          </button>
+          <button
+            onClick={() => handleDelete(openMenuId)}
+            className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-red-500 dark:text-[#F87171] hover:bg-red-50 dark:hover:bg-[#2D1515] transition-colors"
+          >
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </div>,
+        document.body,
+      )}
     </aside>
   );
 }

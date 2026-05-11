@@ -29,6 +29,14 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
 }
 
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  await apiFetch(`/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+}
+
 export async function fetchHistory(days = 30): Promise<HistoryStats> {
   const res = await apiFetch(`/api/history?days=${days}`);
   if (!res.ok) throw new Error('Failed to load history');
