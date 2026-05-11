@@ -38,11 +38,12 @@ interface Props {
 export default function ChatPage({ onSessionsChange, onNew }: Props) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [messages,  setMessages] = useState<Message[]>([]);
-  const [busy,      setBusy]     = useState(false);
-  const abortRef                 = useRef<AbortController | null>(null);
-  const bottomRef                = useRef<HTMLDivElement>(null);
-  const autoPromptFired          = useRef(false);
+  const [messages,          setMessages]          = useState<Message[]>([]);
+  const [busy,              setBusy]              = useState(false);
+  const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const abortRef                                  = useRef<AbortController | null>(null);
+  const bottomRef                                 = useRef<HTMLDivElement>(null);
+  const autoPromptFired                           = useRef(false);
 
   useEffect(() => {
     if (sessionId) localStorage.setItem('devops-session-id', sessionId);
@@ -74,6 +75,7 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
 
   const send = async (text: string) => {
     if (!sessionId || busy || !text.trim()) return;
+    setFollowUpQuestions([]);
 
     const agentId = crypto.randomUUID();
     setMessages(prev => [
@@ -135,6 +137,8 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
             }));
           } else if (payload.type === 'done') {
             patch(agentId, { streaming: false, usage: payload.usage as AgentMsg['usage'] });
+            const fq = payload.follow_up_questions;
+            if (Array.isArray(fq) && fq.length > 0) setFollowUpQuestions(fq as string[]);
           } else if (payload.type === 'error') {
             const msg = payload.message as string;
             patch(agentId, { streaming: false, error: msg });
@@ -208,6 +212,19 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
         <div ref={bottomRef} />
       </div>
 
+      {followUpQuestions.length > 0 && !busy && (
+        <div className="px-6 pb-2 flex flex-wrap gap-2">
+          {followUpQuestions.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => send(q)}
+              className="text-[13px] px-3 py-1.5 rounded-full border border-indigo-200 dark:border-[#3730A3] bg-indigo-50 dark:bg-[#1E1B4B] text-indigo-600 dark:text-[#818CF8] hover:bg-indigo-100 dark:hover:bg-[#2D2B5C] transition-colors"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
       <InputArea busy={busy} onSend={send} onStop={stop} />
     </div>
   );

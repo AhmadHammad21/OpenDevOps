@@ -70,11 +70,16 @@ export default function DashboardPage() {
   const [error,   setError]   = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/stats')
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then(setStats)
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+    const load = () =>
+      fetch('/stats')
+        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+        .then(setStats)
+        .catch(e => setError(e.message))
+        .finally(() => setLoading(false));
+
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {

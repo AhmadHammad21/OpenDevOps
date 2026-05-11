@@ -251,7 +251,15 @@ async def _stream_chat(session_id: str, user_message: str):
     await save_turn(session_id, user_message, response_text, tool_calls_log, usage)
     await notify_slack(session_id, tool_calls_log)
 
-    yield f"data: {json.dumps({'type': 'done', 'usage': usage})}\n\n"
+    follow_up_questions: list[str] = []
+    for tc in tool_calls_log:
+        if tc["tool"] == "submit_investigation":
+            fq = tc["args"].get("follow_up_questions")
+            if isinstance(fq, list):
+                follow_up_questions = [q for q in fq if isinstance(q, str)]
+            break
+
+    yield f"data: {json.dumps({'type': 'done', 'usage': usage, 'follow_up_questions': follow_up_questions})}\n\n"
 
 
 @router.post("/chat")
