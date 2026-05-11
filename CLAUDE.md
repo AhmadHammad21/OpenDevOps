@@ -103,10 +103,10 @@ Everything below is built and working in the codebase:
 
 ### Frontend
 - React 18 + TypeScript + Vite + Tailwind CSS + `@tailwindcss/typography`
-- Font: Inter Variable (Google Fonts) with Linear's full fallback stack
+- Font: Inter Variable (Google Fonts) with a full system fallback stack
 - Routes: `/`, `/chat/:sessionId`, `/dashboard`, `/monitoring`, `/monitoring/:alertId`, `/history`, `/settings`, `/users`, `/login`
 - Chat page: SSE streaming, tool call inspector, cost/latency card, stop button, suggestion chips on empty state, `?prompt=` deeplink support
-- Sidebar: paginated session list (15 at a time), three-dot menu with delete, real `<a>` links for native right-click
+- Sidebar: paginated session list (15 at a time), three-dot menu with rename + delete (portal-based, no overflow clipping), real `<a>` links for native right-click
 - Settings: Environment, Agent Config, Integrations (UI stubs), AWS Configuration (editable, admin only), Preferences (dark mode)
 
 ### Auth & MCP
@@ -168,7 +168,7 @@ Incomplete items from the README roadmap (do not mark complete here — update R
 | Linting | `ruff>=0.4.0` (line-length 100, Python 3.11 target, `asyncio_mode = "auto"`) |
 | Package manager | **uv** — always `uv run` and `uv add`, never bare `pip` |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS 3, `@tailwindcss/typography` |
-| Font | Inter Variable (Google Fonts) — Linear-style fallback stack in `tailwind.config.js` |
+| Font | Inter Variable (Google Fonts) — full system fallback stack in `tailwind.config.js` |
 
 ---
 
