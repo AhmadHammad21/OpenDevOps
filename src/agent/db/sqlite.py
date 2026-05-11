@@ -355,6 +355,12 @@ class SQLiteBackend(DatabaseBackend):
             session_id,
         )
 
+    async def rename_session(self, session_id: str, title: str) -> None:
+        await self._exec(
+            "UPDATE sessions SET title = ? WHERE id = ? AND is_deleted = 0",
+            title, session_id,
+        )
+
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     async def get_dashboard_stats(self) -> dict:

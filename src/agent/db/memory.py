@@ -183,6 +183,10 @@ class MemoryBackend(DatabaseBackend):
         if session_id in self._sessions:
             self._sessions[session_id]["is_deleted"] = True
 
+    async def rename_session(self, session_id: str, title: str) -> None:
+        if session_id in self._sessions:
+            self._sessions[session_id]["title"] = title
+
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     async def get_dashboard_stats(self) -> dict:

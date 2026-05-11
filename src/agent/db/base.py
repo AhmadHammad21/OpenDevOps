@@ -76,6 +76,9 @@ class DatabaseBackend(ABC):
     @abstractmethod
     async def delete_session(self, session_id: str) -> None: ...
 
+    @abstractmethod
+    async def rename_session(self, session_id: str, title: str) -> None: ...
+
     # ── Analytics ──────────────────────────────────────────────────────────────
 
     @abstractmethod

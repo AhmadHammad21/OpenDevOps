@@ -11,7 +11,7 @@ import MonitoringPage from './pages/MonitoringPage';
 import AlertDetailPage from './pages/AlertDetailPage';
 import InitPage from './pages/InitPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import { fetchSessions, deleteSession as apiDeleteSession } from './lib/api';
+import { fetchSessions, deleteSession as apiDeleteSession, renameSession as apiRenameSession } from './lib/api';
 import { useAuth } from './context/AuthContext';
 import type { Session } from './types';
 
@@ -74,15 +74,15 @@ function AppLayout() {
     navigate('/chat/' + id);
   };
 
-  const switchSession = (id: string) => {
-    localStorage.setItem('devops-session-id', id);
-    navigate('/chat/' + id);
-  };
-
   const deleteSession = async (id: string) => {
     await apiDeleteSession(id);
     setSessions(prev => prev.filter(s => s.id !== id));
     if (id === currentSessionId) newChat();
+  };
+
+  const renameSession = async (id: string, title: string) => {
+    await apiRenameSession(id, title);
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s));
   };
 
   return (
@@ -92,8 +92,8 @@ function AppLayout() {
         hasMore={hasMore}
         currentSessionId={currentSessionId}
         onNew={newChat}
-        onSwitch={switchSession}
         onDelete={deleteSession}
+        onRename={renameSession}
         onLoadMore={loadMoreSessions}
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">

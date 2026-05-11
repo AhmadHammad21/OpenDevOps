@@ -275,6 +275,12 @@ class PostgresBackend(DatabaseBackend):
             uuid.UUID(session_id),
         )
 
+    async def rename_session(self, session_id: str, title: str) -> None:
+        await self._exec(
+            "UPDATE sessions SET title = %s WHERE id = %s AND is_deleted = FALSE",
+            title, uuid.UUID(session_id),
+        )
+
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     async def get_dashboard_stats(self) -> dict:
