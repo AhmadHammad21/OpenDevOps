@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 """
-test_pipeline.py — create a real Lambda that errors, fire it through the monitoring pipeline.
+test_pipeline.py — trigger a real Lambda failure through the monitoring pipeline.
+
+No IAM role creation needed — picks an existing Lambda from your account,
+invokes it with a bad payload to generate real CloudWatch Logs errors,
+then pushes an alarm event to SQS so the agent investigates.
 
 Usage:
-  uv run python scripts/test_pipeline.py                        # run test
-  uv run python scripts/test_pipeline.py --region eu-west-1    # override region
-  uv run python scripts/test_pipeline.py --invocations 10      # more errors
-  uv run python scripts/test_pipeline.py --cleanup FUNCTION ROLE
+  uv run python scripts/test_pipeline.py                         # auto-pick a Lambda
+  uv run python scripts/test_pipeline.py --function my-function  # use specific Lambda
+  uv run python scripts/test_pipeline.py --region eu-west-1
+  uv run python scripts/test_pipeline.py --invocations 10
+  uv run python scripts/test_pipeline.py --list                  # list available Lambdas
 """
 
 from __future__ import annotations
 
 import argparse
 import datetime
-import io
 import json
 import os
 import sys
-import time
-import zipfile
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 
-GREEN = "\033[0;32m"
+GREEN  = "\033[0;32m"
 YELLOW = "\033[1;33m"
-RED = "\033[0;31m"
-NC = "\033[0m"
+RED    = "\033[0;31m"
+NC     = "\033[0m"
 
 
 def log(msg: str)  -> None: print(f"{GREEN}[+]{NC} {msg}")
@@ -34,141 +36,105 @@ def warn(msg: str) -> None: print(f"{YELLOW}[!]{NC} {msg}")
 def die(msg: str)  -> None: print(f"{RED}[✗]{NC} {msg}", file=sys.stderr); sys.exit(1)
 
 
-LAMBDA_CODE = """\
-import random
-
-ERRORS = [
-    "Connection pool exhausted: all 100 connections in use by active queries",
-    "DynamoDB ProvisionedThroughputExceededException on table 'orders' — read capacity 0/500 RCU remaining",
-    "Downstream service timeout: payments-service did not respond within 29000ms",
-    "Redis READONLY error: connected to replica — write commands not accepted",
-    "JWT verification failed: token expired 3601s ago (iat=1715000000)",
-    "Unhandled exception: Cannot read property 'userId' of undefined at processOrder:47",
-    "Out of memory: Lambda allocated 128 MB, peak usage 129 MB — increase memory limit",
-]
-
-def handler(event, context):
-    error = random.choice(ERRORS)
-    raise RuntimeError(f"[TEST FAILURE] {error}")
-"""
-
-
-def make_zip() -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("index.py", LAMBDA_CODE)
-    return buf.getvalue()
-
-
 def get_queue_url() -> str:
     init_path = os.path.join(os.path.dirname(__file__), "..", "data", "init.json")
     if os.path.exists(init_path):
-        with open(init_path) as f:
-            url = json.load(f).get("sqs_queue_url", "")
-            if url:
-                return url
+        try:
+            with open(init_path) as f:
+                url = json.load(f).get("sqs_queue_url", "")
+                if url:
+                    return url
+        except Exception:
+            pass
     return os.environ.get("SQS_QUEUE_URL", "")
 
 
-def cleanup(function_name: str, role_name: str, region: str) -> None:
-    session = boto3.Session()
-    lam = session.client("lambda", region_name=region)
-    iam = session.client("iam")
+def list_functions(lam) -> list[str]:
+    names: list[str] = []
+    paginator = lam.get_paginator("list_functions")
+    for page in paginator.paginate():
+        for fn in page.get("Functions", []):
+            names.append(fn["FunctionName"])
+    return sorted(names)
 
-    warn(f"Deleting Lambda: {function_name}")
+
+def run(region: str, invocations: int, function_name: str | None, list_only: bool) -> None:
     try:
-        lam.delete_function(FunctionName=function_name)
-        log("Lambda deleted")
-    except ClientError:
-        warn("Already gone")
+        session = boto3.Session()
+        lam = session.client("lambda", region_name=region)
+        sqs = session.client("sqs", region_name=region)
+    except NoCredentialsError:
+        die("No AWS credentials found. Configure via environment variables or ~/.aws/credentials.")
 
-    warn(f"Deleting IAM role: {role_name}")
+    # ── credential check ──────────────────────────────────────────────────────
     try:
-        iam.detach_role_policy(
-            RoleName=role_name,
-            PolicyArn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-        )
-    except ClientError:
-        pass
-    try:
-        iam.delete_role(RoleName=role_name)
-        log("Role deleted")
-    except ClientError:
-        warn("Already gone")
+        sts = session.client("sts", region_name=region)
+        identity = sts.get_caller_identity()
+        log(f"AWS identity: {identity.get('Arn', 'unknown')}")
+    except ClientError as e:
+        die(f"AWS credentials error: {e}\nRun 'aws sso login' or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.")
 
-    log("Cleanup done.")
+    # ── list mode ─────────────────────────────────────────────────────────────
+    functions = list_functions(lam)
+    if list_only:
+        if not functions:
+            warn("No Lambda functions found in this account/region.")
+        else:
+            print(f"\nAvailable Lambda functions in {region}:")
+            for fn in functions:
+                print(f"  {fn}")
+        return
 
+    # ── pick Lambda ───────────────────────────────────────────────────────────
+    if function_name:
+        # verify it exists
+        try:
+            lam.get_function(FunctionName=function_name)
+        except ClientError:
+            die(f"Lambda function '{function_name}' not found in {region}.")
+    else:
+        if not functions:
+            die(f"No Lambda functions found in {region}. Use --function to specify one.")
+        function_name = functions[0]
+        log(f"Auto-selected Lambda: {function_name}  (use --list to see all, --function to pick)")
 
-def run(region: str, invocations: int) -> None:
     queue_url = get_queue_url()
     if not queue_url:
         die("No SQS queue URL found. Run 'Create Infrastructure' in Settings → AWS Configuration first.")
-
-    suffix = int(time.time())
-    function_name = f"opendevops-test-error-{suffix}"
-    role_name = f"opendevops-test-role-{suffix}"
 
     log(f"Region    : {region}")
     log(f"Queue     : {queue_url}")
     log(f"Function  : {function_name}")
     print()
 
-    session = boto3.Session()
-    iam = session.client("iam")
-    lam = session.client("lambda", region_name=region)
-    sqs = session.client("sqs", region_name=region)
-
-    # ── create IAM role ──────────────────────────────────────────────────────
-    log("Creating IAM execution role...")
-    trust = json.dumps({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "lambda.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }],
-    })
-    role_arn = iam.create_role(
-        RoleName=role_name,
-        AssumeRolePolicyDocument=trust,
-    )["Role"]["Arn"]
-    iam.attach_role_policy(
-        RoleName=role_name,
-        PolicyArn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-    )
-    log(f"Role ARN  : {role_arn}")
-    log("Waiting 10s for IAM role to propagate...")
-    time.sleep(10)
-
-    # ── deploy Lambda ────────────────────────────────────────────────────────
-    log("Deploying Lambda function...")
-    lam.create_function(
-        FunctionName=function_name,
-        Runtime="python3.12",
-        Role=role_arn,
-        Handler="index.handler",
-        Code={"ZipFile": make_zip()},
-        Timeout=10,
-    )
-
-    waiter = lam.get_waiter("function_active")
-    waiter.wait(FunctionName=function_name)
-    log("Lambda deployed.")
-
-    # ── invoke to generate real errors + CloudWatch logs ────────────────────
-    log(f"Invoking {invocations} times to generate real errors...")
+    # ── invoke Lambda with intentionally bad payload ──────────────────────────
+    log(f"Invoking '{function_name}' {invocations}× with a bad payload to generate real errors...")
+    bad_payload = b'{"__test_force_error": true, "trigger": "opendevops-pipeline-test"}'
+    succeeded = 0
     for i in range(1, invocations + 1):
-        lam.invoke(
-            FunctionName=function_name,
-            InvocationType="RequestResponse",
-            Payload=b'{"test": true}',
-        )
-        print(f"  invocation {i}/{invocations}")
+        try:
+            resp = lam.invoke(
+                FunctionName=function_name,
+                InvocationType="RequestResponse",
+                Payload=bad_payload,
+            )
+            status = resp.get("StatusCode", 0)
+            fn_error = resp.get("FunctionError", "")
+            if fn_error or status >= 400:
+                print(f"  invocation {i}/{invocations}  → error (good)")
+            else:
+                print(f"  invocation {i}/{invocations}  → success (function handled bad input gracefully)")
+            succeeded += 1
+        except ClientError as e:
+            warn(f"  invocation {i}/{invocations}  → invoke failed: {e}")
 
-    log(f"Errors written to CloudWatch Logs: /aws/lambda/{function_name}")
+    if succeeded == 0:
+        warn("All invocations failed to reach the function — no logs may exist.")
+    else:
+        log(f"Real invocation logs at: CloudWatch → /aws/lambda/{function_name}")
     print()
 
-    # ── push event to SQS with real function name ────────────────────────────
+    # ── push alarm event to SQS ───────────────────────────────────────────────
     now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     event = {
         "source": "aws.cloudwatch",
@@ -176,12 +142,12 @@ def run(region: str, invocations: int) -> None:
         "time": now,
         "region": region,
         "detail": {
-            "alarmName": f"{function_name}-errors",
+            "alarmName": f"{function_name}-test-errors",
             "state": {
                 "value": "ALARM",
                 "reason": (
                     f"Threshold Crossed: {invocations} error datapoints"
-                    " in the last 1 minute (threshold: 1)."
+                    " in the last 1 minute (threshold: 1). Triggered by pipeline test."
                 ),
             },
             "configuration": {
@@ -200,11 +166,14 @@ def run(region: str, invocations: int) -> None:
         },
     }
 
-    log("Sending event to SQS...")
-    msg_id = sqs.send_message(
-        QueueUrl=queue_url,
-        MessageBody=json.dumps(event),
-    )["MessageId"]
+    log("Sending alarm event to SQS...")
+    try:
+        msg_id = sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(event),
+        )["MessageId"]
+    except ClientError as e:
+        die(f"Failed to send SQS message: {e}")
 
     sep = "━" * 60
     print(f"\n{GREEN}{sep}{NC}")
@@ -216,21 +185,18 @@ def run(region: str, invocations: int) -> None:
     print(f"{GREEN}{sep}{NC}\n")
     warn("The agent will pull REAL CloudWatch logs from that function.")
     warn("Investigation takes ~30–90s. Watch the Monitoring page.")
-    print(f"\nTo clean up when done:")
-    print(f"  {YELLOW}uv run python scripts/test_pipeline.py --cleanup {function_name} {role_name}{NC}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fire a real Lambda failure through the monitoring pipeline")
-    parser.add_argument("--cleanup", nargs=2, metavar=("FUNCTION", "ROLE"), help="Tear down resources")
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
+    parser = argparse.ArgumentParser(
+        description="Trigger a real Lambda failure through the monitoring pipeline"
+    )
+    parser.add_argument("--function",    help="Lambda function name to use (auto-picks first if omitted)")
+    parser.add_argument("--region",      default=os.environ.get("AWS_REGION", "us-east-1"))
     parser.add_argument("--invocations", type=int, default=5)
+    parser.add_argument("--list",        action="store_true", help="List available Lambda functions and exit")
     args = parser.parse_args()
-
-    if args.cleanup:
-        cleanup(args.cleanup[0], args.cleanup[1], args.region)
-    else:
-        run(args.region, args.invocations)
+    run(args.region, args.invocations, args.function, args.list)
 
 
 if __name__ == "__main__":
