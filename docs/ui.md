@@ -82,13 +82,17 @@ Shows the live incident feed produced by the event-driven consumer. See [`monito
 
 Accessible from the sidebar for all authenticated users. Each card shows the affected service, root cause summary, confidence level, and timestamp. Click any card to open the Alert Detail page, which includes an **Investigate** button that opens a new chat session with the incident context pre-loaded.
 
+**Send test event** *(admin only)* — appears in the header next to the refresh button. Puts a synthetic Lambda error alarm into the SQS queue. A toast confirms dispatch and the resulting investigation card appears within ~30s via auto-refresh. Shows an error toast if event monitoring is not yet configured.
+
 ---
 
 ## Settings page
 
 Shows active configuration. Four tabs (admins see all four; regular users see the last three):
 
-**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are saved to `data/init.json` server-side and shared across all admin users. Includes a **Run checks** button that validates IAM permissions for every AWS service the agent uses.
+**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are saved to `data/init.json` server-side and shared across all admin users. Includes:
+- **Event Monitoring** section — shows Enabled / Disabled status; **Create Infrastructure** button provisions the SQS queue and 9 EventBridge rules; **Teardown** button removes them (with confirmation).
+- **Run checks** button that validates IAM permissions for every AWS service the agent uses.
 
 **Environment** — read-only view of all `.env` values. Sensitive fields (`LLM_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, etc.) are masked by default; click the eye icon to reveal. SNS and SQS values are intentionally omitted here — manage them in the AWS Configuration tab.
 
@@ -100,7 +104,12 @@ Shows active configuration. Four tabs (admins see all four; regular users see th
 
 ## First-run setup page
 
-Accessible at `/init` before any users exist. Creates the first admin account. After login, complete AWS setup in **Settings → AWS Configuration**.
+Accessible at `/init` before any users exist. A 4-step wizard guides the admin through initial setup:
+
+1. **Create account** — email + password for the admin user
+2. **AWS Configuration** — region selector and optional SNS Topic ARN for alert delivery
+3. **Permission check** — verifies IAM permissions per service; required services (CloudWatch, Lambda, SQS, EventBridge) are highlighted; "Continue anyway" is always available
+4. **Enable event monitoring** — creates the SQS queue and 9 EventBridge rules; shows a success summary with queue URL and rule list; includes a **Skip** option with a disclaimer listing what won't work without it
 
 The page redirects away automatically once an admin account exists.
 

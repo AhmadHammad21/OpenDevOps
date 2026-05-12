@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, CheckCircle, XCircle, AlertTriangle, RefreshCw, Radio, MessageSquare, ChevronRight } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, RefreshCw, Radio, MessageSquare, ChevronRight, FlaskConical } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '../lib/utils';
-import { fetchAlerts, fetchServices } from '../lib/api';
+import { fetchAlerts, fetchServices, apiFetch } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import type { Alert, ServiceStatus } from '../types';
 
 function timeAgo(ts: string): string {
@@ -21,9 +23,45 @@ function buildPrompt(a: Alert): string {
 
 export default function MonitoringPage() {
   const navigate = useNavigate();
-  const [services, setServices] = useState<ServiceStatus[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isAdmin } = useAuth();
+  const [services,       setServices]       = useState<ServiceStatus[]>([]);
+  const [alerts,         setAlerts]         = useState<Alert[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [testSending,    setTestSending]    = useState(false);
+  const [infraEnabled,   setInfraEnabled]   = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/init/status')
+      .then(r => r.json())
+      .then(d => setInfraEnabled(!!d.initialized))
+      .catch(() => setInfraEnabled(false));
+  }, [isAdmin]);
+
+  const sendTestEvent = async () => {
+    if (infraEnabled === false) {
+      toast.error('Event monitoring not set up — go to Settings → AWS Configuration to enable it');
+      return;
+    }
+    setTestSending(true);
+    try {
+      const r = await apiFetch('/api/init/test-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: 'lambda' }),
+      });
+      if (!r.ok) {
+        const d = await r.json();
+        toast.error(d.detail || 'Failed to send test event');
+        return;
+      }
+      toast.success('Test Lambda alarm sent — investigation will appear here in ~30s');
+    } catch {
+      toast.error('Failed to send test event');
+    } finally {
+      setTestSending(false);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -58,6 +96,17 @@ export default function MonitoringPage() {
               <Radio size={10} className={loading ? 'animate-pulse' : ''} />
               <span className="font-medium">Live</span>
             </div>
+            {isAdmin && (
+              <button
+                onClick={sendTestEvent}
+                disabled={testSending}
+                title={infraEnabled === false ? 'Event monitoring not configured' : 'Send a synthetic Lambda alarm to test the pipeline'}
+                className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-3 py-1.5 border border-indigo-200 dark:border-indigo-500/30 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-500/10 disabled:opacity-50 transition-colors"
+              >
+                <FlaskConical size={13} className={testSending ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">Test event</span>
+              </button>
+            )}
             <button onClick={load}
               className="flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-[#A1A1AA] hover:text-gray-900 dark:hover:text-white px-3 py-1.5 border border-gray-200 dark:border-[#27272A] rounded-lg hover:bg-gray-50 dark:hover:bg-[#18181B] transition-colors">
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
