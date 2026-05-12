@@ -4,10 +4,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import litellm
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+
+# Suppress LiteLLM's "Provider List" info spam — we don't need provider discovery hints in logs
+litellm.suppress_debug_info = True
 
 from agent.core import init_agent
 from agent.db import db

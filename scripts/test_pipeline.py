@@ -12,6 +12,7 @@ Usage:
   uv run python scripts/test_pipeline.py --region eu-west-1
   uv run python scripts/test_pipeline.py --invocations 10
   uv run python scripts/test_pipeline.py --list                  # list available Lambdas
+  uv run python scripts/test_pipeline.py --lambda-only           # invoke + wait for alarm (no manual SQS push)
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ import sys
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+from dotenv import load_dotenv
+load_dotenv()
 
 GREEN  = "\033[0;32m"
 YELLOW = "\033[1;33m"
@@ -58,7 +61,7 @@ def list_functions(lam) -> list[str]:
     return sorted(names)
 
 
-def run(region: str, invocations: int, function_name: str | None, list_only: bool) -> None:
+def run(region: str, invocations: int, function_name: str | None, list_only: bool, lambda_only: bool = False) -> None:
     try:
         session = boto3.Session()
         lam = session.client("lambda", region_name=region)
@@ -134,6 +137,21 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
         log(f"Real invocation logs at: CloudWatch → /aws/lambda/{function_name}")
     print()
 
+    # ── lambda-only: skip manual SQS push, let alarm fire naturally ──────────
+    if lambda_only:
+        sep = "━" * 60
+        print(f"\n{GREEN}{sep}{NC}")
+        print(f"{GREEN}✓ Lambda invoked — waiting for alarm to fire automatically{NC}")
+        print(f"  Function  : {function_name}")
+        print(f"  Alarm     : opendevops-lambda-errors-aggregate")
+        print(f"  Real logs : CloudWatch → /aws/lambda/{function_name}")
+        print(f"  Monitoring: http://localhost/monitoring")
+        print(f"{GREEN}{sep}{NC}\n")
+        warn("CloudWatch evaluates every 60s — alarm should trip in ~1-2 minutes.")
+        warn("EventBridge fires → SQS → agent investigates automatically.")
+        warn("Watch server logs for: 'Processing event: aws.cloudwatch'")
+        return
+
     # ── push alarm event to SQS ───────────────────────────────────────────────
     now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     event = {
@@ -166,7 +184,7 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
         },
     }
 
-    log("Sending alarm event to SQS...")
+    log("Sending alarm event to SQS manually (bypasses EventBridge)...")
     try:
         msg_id = sqs.send_message(
             QueueUrl=queue_url,
@@ -177,7 +195,7 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
 
     sep = "━" * 60
     print(f"\n{GREEN}{sep}{NC}")
-    print(f"{GREEN}✓ Pipeline triggered{NC}")
+    print(f"{GREEN}✓ Pipeline triggered (manual SQS push){NC}")
     print(f"  MessageId : {msg_id}")
     print(f"  Function  : {function_name}")
     print(f"  Real logs : CloudWatch → /aws/lambda/{function_name}")
@@ -195,8 +213,10 @@ def main() -> None:
     parser.add_argument("--region",      default=os.environ.get("AWS_REGION", "us-east-1"))
     parser.add_argument("--invocations", type=int, default=5)
     parser.add_argument("--list",        action="store_true", help="List available Lambda functions and exit")
+    parser.add_argument("--lambda-only", action="store_true", dest="lambda_only",
+                        help="Invoke Lambda and let the CloudWatch alarm fire automatically (no manual SQS push)")
     args = parser.parse_args()
-    run(args.region, args.invocations, args.function, args.list)
+    run(args.region, args.invocations, args.function, args.list, args.lambda_only)
 
 
 if __name__ == "__main__":
