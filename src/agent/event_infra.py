@@ -68,12 +68,19 @@ def _session() -> boto3.Session:
     return boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
 
 
+ALARM_NAME = "opendevops-lambda-errors-aggregate"
+
+
 def setup_event_infra() -> dict:
-    """Create SQS queue and EventBridge rules. Returns {queue_url, queue_arn, rule_arns}."""
+    """Create SQS queue, EventBridge rules, and aggregate Lambda alarm.
+
+    Returns {queue_url, queue_arn, rule_arns}.
+    """
     s = _session()
     region = settings.aws_region
     sqs = s.client("sqs", region_name=region)
     events = s.client("events", region_name=region)
+    cw = s.client("cloudwatch", region_name=region)
     sts = s.client("sts", region_name=region)
 
     account_id = sts.get_caller_identity()["Account"]
@@ -117,16 +124,33 @@ def setup_event_infra() -> dict:
             Targets=[{"Id": "opendevops-sqs", "Arn": queue_arn}],
         )
 
-    logger.info("Event infra created: queue={} rules={}", queue_url, len(rule_arns))
+    # Aggregate CloudWatch alarm — fires when ANY Lambda in the account errors.
+    # No dimensions = account-wide. EventBridge alarm-state rule routes it to SQS.
+    cw.put_metric_alarm(
+        AlarmName=ALARM_NAME,
+        AlarmDescription="OpenDevOps Agent — triggers investigation on any Lambda error",
+        Namespace="AWS/Lambda",
+        MetricName="Errors",
+        Statistic="Sum",
+        Period=60,
+        EvaluationPeriods=1,
+        Threshold=1,
+        ComparisonOperator="GreaterThanOrEqualToThreshold",
+        TreatMissingData="notBreaching",
+    )
+    logger.info(
+        "Event infra created: queue={} rules={} alarm={}", queue_url, len(rule_arns), ALARM_NAME
+    )
     return {"queue_url": queue_url, "queue_arn": queue_arn, "rule_arns": rule_arns}
 
 
 def teardown_event_infra(queue_url: str, rule_arns: dict[str, str]) -> None:
-    """Remove EventBridge rules and SQS queue."""
+    """Remove EventBridge rules, aggregate CloudWatch alarm, and SQS queue."""
     s = _session()
     region = settings.aws_region
     sqs = s.client("sqs", region_name=region)
     events = s.client("events", region_name=region)
+    cw = s.client("cloudwatch", region_name=region)
 
     for rule_name in rule_arns:
         try:
@@ -134,6 +158,11 @@ def teardown_event_infra(queue_url: str, rule_arns: dict[str, str]) -> None:
             events.delete_rule(Name=rule_name)
         except Exception as e:
             logger.warning("Failed to delete rule {}: {}", rule_name, e)
+
+    try:
+        cw.delete_alarms(AlarmNames=[ALARM_NAME])
+    except Exception as e:
+        logger.warning("Failed to delete alarm {}: {}", ALARM_NAME, e)
 
     try:
         sqs.delete_queue(QueueUrl=queue_url)
