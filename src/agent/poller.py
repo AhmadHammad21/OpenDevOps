@@ -10,13 +10,12 @@ Every POLL_INTERVAL_MINUTES it:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
 
 from config import settings
-
 
 # In-memory dedup: maps a trigger key → datetime last investigated.
 # Resets on process restart (intentional — re-check on startup is fine).
@@ -37,6 +36,7 @@ def _mark_investigated(key: str) -> None:
 async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | None:
     """Invoke the agent synchronously in a thread and return the submit_investigation args."""
     import uuid
+
     from agent.core import get_agent
 
     thread_id = str(uuid.uuid4())
@@ -64,17 +64,31 @@ async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | 
 
 
 async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: str) -> None:
-    from agent.turns import save_turn, notify_slack
+    from agent.monitor_store import add_alert
+    from agent.turns import notify_slack, save_turn
+
     tool_calls_log = [{"tool": "submit_investigation", "args": result, "result": {}}]
     usage = {"model": settings.llm_model, "latency_ms": 0}
     await save_turn(session_id, prompt, "", tool_calls_log, usage)
     await notify_slack(session_id, tool_calls_log)
 
+    services_affected = result.get("services_affected", [])
+    service = services_affected[0] if services_affected else "unknown"
+    root_cause = result.get("root_cause_summary", "")
+    mitigation = result.get("mitigation_steps", [])
+    confidence = result.get("confidence", "MEDIUM")
+    resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
+    add_alert(
+        service=service, error=root_cause, resolution=resolution,
+        confidence=confidence, sns_sent=False,
+    )
+
 
 async def _check_alarms() -> None:
     """Check CloudWatch alarms — each new ALARM state triggers an investigation."""
-    from tools.cloudwatch import get_alarms
     import uuid
+
+    from tools.cloudwatch import get_alarms
 
     data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
     for alarm in data.get("alarms", []):
@@ -104,8 +118,9 @@ async def _check_alarms() -> None:
 
 async def _check_lambda_errors() -> None:
     """Check Lambda functions for error rates above the configured threshold."""
-    from tools.lambda_ import list_lambda_functions, get_lambda_error_rate
     import uuid
+
+    from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
     funcs = await asyncio.get_event_loop().run_in_executor(None, list_lambda_functions)
     for fn in funcs.get("functions", [])[:20]:  # cap at 20 to avoid runaway API calls

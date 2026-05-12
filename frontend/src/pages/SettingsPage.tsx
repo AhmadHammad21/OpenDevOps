@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield, Radio, Trash2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -43,12 +43,16 @@ export default function SettingsPage() {
   const [data, setData]   = useState<SettingsData | null>(null);
 
   // AWS tab state
-  const [snsArn,      setSnsArn]      = useState('');
-  const [sqsUrl,      setSqsUrl]      = useState('');
-  const [awsRegion,   setAwsRegion]   = useState('');
-  const [awsSaving,   setAwsSaving]   = useState(false);
-  const [awsChecking, setAwsChecking] = useState(false);
-  const [perms,       setPerms]       = useState<Record<string, PermResult>>({});
+  const [snsArn,        setSnsArn]        = useState('');
+  const [sqsUrl,        setSqsUrl]        = useState('');
+  const [awsRegion,     setAwsRegion]     = useState('');
+  const [awsSaving,     setAwsSaving]     = useState(false);
+  const [awsChecking,   setAwsChecking]   = useState(false);
+  const [perms,         setPerms]         = useState<Record<string, PermResult>>({});
+  // Event monitoring section
+  const [infraEnabled,  setInfraEnabled]  = useState(false);
+  const [infraRules,    setInfraRules]    = useState<Record<string, string>>({});
+  const [infraBusy,     setInfraBusy]     = useState(false);
 
   const TABS: { id: Tab; label: string }[] = [
     ...(isAdmin ? [{ id: 'aws' as Tab, label: 'AWS Configuration' }] : []),
@@ -73,6 +77,8 @@ export default function SettingsPage() {
         setSnsArn(d.sns_topic_arn || '');
         setSqsUrl(d.sqs_queue_url || '');
         setAwsRegion(d.aws_region || '');
+        setInfraEnabled(!!d.initialized);
+        setInfraRules(d.eventbridge_rule_arns || {});
       })
       .catch(() => {});
   }, [tab]);
@@ -105,6 +111,41 @@ export default function SettingsPage() {
       toast.error('Permission check failed');
     } finally {
       setAwsChecking(false);
+    }
+  };
+
+  const createInfra = async () => {
+    setInfraBusy(true);
+    try {
+      const r = await apiFetch('/api/init/complete', { method: 'POST' });
+      const d = await r.json() as { initialized: boolean; error: string | null };
+      if (!d.initialized) { toast.error(d.error || 'Infrastructure setup failed'); return; }
+      toast.success('Event monitoring enabled');
+      // Refresh status
+      const s = await apiFetch('/api/init/status').then(res => res.json());
+      setInfraEnabled(true);
+      setSqsUrl(s.sqs_queue_url || '');
+      setInfraRules(s.eventbridge_rule_arns || {});
+    } catch {
+      toast.error('Failed to create infrastructure');
+    } finally {
+      setInfraBusy(false);
+    }
+  };
+
+  const teardownInfra = async () => {
+    if (!window.confirm('Remove SQS queue and EventBridge rules? This will stop all automatic incident detection.')) return;
+    setInfraBusy(true);
+    try {
+      await apiFetch('/api/init/infra', { method: 'DELETE' });
+      toast.success('Event monitoring disabled');
+      setInfraEnabled(false);
+      setInfraRules({});
+      setSqsUrl('');
+    } catch {
+      toast.error('Teardown failed');
+    } finally {
+      setInfraBusy(false);
     }
   };
 
@@ -249,6 +290,59 @@ export default function SettingsPage() {
                     />
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Event Monitoring card */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Event Monitoring</span>
+                  <span className={cn(
+                    'flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded',
+                    infraEnabled
+                      ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+                      : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                  )}>
+                    <Radio size={9} />
+                    {infraEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                {infraEnabled ? (
+                  <button
+                    onClick={teardownInfra}
+                    disabled={infraBusy}
+                    className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 text-red-500 border border-red-200 dark:border-red-500/30 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                  >
+                    {infraBusy ? <Loader2 size={11} className="animate-spin" /> : <><Trash2 size={11} /> Teardown</>}
+                  </button>
+                ) : (
+                  <button
+                    onClick={createInfra}
+                    disabled={infraBusy}
+                    className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-md transition-colors"
+                  >
+                    {infraBusy ? <Loader2 size={11} className="animate-spin" /> : <><Zap size={11} /> Create Infrastructure</>}
+                  </button>
+                )}
+              </div>
+              <div className="px-4 py-[11px]">
+                {infraEnabled ? (
+                  <div className="space-y-1 text-[13px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 dark:text-[#64748B] flex-[0_0_100px]">Queue URL</span>
+                      <span className="font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] truncate">{sqsUrl || '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 dark:text-[#64748B] flex-[0_0_100px]">Rules</span>
+                      <span className="text-gray-700 dark:text-[#CBD5E1]">{Object.keys(infraRules).length || 9} EventBridge rules active</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[13px] text-gray-400 dark:text-[#64748B]">
+                    Creates an SQS queue and 9 EventBridge rules to automatically detect and investigate AWS incidents.
+                  </p>
+                )}
               </div>
             </div>
 

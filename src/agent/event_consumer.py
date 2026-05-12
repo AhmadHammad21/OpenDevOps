@@ -120,7 +120,10 @@ async def _run_investigation(prompt: str) -> dict[str, Any] | None:
 
 async def _deliver(result: dict[str, Any], event: dict) -> None:
     """Send investigation result to SNS + Slack and persist to the monitor store."""
-    service = result.get("service_name", result.get("service", "unknown"))
+    services_affected = result.get("services_affected", [])
+    service = result.get("service_name", result.get("service",
+        services_affected[0] if services_affected else "unknown"
+    ))
     root_cause = result.get("root_cause_summary", "")
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")

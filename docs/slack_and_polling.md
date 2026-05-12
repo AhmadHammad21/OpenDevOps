@@ -9,6 +9,21 @@ OpenDevOps Agent can send investigation results to a Slack channel in two modes:
 
 ---
 
+## Polling vs Event-Driven — which do you need?
+
+| | Proactive Polling | Event-Driven (EventBridge → SQS) |
+|---|---|---|
+| **Setup required** | Just set `POLL_INTERVAL_MINUTES` in `.env` | Create AWS infra via Settings → AWS Configuration |
+| **Detection latency** | Up to N minutes (your poll interval) | Near real-time (~seconds after event fires) |
+| **CloudWatch alarm required** | No — checks Lambda error rates directly | Yes — EventBridge only fires when an alarm trips |
+| **Works out of the box** | Yes | Requires CloudWatch alarms on your resources |
+| **Results in /monitoring** | Yes | Yes |
+| **Slack notifications** | Yes | Yes |
+
+**Recommendation:** enable both. Polling works immediately with zero AWS setup and catches Lambda error rate spikes. Event-driven is faster and catches a wider range of AWS failures (ECS, RDS, EC2, GuardDuty, etc.) once you have CloudWatch alarms in place. They are complementary — both write to the same `/monitoring` page and Slack channel.
+
+---
+
 ## Configuration
 
 Add these to your `.env`:
@@ -58,6 +73,7 @@ Calls `list_lambda_functions` (capped at 20 functions) and checks each one's err
 - Builds a prompt describing the error rate
 - Runs a full agent investigation
 - Posts the result to Slack
+- Saves the result to the `alerts` table — visible in the `/monitoring` page
 
 ### Dedup
 An in-memory dict (`_last_investigated`) maps each trigger key (`alarm:<name>` or `lambda_errors:<name>`) to the last time it was investigated. If the cooldown (`POLL_REINVESTIGATE_HOURS`) hasn't elapsed, the alarm or function is skipped. This resets on process restart (intentional — re-checking on startup is fine).
