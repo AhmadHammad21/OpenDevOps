@@ -72,7 +72,7 @@ export default function InitPage() {
   useEffect(() => {
     fetch('/api/init/status')
       .then(r => r.json())
-      .then(d => { if (d.has_user) navigate('/', { replace: true }); })
+      .then(d => { if (d.has_user && d.initialized) navigate('/', { replace: true }); })
       .catch(() => {});
   }, [navigate]);
 
