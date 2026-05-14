@@ -29,13 +29,28 @@ function LogoutPage() {
 }
 
 function RedirectToSession() {
-  const stored = localStorage.getItem('devops-session-id');
-  const id = stored ?? (() => {
-    const newId = crypto.randomUUID();
-    localStorage.setItem('devops-session-id', newId);
-    return newId;
-  })();
-  return <Navigate to={`/chat/${id}`} replace />;
+  const [ready, setReady] = useState<'init' | 'chat' | null>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user?.role !== 'admin') { setReady('chat'); return; }
+    fetch('/api/init/status')
+      .then(r => r.json())
+      .then(d => setReady(d.initialized ? 'chat' : 'init'))
+      .catch(() => setReady('chat'));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (ready === 'init') return <Navigate to="/init" replace />;
+  if (ready === 'chat') {
+    const stored = localStorage.getItem('devops-session-id');
+    const id = stored ?? (() => {
+      const newId = crypto.randomUUID();
+      localStorage.setItem('devops-session-id', newId);
+      return newId;
+    })();
+    return <Navigate to={`/chat/${id}`} replace />;
+  }
+  return null;
 }
 
 const PAGE_SIZE = 15;

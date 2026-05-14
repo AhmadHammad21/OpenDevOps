@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
 const inp = 'w-full text-base text-gray-900 dark:text-white bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-[#52525B]';
 
@@ -43,8 +44,10 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function InitPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const [step, setStep] = useState<Step>(1);
+  // Skip account creation if already logged in (registered via Login page)
+  const [step, setStep] = useState<Step>(user ? 2 : 1);
 
   // Step 1
   const [username, setUsername] = useState('admin');
