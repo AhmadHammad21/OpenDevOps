@@ -36,7 +36,7 @@ function RedirectToSession() {
     if (user?.role !== 'admin') { setReady('chat'); return; }
     fetch('/api/init/status')
       .then(r => r.json())
-      .then(d => setReady(d.initialized ? 'chat' : 'init'))
+      .then(d => setReady((d.initialized && d.has_user) ? 'chat' : 'init'))
       .catch(() => setReady('chat'));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
