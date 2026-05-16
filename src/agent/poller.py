@@ -158,6 +158,12 @@ async def _check_lambda_errors() -> None:
             logger.debug("Poller: skipping Lambda {} — already investigated recently", name)
             _mark_investigated(key)
             continue
+        # The aggregate alarm covers all Lambda errors — if it fired recently, skip.
+        from agent.event_infra import ALARM_NAME
+        if await is_recent_alert(f"alarm:{ALARM_NAME}"):
+            logger.debug("Poller: skipping Lambda {} — aggregate alarm already handled", name)
+            _mark_investigated(key)
+            continue
 
         logger.info("Poller: Lambda {} error rate {:.1f}% exceeds threshold", name, error_rate)
         _mark_investigated(key)
