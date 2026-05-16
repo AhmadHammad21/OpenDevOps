@@ -28,13 +28,13 @@ router = APIRouter(prefix="/api/init", tags=["init"])
 class CreateUserBody(BaseModel):
     username: EmailStr
     password: str = Field(min_length=8)
-    org_name: str = Field(default="My Organization", min_length=1, max_length=100)
 
 
 class SetupBody(BaseModel):
     sns_topic_arn: str = ""
     aws_region: str = "us-east-1"
     sqs_queue_url: str = ""
+    org_name: str = ""
 
 
 class SkipBody(BaseModel):
@@ -46,16 +46,9 @@ async def reset_init_state(
     _: Annotated[dict | None, Depends(require_admin)],
 ):
     """Clear persisted init/setup state. Useful for re-running the wizard without touching AWS."""
-    from pathlib import Path as _Path
+    from agent.init_store import reset_init_async
 
-    from agent.init_store import _INIT_FILE, _default, save_init_async
-
-    await save_init_async(_default())
-    try:
-        if _Path(_INIT_FILE).exists():
-            _Path(_INIT_FILE).unlink()
-    except Exception:
-        pass
+    await reset_init_async()
     return {"reset": True}
 
 
@@ -83,24 +76,15 @@ async def create_user(body: CreateUserBody):
     if existing:
         raise HTTPException(status_code=409, detail="User already exists")
 
-    # Create the organization first; slug = lowercase hyphenated name
-    import re
-    slug = re.sub(r"[^a-z0-9]+", "-", body.org_name.strip().lower()).strip("-") or "org"
-    org = await db.create_org(body.org_name.strip(), slug)
-    org_id = org["id"] if org else None
-    if org:
-        logger.info("Init: organization '{}' created (id={})", body.org_name, org_id)
-
     user = await db.create_user(
         email=username,
         name=username,
         password_hash=hash_password(body.password),
         role="admin",
-        org_id=org_id,
     )
     logger.info("Init: admin user '{}' created", username)
     if user:
-        return {"id": user.get("id"), "username": username, "org_id": org_id}
+        return {"id": user.get("id"), "username": username}
     raise HTTPException(status_code=500, detail="Failed to create user")
 
 
@@ -109,6 +93,8 @@ async def setup(
     body: SetupBody,
     _: Annotated[dict | None, Depends(require_admin)],
 ):
+    import re
+
     data = await load_init_async()
     data["sns_topic_arn"] = body.sns_topic_arn.strip()
     data["aws_region"] = body.aws_region.strip() or settings.aws_region
@@ -118,6 +104,16 @@ async def setup(
     if data["sqs_queue_url"]:
         data["sqs_queue_arn"] = ""
         data["eventbridge_rule_arns"] = {}
+
+    # Create org if name provided and none exists yet
+    if body.org_name.strip():
+        existing_org = await db.get_first_org()
+        if not existing_org:
+            slug = re.sub(r"[^a-z0-9]+", "-", body.org_name.strip().lower()).strip("-") or "org"
+            org = await db.create_org(body.org_name.strip(), slug)
+            if org:
+                logger.info("Init: organization '{}' created", body.org_name)
+
     data = await save_init_async(data)
     logger.info("Init setup saved")
     return data

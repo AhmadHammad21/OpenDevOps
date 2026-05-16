@@ -1,25 +1,31 @@
-"""Init config store — persists setup and event-infra state.
+"""Init config store — setup and event-infra state.
 
-SQLite/Postgres deployments store the canonical value in the app_config table.
-The JSON file remains a local cache and fallback for memory/dev mode and sync AWS tool code.
+Single source of truth:
+  - Postgres / SQLite: app_config table in the DB
+  - Memory: in-memory dict (lost on restart, fine for dev)
+
+_CACHE is the in-process copy. All sync callers (boto3 threads, etc.)
+read from _CACHE — zero DB calls at runtime. Writes update _CACHE first,
+then persist to DB async. The cache is seeded from DB on startup via
+refresh_init_cache_from_db() called in the FastAPI lifespan.
+
+init.json is no longer written or read.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from config import settings
 
-_INIT_FILE = Path(settings.data_dir) / "init.json"
 _INIT_KEY = "init"
 _CACHE: dict[str, Any] | None = None
 
 
 def _clone(data: dict) -> dict:
+    import json
     return json.loads(json.dumps(data))
 
 
@@ -75,36 +81,26 @@ def _with_defaults(data: dict) -> dict:
     return merged
 
 
-def _read_file() -> dict | None:
-    if not _INIT_FILE.exists():
-        return None
-    try:
-        return json.loads(_INIT_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.warning("Failed to read init.json, returning defaults: {}", e)
-        return None
-
-
-def _write_file(data: dict) -> None:
-    _INIT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _INIT_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    logger.debug("Saved init.json")
-
+# ── Sync API (safe to call from boto3 thread executors) ───────────────────────
 
 def load_init() -> dict:
+    """Return a copy of the in-memory cache. Always fast — no I/O."""
     global _CACHE
     if _CACHE is None:
-        _CACHE = _with_defaults(_read_file() or {})
+        _CACHE = _default()
     return _clone(_CACHE)
 
 
 def save_init(data: dict) -> None:
+    """Update the in-memory cache synchronously. DB persist happens via save_init_async."""
     global _CACHE
     _CACHE = _with_defaults(data)
-    _write_file(_CACHE)
 
+
+# ── Async API (used by FastAPI route handlers) ────────────────────────────────
 
 async def load_init_async() -> dict:
+    """Load from DB into cache if not yet loaded, then return a copy."""
     global _CACHE
     try:
         from agent.db import db
@@ -112,30 +108,42 @@ async def load_init_async() -> dict:
         data = await db.get_app_config(_INIT_KEY)
         if data is not None:
             _CACHE = _with_defaults(data)
-            _write_file(_CACHE)
             return _clone(_CACHE)
-        file_data = load_init()
-        await db.set_app_config(_INIT_KEY, file_data)
-        return file_data
+        # First call with no DB record — seed DB from current cache
+        if _CACHE is None:
+            _CACHE = _default()
+        await db.set_app_config(_INIT_KEY, _CACHE)
     except Exception as e:
-        logger.debug("DB init config unavailable, using file fallback: {}", e)
-    return load_init()
+        logger.debug("DB app_config unavailable, using in-memory cache: {}", e)
+        if _CACHE is None:
+            _CACHE = _default()
+    return _clone(_CACHE)
 
 
 async def save_init_async(data: dict) -> dict:
-    save_init(data)
+    """Update cache and persist to DB."""
+    global _CACHE
+    _CACHE = _with_defaults(data)
     try:
         from agent.db import db
 
-        await db.set_app_config(_INIT_KEY, load_init())
+        await db.set_app_config(_INIT_KEY, _CACHE)
     except Exception as e:
         logger.warning("Failed to persist init config to DB: {}", e)
-    return load_init()
+    return _clone(_CACHE)
 
 
 async def refresh_init_cache_from_db() -> dict:
+    """Called on startup to warm the cache from DB before any requests arrive."""
     return await load_init_async()
 
+
+async def reset_init_async() -> dict:
+    """Reset to defaults in cache and DB. Does not touch AWS resources."""
+    return await save_init_async(_default())
+
+
+# ── Accessors (read from cache — no I/O) ─────────────────────────────────────
 
 def is_initialized() -> bool:
     return load_init().get("setup_complete", False)

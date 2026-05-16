@@ -89,14 +89,13 @@ export default function InitPage() {
 
   // ─── Step 1: create admin account ─────────────────────────────────────────
   const createUser = async () => {
-    if (!orgName.trim()) { setError('Organization name is required'); return; }
     if (!username.trim() || !password.trim()) { setError('Email and password are required'); return; }
     setLoading(true); setError('');
     try {
       const r = await apiFetch('/api/init/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password, org_name: orgName.trim() }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await r.json();
       if (!r.ok || data.error) { setError(data.detail || data.error || 'Failed to create account'); return; }
@@ -114,7 +113,7 @@ export default function InitPage() {
       const r = await apiFetch('/api/init/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aws_region: region, sns_topic_arn: snsArn, sqs_queue_url: '' }),
+        body: JSON.stringify({ aws_region: region, sns_topic_arn: snsArn, sqs_queue_url: '', org_name: orgName.trim() }),
       });
       if (!r.ok) { setError('Failed to save configuration'); return; }
       setStep(3);
@@ -221,10 +220,6 @@ export default function InitPage() {
               </p>
               <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">Organization name</label>
-                  <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Corp" className={inp} />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">Email</label>
                   <input type="email" value={username} onChange={e => setUsername(e.target.value)} placeholder="you@example.com" className={inp} />
                 </div>
@@ -262,6 +257,15 @@ export default function InitPage() {
                 Configure the AWS region and optional SNS topic for alert delivery.
               </p>
               <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">
+                    Organization name <span className="text-gray-400 dark:text-[#52525B] font-normal">(optional)</span>
+                  </label>
+                  <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Corp" className={inp} />
+                  <p className="mt-1.5 text-xs text-gray-400 dark:text-[#52525B]">
+                    Used to group users. You can add team members later from Settings.
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">AWS Region</label>
                   <select
