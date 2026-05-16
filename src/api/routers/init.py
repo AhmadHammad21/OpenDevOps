@@ -41,6 +41,24 @@ class SkipBody(BaseModel):
     services: list[str]
 
 
+@router.post("/reset")
+async def reset_init_state(
+    _: Annotated[dict | None, Depends(require_admin)],
+):
+    """Clear persisted init/setup state. Useful for re-running the wizard without touching AWS."""
+    from pathlib import Path as _Path
+
+    from agent.init_store import _INIT_FILE, _default, save_init_async
+
+    await save_init_async(_default())
+    try:
+        if _Path(_INIT_FILE).exists():
+            _Path(_INIT_FILE).unlink()
+    except Exception:
+        pass
+    return {"reset": True}
+
+
 @router.get("/status")
 async def status():
     data = await load_init_async()
