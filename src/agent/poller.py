@@ -63,7 +63,9 @@ async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | 
     return None
 
 
-async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: str) -> None:
+async def _persist_and_notify(
+    prompt: str, result: dict[str, Any], session_id: str, dedup_key: str
+) -> None:
     from agent.monitor_store import add_alert, update_service
     from agent.turns import notify_slack, save_turn
 
@@ -85,6 +87,7 @@ async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: s
         resolution=resolution,
         confidence=confidence,
         sns_sent=False,
+        dedup_key=dedup_key,
     )
 
 
@@ -92,6 +95,7 @@ async def _check_alarms() -> None:
     """Check CloudWatch alarms — each new ALARM state triggers an investigation."""
     import uuid
 
+    from agent.monitor_store import is_recent_alert
     from tools.cloudwatch import get_alarms
 
     data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
@@ -102,6 +106,10 @@ async def _check_alarms() -> None:
         key = f"alarm:{name}"
 
         if not _should_investigate(key):
+            continue
+        if await is_recent_alert(key):
+            logger.debug("Poller: skipping alarm {} — already investigated recently", name)
+            _mark_investigated(key)
             continue
 
         logger.info("Poller: new ALARM state detected — {}", name)
@@ -117,13 +125,14 @@ async def _check_alarms() -> None:
         result = await _run_investigation(prompt, key)
         if result:
             logger.info("Poller investigation complete for alarm: {}", name)
-            await _persist_and_notify(prompt, result, session_id)
+            await _persist_and_notify(prompt, result, session_id, key)
 
 
 async def _check_lambda_errors() -> None:
     """Check Lambda functions for error rates above the configured threshold."""
     import uuid
 
+    from agent.monitor_store import is_recent_alert
     from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
     funcs = await asyncio.get_event_loop().run_in_executor(None, list_lambda_functions)
@@ -145,6 +154,10 @@ async def _check_lambda_errors() -> None:
         key = f"lambda_errors:{name}"
         if not _should_investigate(key):
             continue
+        if await is_recent_alert(key):
+            logger.debug("Poller: skipping Lambda {} — already investigated recently", name)
+            _mark_investigated(key)
+            continue
 
         logger.info("Poller: Lambda {} error rate {:.1f}% exceeds threshold", name, error_rate)
         _mark_investigated(key)
@@ -158,7 +171,7 @@ async def _check_lambda_errors() -> None:
         result = await _run_investigation(prompt, key)
         if result:
             logger.info("Poller investigation complete for Lambda: {}", name)
-            await _persist_and_notify(prompt, result, session_id)
+            await _persist_and_notify(prompt, result, session_id, key)
 
 
 async def polling_loop() -> None:
@@ -174,7 +187,10 @@ async def polling_loop() -> None:
         await asyncio.sleep(interval)
         logger.debug("Poller tick")
         try:
-            await _check_alarms()
+            from agent.init_store import is_event_infra_enabled
+            if not is_event_infra_enabled():
+                # EventBridge → SQS already covers alarm state changes when infra is active
+                await _check_alarms()
             await _check_lambda_errors()
         except Exception as e:
             logger.error("Poller tick failed: {}", e)

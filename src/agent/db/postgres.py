@@ -567,13 +567,22 @@ class PostgresBackend(DatabaseBackend):
         resolution: str,
         confidence: str,
         sns_sent: bool,
+        dedup_key: str | None = None,
     ) -> str:
         row = await self._fetchrow(
-            "INSERT INTO alerts (service, error, resolution, confidence, sns_sent) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            service, error, resolution, confidence, sns_sent,
+            "INSERT INTO alerts (service, error, resolution, confidence, sns_sent, dedup_key) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            service, error, resolution, confidence, sns_sent, dedup_key,
         )
         return str(row["id"]) if row else ""
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 10) -> bool:
+        row = await self._fetchrow(
+            "SELECT 1 FROM alerts WHERE dedup_key = %s"
+            " AND created_at > NOW() - (%s * INTERVAL '1 minute') LIMIT 1",
+            dedup_key, within_minutes,
+        )
+        return row is not None
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(

@@ -15,7 +15,7 @@ from agent.init_store import (
     get_runtime_sns_topic_arn,
     get_runtime_sqs_queue_url,
 )
-from agent.monitor_store import add_alert, update_service
+from agent.monitor_store import add_alert, is_recent_alert, update_service
 from config import settings
 
 
@@ -136,7 +136,31 @@ async def _run_investigation(prompt: str) -> dict[str, Any] | None:
     return None
 
 
-async def _deliver(result: dict[str, Any], event: dict) -> None:
+def _event_dedup_key(event: dict) -> str:
+    """Derive a stable dedup key from an EventBridge event."""
+    source = event.get("source", "unknown")
+    detail = event.get("detail", {})
+    if source == "aws.cloudwatch":
+        alarm_name = detail.get("alarmName", "")
+        state = detail.get("state", {}).get("value", "")
+        return f"alarm:{alarm_name}" if alarm_name else f"cloudwatch:{state}"
+    if source == "aws.lambda":
+        fn = (
+            detail.get("requestParameters", {}).get("functionName", "")
+            or detail.get("resource", {}).get("functionName", "")
+        )
+        return f"lambda_errors:{fn}" if fn else f"lambda:{event.get('detail-type', '')}"
+    if source == "aws.ecs":
+        task_arn = detail.get("taskArn", detail.get("taskDefinitionArn", ""))
+        return f"ecs:{task_arn.split('/')[-1]}" if task_arn else "ecs:unknown"
+    if source == "aws.rds":
+        return f"rds:{detail.get('SourceIdentifier', 'unknown')}"
+    if source == "aws.ec2":
+        return f"ec2:{detail.get('instance-id', 'unknown')}"
+    return f"{source}:{event.get('detail-type', 'unknown')}"
+
+
+async def _deliver(result: dict[str, Any], event: dict, dedup_key: str) -> None:
     """Send investigation result to SNS + Slack and persist to the monitor store."""
     services_affected = result.get("services_affected", [])
     service = result.get(
@@ -195,6 +219,7 @@ async def _deliver(result: dict[str, Any], event: dict) -> None:
         resolution=resolution,
         confidence=confidence,
         sns_sent=sns_sent,
+        dedup_key=dedup_key,
     )
     logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
 
@@ -218,13 +243,18 @@ def _is_real_failure(source: str, detail: dict) -> bool:
 
 
 async def _process_event(event: dict) -> None:
-    """Filter → enrich prompt → investigate → deliver."""
+    """Filter → dedup check → enrich prompt → investigate → deliver."""
     source = event.get("source", "unknown")
     detail_type = event.get("detail-type", "")
     detail = event.get("detail", {})
 
     if not _is_real_failure(source, detail):
         logger.debug("Skipping non-failure event: {} / {}", source, detail_type)
+        return
+
+    dedup_key = _event_dedup_key(event)
+    if await is_recent_alert(dedup_key):
+        logger.info("Skipping duplicate event {} — already investigated recently", dedup_key)
         return
 
     logger.info("Processing event: {} / {}", source, detail_type)
@@ -248,7 +278,7 @@ async def _process_event(event: dict) -> None:
 
     result = await _run_investigation(prompt)
     if result:
-        await _deliver(result, event)
+        await _deliver(result, event, dedup_key)
     else:
         logger.warning("Investigation produced no result for {} / {}", source, detail_type)
 

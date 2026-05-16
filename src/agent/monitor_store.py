@@ -16,15 +16,26 @@ async def add_alert(
     resolution: str,
     confidence: str,
     sns_sent: bool,
+    dedup_key: str | None = None,
 ) -> str:
     """Persist an alert to the DB backend."""
     from agent.db import db
 
     try:
-        return await db.add_alert(service, error, resolution, confidence, sns_sent)
+        return await db.add_alert(service, error, resolution, confidence, sns_sent, dedup_key)
     except Exception as e:
         logger.error("Failed to persist alert: {}", e)
         return ""
+
+
+async def is_recent_alert(dedup_key: str, within_minutes: int = 10) -> bool:
+    """Return True if an alert with this dedup_key was saved within the last N minutes."""
+    from agent.db import db
+
+    try:
+        return await db.is_recent_alert(dedup_key, within_minutes)
+    except Exception:
+        return False
 
 
 def update_service(name: str, status: str, error: str | None = None) -> None:
