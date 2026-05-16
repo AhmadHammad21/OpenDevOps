@@ -50,7 +50,7 @@ async def get_settings(
         {"key": "TOOL_RESPONSE_MAX_CHARS",       "label": "Tool response cap",      "value": str(settings.tool_response_max_chars),     "hint": "Chars before tool output is truncated"},
         {"key": "SUMMARIZATION_ENABLED",         "label": "Auto-summarize",         "value": str(settings.summarization_enabled).lower(),"hint": "Compact sessions that exceed the threshold"},
         {"key": "SUMMARIZATION_THRESHOLD_CHARS", "label": "Summarize threshold",   "value": str(settings.summarization_threshold_chars),"hint": "Total chars in session before compaction fires"},
-        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",    "value": str(settings.poll_interval_minutes),        "hint": "0 = proactive polling disabled"},
+        {"key": "POLL_INTERVAL_SECONDS",         "label": "Poll interval (s)",      "value": str(settings.poll_interval_seconds),        "hint": "0 = proactive polling disabled"},
         {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 

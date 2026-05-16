@@ -83,11 +83,11 @@ async def lifespan(_app: FastAPI):
     init_agent(checkpointer)
 
     poller_task = None
-    if _cfg.poll_interval_minutes > 0:
+    if _cfg.poll_interval_seconds > 0:
         from agent.poller import polling_loop
 
         poller_task = asyncio.create_task(polling_loop())
-        logger.info("Proactive poller started (interval={}min)", _cfg.poll_interval_minutes)
+        logger.info("Proactive poller started (interval={}s)", _cfg.poll_interval_seconds)
 
     # Event consumer — started if explicitly enabled, SQS URL is set, or init wizard completed
     if _cfg.event_consumer_enabled or _cfg.sqs_queue_url:

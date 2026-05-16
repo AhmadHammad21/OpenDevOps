@@ -1,6 +1,6 @@
 """Proactive anomaly poller — runs as a background asyncio task.
 
-Every POLL_INTERVAL_MINUTES it:
+Every POLL_INTERVAL_SECONDS it:
   1. Fetches CloudWatch alarms in ALARM state.
   2. Checks Lambda error rates against POLL_ERROR_THRESHOLD.
   3. For any *new* anomaly (not investigated within POLL_REINVESTIGATE_HOURS),
@@ -163,10 +163,10 @@ async def _check_lambda_errors() -> None:
 
 async def polling_loop() -> None:
     """Main loop — runs forever until cancelled."""
-    interval = settings.poll_interval_minutes * 60
+    interval = settings.poll_interval_seconds
     logger.info(
-        "Poller started — interval={}min  error_threshold={}%  slack={}",
-        settings.poll_interval_minutes,
+        "Poller started — interval={}s  error_threshold={}%  slack={}",
+        settings.poll_interval_seconds,
         settings.poll_error_threshold,
         "enabled" if settings.slack_webhook_url else "disabled",
     )

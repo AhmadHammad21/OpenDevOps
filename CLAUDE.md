@@ -99,7 +99,7 @@ Everything below is built and working in the codebase:
 - Starts automatically on app startup if `event_consumer_enabled=True`, `sqs_queue_url` is set, or `init.json` marks the wizard as completed.
 
 ### Proactive Polling
-- `polling_loop()` runs every `POLL_INTERVAL_MINUTES` minutes (disabled by default at 0); checks CloudWatch alarms in ALARM state and Lambda error rates above `POLL_ERROR_THRESHOLD`; auto-investigates new anomalies and posts to Slack. In-memory dedup via `_last_investigated` map.
+- `polling_loop()` runs every `POLL_INTERVAL_SECONDS` seconds (disabled by default at 0); checks CloudWatch alarms in ALARM state and Lambda error rates above `POLL_ERROR_THRESHOLD`; auto-investigates new anomalies and posts to Slack. In-memory dedup via `_last_investigated` map.
 
 ### Frontend
 - React 18 + TypeScript + Vite + Tailwind CSS + `@tailwindcss/typography`
@@ -211,7 +211,7 @@ JWT_EXPIRE_MINUTES=1440                # 24 hours
 SLACK_WEBHOOK_URL=                     # leave unset to disable
 
 # Proactive polling
-POLL_INTERVAL_MINUTES=0               # 0 = disabled
+POLL_INTERVAL_SECONDS=0               # 0 = disabled; set to e.g. 300 (5 min) to enable
 POLL_ERROR_THRESHOLD=5.0              # Lambda error rate % to trigger investigation
 POLL_REINVESTIGATE_HOURS=1            # dedup window
 
@@ -254,7 +254,7 @@ EventBridge rules (9 event types)
 ### Startup sequence
 ```
 db.init()  →  init_agent(checkpointer)
-  optional: asyncio.create_task(polling_loop())       if POLL_INTERVAL_MINUTES > 0
+  optional: asyncio.create_task(polling_loop())       if POLL_INTERVAL_SECONDS > 0
   optional: asyncio.create_task(event_consumer_loop()) if SQS configured or init.json present
 ```
 
