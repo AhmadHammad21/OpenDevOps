@@ -15,8 +15,17 @@ litellm.suppress_debug_info = True
 
 from agent.core import init_agent  # noqa: E402
 from agent.db import db  # noqa: E402
+from api.routers import (  # noqa: E402
+    auth,
+    chat,
+    dashboard,
+    history,
+    monitoring,
+    sessions,
+    settings,
+    users,
+)
 from api.routers import init as init_router  # noqa: E402
-from api.routers import auth, chat, dashboard, history, monitoring, sessions, settings, users  # noqa: E402
 
 
 class _InterceptHandler(logging.Handler):
@@ -117,7 +126,37 @@ async def lifespan(_app: FastAPI):
     await db.close()
 
 
-app = FastAPI(title="OpenDevOps Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="OpenDevOps Agent",
+    version="0.1.0",
+    lifespan=lifespan,
+    swagger_ui_parameters={"persistAuthorization": True},
+    openapi_tags=[],
+)
+
+
+def _add_bearer_security(openapi_schema: dict) -> dict:
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+    for path in openapi_schema.get("paths", {}).values():
+        for op in path.values():
+            op.setdefault("security", [{"BearerAuth": []}])
+    return openapi_schema
+
+
+_original_openapi = app.openapi
+
+
+def _patched_openapi() -> dict:
+    if not app.openapi_schema:
+        app.openapi_schema = _add_bearer_security(_original_openapi())
+    return app.openapi_schema
+
+
+app.openapi = _patched_openapi  # type: ignore[method-assign]
 
 app.include_router(chat.router)
 app.include_router(sessions.router)
