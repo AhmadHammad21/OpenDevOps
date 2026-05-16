@@ -140,7 +140,7 @@ class DatabaseBackend(ABC):
     ) -> str:
         return ""
 
-    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 10) -> bool:
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
         return False
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:

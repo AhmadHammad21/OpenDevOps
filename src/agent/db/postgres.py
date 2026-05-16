@@ -576,7 +576,7 @@ class PostgresBackend(DatabaseBackend):
         )
         return str(row["id"]) if row else ""
 
-    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 10) -> bool:
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
         row = await self._fetchrow(
             "SELECT 1 FROM alerts WHERE dedup_key = %s"
             " AND created_at > NOW() - (%s * INTERVAL '1 minute') LIMIT 1",

@@ -28,7 +28,7 @@ async def add_alert(
         return ""
 
 
-async def is_recent_alert(dedup_key: str, within_minutes: int = 10) -> bool:
+async def is_recent_alert(dedup_key: str, within_minutes: int = 3) -> bool:
     """Return True if an alert with this dedup_key was saved within the last N minutes."""
     from agent.db import db
 
