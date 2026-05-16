@@ -22,6 +22,7 @@ class MemoryBackend(DatabaseBackend):
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
         self._alerts: list[dict] = []
+        self._app_config: dict[str, dict] = {}
 
     async def init(self) -> Any:
         from langgraph.checkpoint.memory import MemorySaver
@@ -261,6 +262,12 @@ class MemoryBackend(DatabaseBackend):
             if a["id"] == alert_id:
                 return a
         return None
+
+    async def get_app_config(self, key: str) -> dict | None:
+        return self._app_config.get(key)
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        self._app_config[key] = value
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

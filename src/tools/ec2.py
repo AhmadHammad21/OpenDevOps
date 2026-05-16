@@ -4,17 +4,20 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from loguru import logger
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 from tools._cache import tool_cached
 
 
-
 def _ec2_client() -> Any:
-    session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    return session.client("ec2", region_name=settings.aws_region)
+    session = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    return session.client("ec2", region_name=get_runtime_aws_region())
 
 
 @tool_cached
@@ -22,7 +25,7 @@ def describe_ec2_instances(filters: list[dict[str, Any]] | None = None) -> dict:
     """List EC2 instances with their state, type, and tags. Optionally filter by state or tag.
 
     Args:
-        filters: EC2 describe-instances filters, e.g. [{"Name": "instance-state-name", "Values": ["running"]}].
+        filters: EC2 describe-instances filters.
     """
     try:
         client = _ec2_client()

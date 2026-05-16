@@ -474,17 +474,50 @@ class PostgresBackend(DatabaseBackend):
     async def get_user_by_id(self, user_id: str) -> dict | None:
         return await self._fetchrow("SELECT * FROM users WHERE id = %s", uuid.UUID(user_id))
 
-    async def create_user(
-        self, email: str, name: str, password_hash: str, role: str
-    ) -> dict | None:
+    async def create_org(self, name: str, slug: str) -> dict | None:
         row = await self._fetchrow(
             """
-            INSERT INTO users (email, name, password_hash, role)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, email, name, role, created_at
+            INSERT INTO organizations (name, slug)
+            VALUES (%s, %s)
+            ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id, name, slug
             """,
-            email, name, password_hash, role,
+            name, slug,
         )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def get_first_org(self) -> dict | None:
+        row = await self._fetchrow(
+            "SELECT id, name, slug FROM organizations ORDER BY created_at ASC LIMIT 1"
+        )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def create_user(
+        self, email: str, name: str, password_hash: str, role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        if org_id:
+            row = await self._fetchrow(
+                """
+                INSERT INTO users (email, name, password_hash, role, org_id)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, email, name, role, created_at
+                """,
+                email, name, password_hash, role, uuid.UUID(org_id),
+            )
+        else:
+            row = await self._fetchrow(
+                """
+                INSERT INTO users (email, name, password_hash, role)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, email, name, role, created_at
+                """,
+                email, name, password_hash, role,
+            )
         if row:
             row["id"] = str(row["id"])
         return row
@@ -572,6 +605,18 @@ class PostgresBackend(DatabaseBackend):
             "sns_sent": bool(row["sns_sent"]),
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
         }
+
+    async def get_app_config(self, key: str) -> dict | None:
+        row = await self._fetchrow("SELECT value FROM app_config WHERE key = %s", key)
+        return row["value"] if row else None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        await self._exec(
+            "INSERT INTO app_config (key, value) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+            key,
+            self._jsonb(value),
+        )
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

@@ -3,12 +3,17 @@
 import boto3
 from loguru import logger
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 
 
 def _sns_client():
-    session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    return session.client("sns", region_name=settings.aws_region)
+    session = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    return session.client("sns", region_name=get_runtime_aws_region())
 
 
 def publish_sns_alert(topic_arn: str, subject: str, message: str) -> dict:

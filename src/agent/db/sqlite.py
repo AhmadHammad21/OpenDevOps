@@ -71,6 +71,12 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS alerts_service_idx ON alerts(service);
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
 """
 
 _SERVICE_MAP: dict[str, str] = {
@@ -134,6 +140,16 @@ class SQLiteBackend(DatabaseBackend):
                 "resolution TEXT NOT NULL DEFAULT '', confidence TEXT NOT NULL DEFAULT 'LOW', "
                 "sns_sent INTEGER NOT NULL DEFAULT 0, "
                 "created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass
+
+        try:
+            await self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS app_config ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '{}', "
+                "updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
             )
             await self._conn.commit()
         except Exception:
@@ -652,6 +668,25 @@ class SQLiteBackend(DatabaseBackend):
             "sns_sent": bool(row["sns_sent"]),
             "timestamp": row["created_at"],
         }
+
+    async def get_app_config(self, key: str) -> dict | None:
+        row = await self._fetchone("SELECT value FROM app_config WHERE key = ?", key)
+        if not row:
+            return None
+        try:
+            return json.loads(row["value"])
+        except Exception:
+            return None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        await self._exec(
+            "INSERT INTO app_config (key, value, updated_at) "
+            "VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now')) "
+            "ON CONFLICT(key) DO UPDATE SET "
+            "value = excluded.value, updated_at = excluded.updated_at",
+            key,
+            json.dumps(value),
+        )
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

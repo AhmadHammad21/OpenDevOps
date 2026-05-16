@@ -41,7 +41,9 @@ async def register(req: RegisterRequest) -> TokenResponse:
         raise HTTPException(status_code=400, detail="Email already registered")
     is_first = (await db.count_users()) == 0
     role = "admin" if is_first else "user"
-    user = await db.create_user(req.email, req.name, hash_password(req.password), role)
+    org = await db.get_first_org()
+    org_id = org["id"] if org else None
+    user = await db.create_user(req.email, req.name, hash_password(req.password), role, org_id)
     if not user:
         raise HTTPException(
             status_code=501,

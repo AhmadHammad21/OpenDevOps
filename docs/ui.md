@@ -90,7 +90,7 @@ Accessible from the sidebar for all authenticated users. Each card shows the aff
 
 Shows active configuration. Four tabs (admins see all four; regular users see the last three):
 
-**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are saved to `data/init.json` server-side and shared across all admin users. Includes:
+**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are stored in database-backed app config for SQLite/PostgreSQL deployments and mirrored to `data/init.json` as a local cache/fallback. Includes:
 - **Event Monitoring** section — shows Enabled / Disabled status; **Create Infrastructure** button provisions the SQS queue and 9 EventBridge rules; **Teardown** button removes them (with confirmation).
 - **Run checks** button that validates IAM permissions for every AWS service the agent uses.
 
@@ -109,9 +109,9 @@ Accessible at `/init` before any users exist. A 4-step wizard guides the admin t
 1. **Create account** — email + password for the admin user
 2. **AWS Configuration** — region selector and optional SNS Topic ARN for alert delivery
 3. **Permission check** — verifies IAM permissions per service; required services (CloudWatch, Lambda, SQS, EventBridge) are highlighted; "Continue anyway" is always available
-4. **Enable event monitoring** — creates the SQS queue and 9 EventBridge rules; shows a success summary with queue URL and rule list; includes a **Skip** option with a disclaimer listing what won't work without it
+4. **Enable event monitoring** — creates the SQS queue, 9 EventBridge rules, and aggregate Lambda alarm; shows a success summary with queue URL and rule list; includes a **Skip** option that finishes onboarding without event infrastructure
 
-The page redirects away automatically once an admin account exists.
+The page redirects away automatically once onboarding is complete. Event monitoring can still be enabled or torn down later from Settings without forcing users back through onboarding.
 
 ---
 

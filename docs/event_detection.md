@@ -30,7 +30,7 @@ AWS Service (ECS, Lambda, RDS, EC2…)
 
 ### Option A — Init wizard (recommended)
 
-Go to **Settings → AWS Configuration** after first login. Enter your SNS Topic ARN and AWS Region, save, then click **Run checks** to verify IAM permissions. The SQS queue and EventBridge rules are created automatically the first time the server starts with valid config.
+Go to **Settings → AWS Configuration** after first login. Enter your AWS Region and optional SNS Topic ARN, save, then click **Run checks** to verify IAM permissions. Click **Create Infrastructure** to create the SQS queue, EventBridge rules, and aggregate Lambda CloudWatch alarm.
 
 ### Option B — Manual `.env`
 
@@ -40,7 +40,7 @@ EVENT_CONSUMER_ENABLED=true        # or leave unset — consumer also starts if 
 SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:opendevops-alerts
 ```
 
-The consumer starts automatically on server startup if either `EVENT_CONSUMER_ENABLED=true` or `SQS_QUEUE_URL` is set.
+The consumer starts automatically on server startup if either `EVENT_CONSUMER_ENABLED=true`, `SQS_QUEUE_URL` is set, or the init wizard has enabled event infrastructure in persistent app config.
 
 ---
 
@@ -50,15 +50,15 @@ The consumer starts automatically on server startup if either `EVENT_CONSUMER_EN
 
 | Rule | Events captured |
 |---|---|
-| `opendevops-cloudwatch-alarms` | CloudWatch Alarm state changes |
-| `opendevops-ecs-failures` | ECS task stopped with non-zero exit / OOM |
-| `opendevops-lambda-errors` | Lambda async invocation failures |
-| `opendevops-rds-events` | RDS instance failures and failovers |
+| `opendevops-alarm-state` | CloudWatch Alarm state changes to `ALARM` |
+| `opendevops-lambda-failure` | Lambda async invocation failures |
+| `opendevops-lambda-throttle` | Lambda throttling errors |
+| `opendevops-ecs-task-stopped` | ECS task stopped with non-zero exit / OOM |
 | `opendevops-ec2-state` | EC2 instance state changes |
-| `opendevops-asg-events` | Auto Scaling launch / terminate failures |
-| `opendevops-codepipeline` | CodePipeline stage failures |
-| `opendevops-ssm-compliance` | SSM patch compliance failures |
-| `opendevops-health-events` | AWS Health personal health events |
+| `opendevops-rds-events` | RDS instance failures and failovers |
+| `opendevops-health` | AWS Health personal health events |
+| `opendevops-codedeploy-failure` | CodeDeploy deployment failures |
+| `opendevops-guardduty` | GuardDuty findings |
 
 ---
 
@@ -82,7 +82,7 @@ Context is appended to the investigation prompt, capped at 3 000 chars to stay w
 
 `event_consumer_loop()` in `src/agent/event_consumer.py`:
 
-1. Receives up to 10 messages per poll with a 20-second long-poll wait
+1. Receives up to 5 messages per poll with a 20-second long-poll wait
 2. Filters noise: only processes events where `_is_real_failure()` returns true (e.g. skips EC2 `running` state changes, healthy RDS events)
 3. Calls `collect_context(event)` to enrich the prompt
 4. Runs a full agent investigation via `agent.ainvoke`
@@ -120,9 +120,10 @@ The IAM role/user used by the agent needs these additional permissions for event
 ```
 sns:Publish, sns:GetTopicAttributes
 sqs:CreateQueue, sqs:SetQueueAttributes, sqs:GetQueueAttributes
-sqs:ReceiveMessage, sqs:DeleteMessage, sqs:ListQueues
+sqs:ReceiveMessage, sqs:DeleteMessage, sqs:DeleteQueue, sqs:ListQueues
 events:PutRule, events:PutTargets, events:ListRules
 events:RemoveTargets, events:DeleteRule
+cloudwatch:PutMetricAlarm, cloudwatch:DeleteAlarms, cloudwatch:DescribeAlarms
 ```
 
 Use **Settings → AWS Configuration → Run checks** to validate all permissions before going live.
@@ -151,7 +152,7 @@ For SQLite, the `alerts` table is created automatically on first start.
 | `src/agent/event_infra.py` | Create/teardown SQS queue + EventBridge rules |
 | `src/agent/context_collectors.py` | Per-event-type boto3 context enrichment |
 | `src/agent/monitor_store.py` | In-memory service status + DB-backed alert persistence |
-| `src/agent/init_store.py` | Persist init config to `data/init.json` |
+| `src/agent/init_store.py` | Persist init config to DB-backed `app_config` with `data/init.json` fallback/cache |
 | `src/agent/permission_checker.py` | IAM permission validation |
 | `src/tools/sns.py` | SNS publish wrapper |
 | `src/api/routers/init.py` | Setup wizard API endpoints |

@@ -10,9 +10,13 @@ from typing import Any
 import boto3
 from loguru import logger
 
+from agent.init_store import (
+    get_runtime_aws_region,
+    get_runtime_sns_topic_arn,
+    get_runtime_sqs_queue_url,
+)
+from agent.monitor_store import add_alert, update_service
 from config import settings
-from agent.init_store import load_init
-from agent.monitor_store import add_alert
 
 
 def _build_investigation_prompt(event: dict) -> str:
@@ -25,21 +29,31 @@ def _build_investigation_prompt(event: dict) -> str:
     if source == "aws.cloudwatch" and "alarmName" in detail:
         alarm_name = detail["alarmName"]
         reason = detail.get("state", {}).get("reason", "")
-        metric = detail.get("configuration", {}).get("metrics", [{}])[0].get("metricStat", {}).get("metric", {})
+        metric = (
+            detail.get("configuration", {})
+            .get("metrics", [{}])[0]
+            .get("metricStat", {})
+            .get("metric", {})
+        )
         namespace = metric.get("namespace", "")
         metric_name = metric.get("name", "")
         dimensions = metric.get("dimensions", {})
 
         if not dimensions:
             dim_hint = (
-                "IMPORTANT: This alarm has NO dimensions — it monitors the AGGREGATE metric across all resources. "
+                "IMPORTANT: This alarm has NO dimensions — it monitors the AGGREGATE "
+                "metric across all resources. "
                 "You MUST first identify which specific resource is causing the errors. "
-                "For Lambda errors: use get_metric_data with a SEARCH expression like "
-                "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Errors\"', 'Sum', 300) to find which function(s) have errors. "
+                "For Lambda errors: call list_lambda_functions, then use "
+                "get_lambda_error_rate on likely functions "
+                "to find which function(s) have errors. "
                 "Then pull that function's CloudWatch logs to find the actual error message."
             )
         else:
-            dim_hint = f"Dimensions: {json.dumps(dimensions)} — use these to identify the specific resource."
+            dim_hint = (
+                f"Dimensions: {json.dumps(dimensions)} — use these to identify the "
+                "specific resource."
+            )
 
         return (
             f'CloudWatch alarm "{alarm_name}" triggered at {time}.\n'
@@ -48,7 +62,7 @@ def _build_investigation_prompt(event: dict) -> str:
             f"{dim_hint}\n"
             f"Reason: {reason}\n\n"
             "Investigate step by step:\n"
-            "1. Identify the SPECIFIC resource (function name, instance ID, etc.) causing the issue\n"
+            "1. Identify the SPECIFIC resource causing the issue\n"
             "2. Pull its recent CloudWatch logs\n"
             "3. Find the actual error message or stack trace\n"
             "4. Provide actionable fix steps based on the real error"
@@ -112,7 +126,11 @@ async def _run_investigation(prompt: str) -> dict[str, Any] | None:
             last = messages[-1]
             content = last.content if hasattr(last, "content") else str(last)
             if content:
-                return {"root_cause_summary": content, "confidence": "MEDIUM", "mitigation_steps": []}
+                return {
+                    "root_cause_summary": content,
+                    "confidence": "MEDIUM",
+                    "mitigation_steps": [],
+                }
     except Exception as e:
         logger.error("Agent investigation failed: {}", e)
     return None
@@ -121,21 +139,22 @@ async def _run_investigation(prompt: str) -> dict[str, Any] | None:
 async def _deliver(result: dict[str, Any], event: dict) -> None:
     """Send investigation result to SNS + Slack and persist to the monitor store."""
     services_affected = result.get("services_affected", [])
-    service = result.get("service_name", result.get("service",
-        services_affected[0] if services_affected else "unknown"
-    ))
+    service = result.get(
+        "service_name",
+        result.get("service", services_affected[0] if services_affected else "unknown"),
+    )
     root_cause = result.get("root_cause_summary", "")
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
 
-    init_data = load_init()
-    sns_arn = settings.sns_topic_arn or init_data.get("sns_topic_arn")
+    sns_arn = get_runtime_sns_topic_arn()
 
     sns_sent = False
     if sns_arn:
         try:
             from tools.sns import publish_sns_alert
+
             services_affected = result.get("services_affected", [])
             evidence = result.get("evidence", [])
             message = (
@@ -143,12 +162,17 @@ async def _deliver(result: dict[str, Any], event: dict) -> None:
                 f"Root Cause: {root_cause}\n"
                 f"Evidence: {chr(10).join(evidence[:5]) if evidence else 'N/A'}\n"
                 f"Mitigation Steps:\n{resolution}\n"
-                f"Services Affected: {', '.join(services_affected) if services_affected else service}\n"
+                "Services Affected: "
+                f"{', '.join(services_affected) if services_affected else service}\n"
                 f"Confidence: {confidence}\n"
                 f"Event Time: {event.get('time', '')}"
             )
             await asyncio.get_event_loop().run_in_executor(
-                None, publish_sns_alert, sns_arn, f"[{confidence}] {service} — {root_cause[:80]}", message
+                None,
+                publish_sns_alert,
+                sns_arn,
+                f"[{confidence}] {service} — {root_cause[:80]}",
+                message,
             )
             sns_sent = True
         except Exception as e:
@@ -158,12 +182,20 @@ async def _deliver(result: dict[str, Any], event: dict) -> None:
     if settings.slack_webhook_url:
         try:
             from integrations.slack_webhook import post_investigation
+
             session_id = str(uuid.uuid4())
             await post_investigation(settings.slack_webhook_url, result, session_id)
         except Exception as e:
             logger.error("Slack delivery failed from event consumer: {}", e)
 
-    add_alert(service=service, error=root_cause, resolution=resolution, confidence=confidence, sns_sent=sns_sent)
+    update_service(service, "error", root_cause)
+    await add_alert(
+        service=service,
+        error=root_cause,
+        resolution=resolution,
+        confidence=confidence,
+        sns_sent=sns_sent,
+    )
     logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
 
 
@@ -202,10 +234,15 @@ async def _process_event(event: dict) -> None:
     # Enrich prompt with deterministic boto3 context (no LLM cost)
     try:
         from agent.context_collectors import collect_context
+
         context = collect_context(event)
         if context and not context.get("error"):
             context_str = json.dumps(context, default=str)
-            prompt = prompt + f"\n\nPre-collected context (use as starting facts, verify with tools):\n{context_str[:3000]}"
+            prompt = (
+                prompt
+                + "\n\nPre-collected context (use as starting facts, verify with tools):\n"
+                + context_str[:3000]
+            )
     except Exception as e:
         logger.debug("Context collection skipped: {}", e)
 
@@ -218,15 +255,17 @@ async def _process_event(event: dict) -> None:
 
 async def event_consumer_loop() -> None:
     """Main loop — long-polls SQS, processes events."""
-    init_data = load_init()
-    # Prefer env var over init.json so users can configure via .env without the wizard
-    queue_url = settings.sqs_queue_url or init_data.get("sqs_queue_url")
+    queue_url = get_runtime_sqs_queue_url()
     if not queue_url:
         logger.warning("No SQS queue URL configured — event consumer not starting")
         return
 
-    s = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    sqs = s.client("sqs", region_name=settings.aws_region)
+    s = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    sqs = s.client("sqs", region_name=get_runtime_aws_region())
 
     logger.info("Event consumer started — polling {}", queue_url)
 

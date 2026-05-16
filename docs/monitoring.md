@@ -13,7 +13,7 @@ OpenDevOps Agent has two complementary detection modes. Both write to the same `
 | **How it works** | Agent polls CloudWatch alarms + Lambda error rates on a timer | AWS fires EventBridge rules → SQS → consumer → agent |
 | **Setup** | Set `POLL_INTERVAL_MINUTES` in `.env` | Create infrastructure via Settings → AWS Configuration |
 | **Detection latency** | Up to N minutes (your poll interval) | 2–5 min for alarm-based events; near-instant for direct events (ECS, RDS, GuardDuty) |
-| **CloudWatch alarm required** | No — reads Lambda error rate directly via API | Yes — EventBridge only fires when an alarm changes state |
+| **CloudWatch alarm required** | No — reads Lambda error rate directly via API | Only for metric/alarm detections; direct AWS service events do not need a CloudWatch alarm |
 | **Works without AWS setup** | Yes — no SQS/EventBridge needed | No — requires SQS queue + EventBridge rules |
 | **Event types covered** | CloudWatch alarms in ALARM state + Lambda error rates | CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, GuardDuty findings, AWS Health events |
 | **Appears in /monitoring** | Yes | Yes |
@@ -131,7 +131,7 @@ When you create infrastructure (Settings → AWS Configuration → Create Infras
 - Trips when any Lambda has ≥ 1 error in a 60-second window
 - Triggers the `opendevops-alarm-state` EventBridge rule → SQS → consumer
 
-This means you get event-driven Lambda coverage without creating per-function alarms.
+This means you get event-driven Lambda coverage without creating per-function alarms. Because it is account-wide and trips on a single error, it is intentionally easy to test but can be noisy in busy accounts. For production, consider replacing it with scoped per-function or per-service alarms once you know which workloads matter.
 
 ### Setup
 
@@ -139,6 +139,8 @@ Go to **Settings → AWS Configuration → Create Infrastructure**. This creates
 - SQS queue: `opendevops-agent-events`
 - 9 EventBridge rules (all prefixed `opendevops-`)
 - Aggregate CloudWatch alarm: `opendevops-lambda-errors-aggregate`
+
+Wizard and infrastructure state is stored in the database for SQLite/PostgreSQL deployments (`app_config`) and mirrored to `data/init.json` as a local cache/fallback. Memory mode keeps only local process/file state. Teardown deletes only infrastructure created by the wizard; queues supplied through `.env` or pasted manually are disconnected from the app but not deleted.
 
 To remove it, click **Teardown**. See [event_detection.md](event_detection.md) for full setup details and IAM permission requirements.
 

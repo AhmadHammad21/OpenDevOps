@@ -20,10 +20,10 @@ def _check(fn) -> dict:
         return {"passed": False, "error": str(e)}
 
 
-def check_permissions(sns_topic_arn: str = "") -> dict[str, dict]:
+def check_permissions(sns_topic_arn: str = "", region: str | None = None) -> dict[str, dict]:
     """Run one lightweight read call per service. Returns {service: {passed, error}}."""
     s = _session()
-    region = settings.aws_region
+    region = region or settings.aws_region
 
     results: dict[str, dict] = {}
 

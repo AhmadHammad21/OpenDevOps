@@ -102,8 +102,15 @@ class DatabaseBackend(ABC):
     async def get_user_by_id(self, user_id: str) -> dict | None:
         return None
 
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        return None
+
+    async def get_first_org(self) -> dict | None:
+        return None
+
     async def create_user(
-        self, email: str, name: str, password_hash: str, role: str
+        self, email: str, name: str, password_hash: str, role: str,
+        org_id: str | None = None,
     ) -> dict | None:
         return None
 
@@ -134,3 +141,11 @@ class DatabaseBackend(ABC):
 
     async def get_alert(self, alert_id: str) -> dict | None:
         return None
+
+    # ── App config (init wizard / infrastructure state) ──────────────────────
+
+    async def get_app_config(self, key: str) -> dict | None:
+        return None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        pass

@@ -5,22 +5,29 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from loguru import logger
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 from tools._cache import tool_cached
 
 
-
 def _lambda_client() -> Any:
-    session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    return session.client("lambda", region_name=settings.aws_region)
+    session = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    return session.client("lambda", region_name=get_runtime_aws_region())
 
 
 def _cw_client() -> Any:
-    session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    return session.client("cloudwatch", region_name=settings.aws_region)
+    session = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    return session.client("cloudwatch", region_name=get_runtime_aws_region())
 
 
 @tool_cached
@@ -100,7 +107,10 @@ def get_lambda_error_rate(name: str, hours: int = 3) -> dict:
                 Statistics=["Sum"],
             )
             return sorted(
-                [{"timestamp": dp["Timestamp"].isoformat(), "value": dp["Sum"]} for dp in resp.get("Datapoints", [])],
+                [
+                    {"timestamp": dp["Timestamp"].isoformat(), "value": dp["Sum"]}
+                    for dp in resp.get("Datapoints", [])
+                ],
                 key=lambda x: x["timestamp"],
             )
 
@@ -118,7 +128,9 @@ def get_lambda_error_rate(name: str, hours: int = 3) -> dict:
             "total_invocations": total_invocations,
             "total_errors": total_errors,
             "total_throttles": total_throttles,
-            "error_rate_pct": round(total_errors / total_invocations * 100, 2) if total_invocations else 0,
+            "error_rate_pct": round(total_errors / total_invocations * 100, 2)
+            if total_invocations
+            else 0,
             "errors_by_period": errors,
             "throttles_by_period": throttles,
         }

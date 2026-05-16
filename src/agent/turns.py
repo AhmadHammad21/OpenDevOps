@@ -6,26 +6,27 @@ from typing import Any
 
 from loguru import logger
 
-from config import settings
 from agent.db import db
+from agent.init_store import get_runtime_aws_region
+from config import settings
 
 # Fallback pricing ($/M tokens) for models absent from LiteLLM's database.
 _FALLBACK_PRICING: dict[str, dict[str, float]] = {
-    "openrouter/google/gemma-4-26b-a4b-it":         {"input": 0.07,  "output": 0.35},
-    "openrouter/google/gemma-2-9b-it":              {"input": 0.06,  "output": 0.06},
-    "openrouter/meta-llama/llama-3.1-8b-instruct":  {"input": 0.055, "output": 0.055},
-    "openrouter/mistralai/mistral-7b-instruct":     {"input": 0.055, "output": 0.055},
+    "openrouter/google/gemma-4-26b-a4b-it": {"input": 0.07, "output": 0.35},
+    "openrouter/google/gemma-2-9b-it": {"input": 0.06, "output": 0.06},
+    "openrouter/meta-llama/llama-3.1-8b-instruct": {"input": 0.055, "output": 0.055},
+    "openrouter/mistralai/mistral-7b-instruct": {"input": 0.055, "output": 0.055},
 }
 
 
 def calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
     try:
         import litellm
+
         info = litellm.model_cost.get(model)
         if info:
-            return (
-                input_tok  * info.get("input_cost_per_token",  0)
-                + output_tok * info.get("output_cost_per_token", 0)
+            return input_tok * info.get("input_cost_per_token", 0) + output_tok * info.get(
+                "output_cost_per_token", 0
             )
         fallback = _FALLBACK_PRICING.get(model)
         if fallback:
@@ -45,18 +46,23 @@ async def save_turn(
     """Persist a completed turn to Postgres. Errors are logged, never raised."""
     try:
         title = user_message[:80] if user_message else None
-        await db.upsert_session(session_id, usage.get("model", ""), settings.aws_region, title)
+        await db.upsert_session(session_id, usage.get("model", ""), get_runtime_aws_region(), title)
 
-        user_msg_id = await db.save_message(session_id, "user", user_message)
+        await db.save_message(session_id, "user", user_message)
         asst_msg_id = await db.save_message(
-            session_id, "assistant", assistant_text,
+            session_id,
+            "assistant",
+            assistant_text,
             metadata={"model": usage.get("model"), "latency_ms": usage.get("latency_ms")},
         )
 
         for tc in tool_calls_log:
             await db.save_tool_call(
-                session_id, asst_msg_id,
-                tc["tool"], tc["args"], tc["result"],
+                session_id,
+                asst_msg_id,
+                tc["tool"],
+                tc["args"],
+                tc["result"],
             )
 
         cost = calc_cost(
@@ -65,7 +71,8 @@ async def save_turn(
             usage.get("output_tokens", 0),
         )
         await db.save_usage_event(
-            session_id, asst_msg_id,
+            session_id,
+            asst_msg_id,
             model=usage.get("model", ""),
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
@@ -84,5 +91,6 @@ async def notify_slack(session_id: str, tool_calls_log: list[dict[str, Any]]) ->
     for tc in tool_calls_log:
         if tc.get("tool") == "submit_investigation":
             from integrations.slack_webhook import post_investigation
+
             await post_investigation(settings.slack_webhook_url, tc["args"], session_id)
             return

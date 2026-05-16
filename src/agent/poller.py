@@ -64,7 +64,7 @@ async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | 
 
 
 async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: str) -> None:
-    from agent.monitor_store import add_alert
+    from agent.monitor_store import add_alert, update_service
     from agent.turns import notify_slack, save_turn
 
     tool_calls_log = [{"tool": "submit_investigation", "args": result, "result": {}}]
@@ -78,9 +78,13 @@ async def _persist_and_notify(prompt: str, result: dict[str, Any], session_id: s
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
-    add_alert(
-        service=service, error=root_cause, resolution=resolution,
-        confidence=confidence, sns_sent=False,
+    update_service(service, "error", root_cause)
+    await add_alert(
+        service=service,
+        error=root_cause,
+        resolution=resolution,
+        confidence=confidence,
+        sns_sent=False,
     )
 
 
@@ -92,10 +96,10 @@ async def _check_alarms() -> None:
 
     data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
     for alarm in data.get("alarms", []):
-        name    = alarm.get("name", "unknown")
-        reason  = alarm.get("reason", "")
-        metric  = alarm.get("metric", "")
-        key     = f"alarm:{name}"
+        name = alarm.get("name", "unknown")
+        reason = alarm.get("reason", "")
+        metric = alarm.get("metric", "")
+        key = f"alarm:{name}"
 
         if not _should_investigate(key):
             continue
@@ -129,7 +133,10 @@ async def _check_lambda_errors() -> None:
             continue
 
         metrics = await asyncio.get_event_loop().run_in_executor(
-            None, get_lambda_error_rate, name, 1  # last 1 hour
+            None,
+            get_lambda_error_rate,
+            name,
+            1,  # last 1 hour
         )
         error_rate = metrics.get("error_rate_pct", 0) or 0
         if error_rate < settings.poll_error_threshold:
