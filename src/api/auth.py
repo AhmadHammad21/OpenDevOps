@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config import settings
 
-_oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+_bearer = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -25,7 +25,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(user_id: str, role: str) -> str:
     from jose import jwt
 
-    exp = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    exp = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     return jwt.encode(
         {"sub": user_id, "role": role, "exp": exp},
         settings.jwt_secret,
@@ -34,15 +34,16 @@ def create_access_token(user_id: str, role: str) -> str:
 
 
 async def get_current_user(
-    token: Annotated[str | None, Depends(_oauth2)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> dict | None:
     """Return {id, role} when auth is enabled + token is valid; None in dev mode."""
     if not settings.jwt_secret:
         return None
+    token = credentials.credentials if credentials else None
     if token is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        from jose import JWTError, jwt
+        from jose import jwt
 
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
         user_id: str | None = payload.get("sub")

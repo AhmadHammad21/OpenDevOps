@@ -135,28 +135,6 @@ app = FastAPI(
 )
 
 
-def _add_bearer_security(openapi_schema: dict) -> dict:
-    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-    }
-    for path in openapi_schema.get("paths", {}).values():
-        for op in path.values():
-            op.setdefault("security", [{"BearerAuth": []}])
-    return openapi_schema
-
-
-_original_openapi = app.openapi
-
-
-def _patched_openapi() -> dict:
-    if not app.openapi_schema:
-        app.openapi_schema = _add_bearer_security(_original_openapi())
-    return app.openapi_schema
-
-
-app.openapi = _patched_openapi  # type: ignore[method-assign]
 
 app.include_router(chat.router)
 app.include_router(sessions.router)
