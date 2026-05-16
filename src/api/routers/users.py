@@ -27,7 +27,9 @@ async def create_user(
 ) -> UserOut:
     if await db.get_user_by_email(req.email):
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = await db.create_user(req.email, req.name, hash_password(req.password), req.role)
+    org = await db.get_first_org()
+    org_id = org["id"] if org else None
+    user = await db.create_user(req.email, req.name, hash_password(req.password), req.role, org_id)
     if not user:
         raise HTTPException(status_code=500, detail="Failed to create user")
     return user

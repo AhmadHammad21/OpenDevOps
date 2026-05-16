@@ -120,6 +120,9 @@ class DatabaseBackend(ABC):
     async def update_user(self, user_id: str, **fields: Any) -> dict | None:
         return None
 
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        pass
+
     async def delete_user(self, user_id: str) -> None:
         pass
 

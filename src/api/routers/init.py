@@ -113,6 +113,7 @@ async def setup(
             org = await db.create_org(body.org_name.strip(), slug)
             if org:
                 logger.info("Init: organization '{}' created", body.org_name)
+                await db.assign_org_to_users_without_org(org["id"])
 
     data = await save_init_async(data)
     logger.info("Init setup saved")

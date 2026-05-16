@@ -549,6 +549,12 @@ class PostgresBackend(DatabaseBackend):
             row["id"] = str(row["id"])
         return row
 
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        await self._exec(
+            "UPDATE users SET org_id = %s WHERE org_id IS NULL",
+            uuid.UUID(org_id),
+        )
+
     async def delete_user(self, user_id: str) -> None:
         await self._exec("DELETE FROM users WHERE id = %s", uuid.UUID(user_id))
 

@@ -309,8 +309,17 @@ export default function InitPage() {
           {step === 3 && (
             <>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-3">Check permissions</h1>
-              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-8 leading-relaxed">
-                Verify that the IAM role has the required permissions for each AWS service.
+              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-2 leading-relaxed">
+                Verify that the IAM user or role has the required permissions for each AWS service.
+              </p>
+              <p className="text-sm text-gray-400 dark:text-[#71717A] mb-8">
+                Need to set up IAM permissions first? See{' '}
+                <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/iam_setup.md"
+                   target="_blank" rel="noopener noreferrer"
+                   className="text-indigo-500 dark:text-[#818CF8] hover:underline">
+                  docs/iam_setup.md
+                </a>
+                {' '}for the exact policy JSON.
               </p>
 
               {!hasPerms ? (
