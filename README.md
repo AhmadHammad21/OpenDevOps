@@ -12,7 +12,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
 - **Context enrichment** — before the LLM runs, deterministic boto3 calls fetch facts about the affected resource (alarm details, recent logs, function config, etc.) to reduce tool call count and speed up investigations
-- **SNS alert delivery** — after each event-driven investigation, findings are published to a configured SNS topic as structured JSON; fires alongside Slack so both channels receive results simultaneously
+- **SNS alert delivery** — after each event-driven investigation, findings are published to a configured SNS topic as structured JSON; fires alongside Slack and Telegram so all channels receive results simultaneously
 - **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level (or FAILED badge), affected service, root cause summary, SNS status; each alert links back to its original investigation session via **View investigation** so you can follow up without losing context — see [docs/monitoring.md](docs/monitoring.md)
 - **AWS Configuration settings tab** — admin-only editable tab in Settings for SNS Topic ARN, SQS Queue URL, and AWS Region; shared org-wide (server-side `init.json`); includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
@@ -208,6 +208,8 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 | `INVESTIGATION_TIMEOUT` | `120` | Timeout in seconds |
 | `TOOL_RESPONSE_MAX_CHARS` | `40000` | Truncate tool responses larger than this before feeding to the LLM; `0` disables |
 | `SLACK_WEBHOOK_URL` | none | Slack incoming webhook URL; leave unset to disable notifications |
+| `TELEGRAM_BOT_TOKEN` | none | Telegram bot token from @BotFather; leave unset to disable |
+| `TELEGRAM_CHAT_ID` | none | Target chat/group/channel ID (negative number for groups) |
 | `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
 | `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |
 | `POLL_REINVESTIGATE_HOURS` | `1` | Cooldown period — skip re-investigating the same alarm within N hours |
@@ -247,7 +249,7 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
 - [ ] **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
 - [x] **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
-- [x] **Slack notifications** — reactive: posts a color-coded Block Kit message to a Slack webhook after every investigation; proactive: background poller checks CloudWatch alarms and Lambda error rates on a configurable interval, auto-investigates new anomalies, and posts findings without any human trigger; set `SLACK_WEBHOOK_URL` and `POLL_INTERVAL_MINUTES` in `.env` to enable
+- [x] **Slack & Telegram notifications** — reactive: posts after every investigation to Slack (Block Kit) and/or Telegram (HTML bot message); proactive: background poller checks CloudWatch alarms and Lambda error rates, auto-investigates, and delivers to both channels; set `SLACK_WEBHOOK_URL` and/or `TELEGRAM_BOT_TOKEN`+`TELEGRAM_CHAT_ID` in `.env`; see [docs/telegram.md](docs/telegram.md)
 - [x] **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules covering CloudWatch alarms, ECS, Lambda, RDS, EC2, CodePipeline, and AWS Health; runs in parallel with the metric poller; see [docs/event_detection.md](docs/event_detection.md)
 - [x] **SNS alert delivery** — findings published to SNS after each event-driven investigation; fires alongside Slack; structured JSON payload for easy downstream processing
 - [x] **Context enrichment** — deterministic boto3 calls per event type before LLM runs; reduces tool call count by front-loading relevant resource facts

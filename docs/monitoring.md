@@ -6,7 +6,7 @@ The Monitoring page shows a live feed of every incident detected and investigate
 
 ## Detection Modes
 
-OpenDevOps Agent has two complementary detection modes. Both write to the same `/monitoring` page and Slack channel.
+OpenDevOps Agent has two complementary detection modes. Both write to the same `/monitoring` page and can deliver to Slack and Telegram.
 
 | | Proactive Polling | Event-Driven (EventBridge → SQS) |
 |---|---|---|
@@ -18,6 +18,7 @@ OpenDevOps Agent has two complementary detection modes. Both write to the same `
 | **Event types covered** | CloudWatch alarms in ALARM state + Lambda error rates | CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, GuardDuty findings, AWS Health events |
 | **Appears in /monitoring** | Yes | Yes |
 | **Slack notifications** | Yes (if `SLACK_WEBHOOK_URL` set) | Yes (if `SLACK_WEBHOOK_URL` set) |
+| **Telegram notifications** | Yes (if `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` set) | Yes (if `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` set) |
 
 **Recommendation:** enable both. Polling works immediately with zero AWS infrastructure and is faster for Lambda error detection. Event-driven catches a wider surface area (ECS, RDS, EC2, GuardDuty, etc.) once infrastructure is created.
 
