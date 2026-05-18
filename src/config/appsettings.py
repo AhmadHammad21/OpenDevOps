@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     max_tool_calls: int = 20
     investigation_timeout: int = 120
     log_level: str = "INFO"
+    log_console_enabled: bool = True
+    log_console_colorize: bool = True
 
     # Cap tool responses before feeding them back to the LLM.
     # Prevents large CloudWatch / CloudTrail payloads from exhausting the context window.
