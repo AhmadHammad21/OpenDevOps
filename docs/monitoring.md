@@ -207,7 +207,7 @@ Invokes the Lambda with a bad payload, then exits. The `opendevops-lambda-errors
 
 Each alert card shows:
 
-- **Confidence badge** — `HIGH` (red), `MEDIUM` (amber), or `LOW` (grey)
+- **Status badge** — `HIGH` (red), `MEDIUM` (amber), `LOW` (grey), or `FAILED` (rose) if the agent hit its tool limit or encountered an error
 - **Service** — the affected AWS service and resource name
 - **Error** — the root cause summary from the agent
 - **Time** — when the event was detected
@@ -223,7 +223,16 @@ Shows the full investigation result:
 - Resolution steps produced by the agent
 - Timestamp and SNS notification status
 
-**Investigate button** — opens a new chat session with a pre-seeded prompt for deeper analysis. The prompt auto-submits when the chat page loads.
+**Investigate / View investigation button** — behaviour depends on whether the investigation session was persisted:
+
+- **View investigation** — shown for event-driven and poller alerts. Opens the original investigation chat so you can see the agent's tool calls, reasoning, and evidence, and send follow-up messages.
+- **Investigate** — shown for older alerts (created before session persistence was added). Opens a new chat with a pre-seeded prompt for deeper analysis.
+
+### Session continuity and sidebar
+
+When the event consumer or poller runs an investigation, it creates a session (`source = 'event'`) and links it to the resulting alert via `session_id`. These sessions are **hidden from the sidebar by default** — they represent automated runs the user did not initiate.
+
+If you open a "View investigation" chat and send at least one follow-up message, the session is **promoted to the sidebar** (`user_interacted = true`) so you can navigate back to it without going through the Monitoring page again.
 
 ### Service Health Panel
 

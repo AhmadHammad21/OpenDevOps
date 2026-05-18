@@ -31,6 +31,7 @@ class DatabaseBackend(ABC):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None: ...
 
     @abstractmethod
@@ -137,6 +138,8 @@ class DatabaseBackend(ABC):
         confidence: str,
         sns_sent: bool,
         dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         return ""
 

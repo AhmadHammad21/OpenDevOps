@@ -71,7 +71,7 @@ async def _persist_and_notify(
 
     tool_calls_log = [{"tool": "submit_investigation", "args": result, "result": {}}]
     usage = {"model": settings.llm_model, "latency_ms": 0}
-    await save_turn(session_id, prompt, "", tool_calls_log, usage)
+    await save_turn(session_id, prompt, "", tool_calls_log, usage, source="event")
     await notify_slack(session_id, tool_calls_log)
 
     services_affected = result.get("services_affected", [])
@@ -88,6 +88,7 @@ async def _persist_and_notify(
         confidence=confidence,
         sns_sent=False,
         dedup_key=dedup_key,
+        session_id=session_id,
     )
 
 

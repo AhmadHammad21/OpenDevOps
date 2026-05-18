@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import uuid
 from typing import Any
@@ -17,6 +18,11 @@ from agent.init_store import (
 )
 from agent.monitor_store import add_alert, is_recent_alert, update_service
 from config import settings
+
+# In-memory set of dedup keys currently being investigated.
+# Prevents a second identical event from starting a parallel agent run
+# before the first one finishes and writes its key to the DB.
+_in_progress: set[str] = set()
 
 
 def _build_investigation_prompt(event: dict) -> str:
@@ -100,77 +106,150 @@ def _build_investigation_prompt(event: dict) -> str:
     )
 
 
-async def _run_investigation(prompt: str) -> dict[str, Any] | None:
-    """Run a full agent investigation and return the submit_investigation result."""
+async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | None:
+    """Run a full agent investigation, persist the session, and return the result."""
     from agent.core import get_agent
+    from agent.turns import save_turn
 
-    thread_id = str(uuid.uuid4())
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {"thread_id": session_id},
         "recursion_limit": settings.max_tool_calls * 3 + 15,
     }
+
+    investigation_result: dict[str, Any] | None = None
+    messages: list = []
 
     try:
         result = await get_agent().ainvoke(
             {"messages": [{"role": "user", "content": prompt}]},
             config=config,
         )
-        for msg in reversed(result.get("messages", [])):
+        messages = result.get("messages", [])
+        for msg in reversed(messages):
             for tc in getattr(msg, "tool_calls", []) or []:
                 name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
                 args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
                 if name == "submit_investigation":
-                    return args
-        messages = result.get("messages", [])
-        if messages:
+                    investigation_result = args
+                    break
+            if investigation_result:
+                break
+        if not investigation_result and messages:
             last = messages[-1]
             content = last.content if hasattr(last, "content") else str(last)
             if content:
-                return {
+                investigation_result = {
                     "root_cause_summary": content,
                     "confidence": "MEDIUM",
                     "mitigation_steps": [],
                 }
     except Exception as e:
         logger.error("Agent investigation failed: {}", e)
-    return None
+        investigation_result = {
+            "_status": "failed",
+            "root_cause_summary": f"Investigation failed: {e}",
+            "confidence": "LOW",
+            "mitigation_steps": [
+                "The agent hit its tool call limit or encountered an error.",
+                "Re-investigate manually via the chat — use a higher MAX_TOOL_CALLS if needed.",
+            ],
+        }
+
+    # Persist the session regardless of success/failure
+    input_tokens, output_tokens = 0, 0
+    for msg in messages:
+        um = getattr(msg, "usage_metadata", None) or {}
+        input_tokens += um.get("input_tokens", 0)
+        output_tokens += um.get("output_tokens", 0)
+
+    # Build a readable assistant summary from the investigation result
+    if investigation_result and investigation_result.get("root_cause_summary"):
+        steps = investigation_result.get("mitigation_steps", [])
+        steps_text = (
+            "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
+        )
+        confidence = investigation_result.get("confidence", "MEDIUM")
+        assistant_text = (
+            f"**Root Cause ({confidence} confidence):** "
+            f"{investigation_result['root_cause_summary']}\n\n"
+            f"**Mitigation Steps:**\n{steps_text}"
+        )
+    else:
+        assistant_text = "Investigation completed. See tool calls for details."
+
+    await save_turn(
+        session_id=session_id,
+        user_message=prompt,
+        assistant_text=assistant_text,
+        tool_calls_log=[],
+        usage={
+            "model": settings.llm_model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "latency_ms": 0,
+        },
+        source="event",
+    )
+
+    return investigation_result
+
+
+_VOLATILE_KEYS = {
+    "time", "timestamp", "eventTime", "requestId", "eventID",
+    "approximateInvokeCount", "startTime", "endTime", "updatedAt",
+    "stateTransitionedAt", "lastUpdatedTime",
+}
+
+
+def _strip_volatile(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _strip_volatile(v) for k, v in obj.items() if k not in _VOLATILE_KEYS}
+    if isinstance(obj, list):
+        return [_strip_volatile(i) for i in obj]
+    return obj
 
 
 def _event_dedup_key(event: dict) -> str:
-    """Derive a stable dedup key from an EventBridge event."""
+    """MD5 fingerprint of the event's stable fields — works for any AWS service."""
     source = event.get("source", "unknown")
+    fingerprint = {
+        "source": source,
+        "detail-type": event.get("detail-type", ""),
+        "detail": _strip_volatile(event.get("detail", {})),
+    }
+    digest = hashlib.md5(
+        json.dumps(fingerprint, sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
+    return f"{source}:{digest}"
+
+
+def _extract_aws_error(event: dict) -> str:
+    """Pull the original AWS error message out of the event payload."""
+    source = event.get("source", "")
     detail = event.get("detail", {})
-    if source == "aws.cloudwatch":
-        alarm_name = detail.get("alarmName", "")
-        state = detail.get("state", {}).get("value", "")
-        return f"alarm:{alarm_name}" if alarm_name else f"cloudwatch:{state}"
     if source == "aws.lambda":
-        fn = (
-            detail.get("requestParameters", {}).get("functionName", "")
-            or detail.get("resource", {}).get("functionName", "")
-        )
-        return f"lambda_errors:{fn}" if fn else f"lambda:{event.get('detail-type', '')}"
+        return detail.get("responsePayload", {}).get("errorMessage", "")
+    if source == "aws.cloudwatch":
+        return detail.get("state", {}).get("reason", "")
     if source == "aws.ecs":
-        task_arn = detail.get("taskArn", detail.get("taskDefinitionArn", ""))
-        return f"ecs:{task_arn.split('/')[-1]}" if task_arn else "ecs:unknown"
+        return detail.get("stoppedReason", "")
     if source == "aws.rds":
-        return f"rds:{detail.get('SourceIdentifier', 'unknown')}"
-    if source == "aws.ec2":
-        return f"ec2:{detail.get('instance-id', 'unknown')}"
-    return f"{source}:{event.get('detail-type', 'unknown')}"
+        return detail.get("Message", "")
+    return ""
 
 
-async def _deliver(result: dict[str, Any], event: dict, dedup_key: str) -> None:
+async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_id: str) -> None:
     """Send investigation result to SNS + Slack and persist to the monitor store."""
+    status = result.pop("_status", "completed")
+    is_test = bool(event.get("_opendevops_test", False))
     services_affected = result.get("services_affected", [])
-    service = result.get(
-        "service_name",
-        result.get("service", services_affected[0] if services_affected else "unknown"),
-    )
+    fallback = services_affected[0] if services_affected else event.get("source", "unknown")
+    service = result.get("service_name", result.get("service", fallback))
     root_cause = result.get("root_cause_summary", "")
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
+    aws_error = _extract_aws_error(event)
 
     sns_arn = get_runtime_sns_topic_arn()
 
@@ -191,11 +270,12 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str) -> None:
                 f"Confidence: {confidence}\n"
                 f"Event Time: {event.get('time', '')}"
             )
+            subject_prefix = "[FAILED]" if status == "failed" else f"[{confidence}]"
             await asyncio.get_event_loop().run_in_executor(
                 None,
                 publish_sns_alert,
                 sns_arn,
-                f"[{confidence}] {service} — {root_cause[:80]}",
+                f"{subject_prefix} {service} — {root_cause[:80]}",
                 message,
             )
             sns_sent = True
@@ -205,14 +285,21 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str) -> None:
     # Also notify Slack (keeps parity with the poller)
     if settings.slack_webhook_url:
         try:
-            from integrations.slack_webhook import post_investigation
+            from integrations.slack_webhook import post_failed_investigation, post_investigation
 
-            session_id = str(uuid.uuid4())
-            await post_investigation(settings.slack_webhook_url, result, session_id)
+            if status == "failed":
+                await post_failed_investigation(
+                    settings.slack_webhook_url, service, root_cause,
+                    session_id, aws_error=aws_error, is_test=is_test,
+                )
+            else:
+                await post_investigation(
+                    settings.slack_webhook_url, result, session_id, is_test=is_test
+                )
         except Exception as e:
             logger.error("Slack delivery failed from event consumer: {}", e)
 
-    update_service(service, "error", root_cause)
+    update_service(service, status, root_cause)
     await add_alert(
         service=service,
         error=root_cause,
@@ -220,6 +307,8 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str) -> None:
         confidence=confidence,
         sns_sent=sns_sent,
         dedup_key=dedup_key,
+        status=status,
+        session_id=session_id,
     )
     logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
 
@@ -253,10 +342,16 @@ async def _process_event(event: dict) -> None:
         return
 
     dedup_key = _event_dedup_key(event)
-    if await is_recent_alert(dedup_key):
-        logger.info("Skipping duplicate event {} — already investigated recently", dedup_key)
+    if dedup_key in _in_progress or await is_recent_alert(dedup_key):
+        logger.info(
+            "Dedup: skipping {} / {} (key={}) — {}",
+            source, detail_type, dedup_key,
+            "investigation already in progress" if dedup_key in _in_progress
+            else "same event investigated within last 3 min",
+        )
         return
 
+    _in_progress.add(dedup_key)
     logger.info("Processing event: {} / {}", source, detail_type)
 
     prompt = _build_investigation_prompt(event)
@@ -276,11 +371,15 @@ async def _process_event(event: dict) -> None:
     except Exception as e:
         logger.debug("Context collection skipped: {}", e)
 
-    result = await _run_investigation(prompt)
-    if result:
-        await _deliver(result, event, dedup_key)
-    else:
-        logger.warning("Investigation produced no result for {} / {}", source, detail_type)
+    session_id = str(uuid.uuid4())
+    try:
+        result = await _run_investigation(prompt, session_id)
+        if not result:
+            logger.warning("Investigation produced no result for {} / {}", source, detail_type)
+            return
+        await _deliver(result, event, dedup_key, session_id)
+    finally:
+        _in_progress.discard(dedup_key)
 
 
 async def event_consumer_loop() -> None:

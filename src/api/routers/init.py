@@ -284,6 +284,7 @@ async def send_test_event(
 
     now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     event: dict = {
+        "_opendevops_test": True,
         "source": "aws.cloudwatch",
         "detail-type": "CloudWatch Alarm State Change",
         "time": now,

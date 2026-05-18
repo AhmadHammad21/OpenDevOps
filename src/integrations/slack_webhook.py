@@ -6,7 +6,6 @@ from typing import Any
 
 from loguru import logger
 
-
 # Sidebar colour per root-cause category
 _CATEGORY_COLORS: dict[str, str] = {
     "SYSTEM_CHANGE":     "#e67e22",
@@ -22,7 +21,12 @@ _CONFIDENCE_EMOJI: dict[str, str] = {
 }
 
 
-def _build_payload(result: dict[str, Any], session_id: str, app_url: str | None = None) -> dict:
+def _build_payload(
+    result: dict[str, Any],
+    session_id: str,
+    app_url: str | None = None,
+    is_test: bool = False,
+) -> dict:
     category   = result.get("root_cause_category", "UNKNOWN")
     summary    = result.get("root_cause_summary", "No summary provided.")
     confidence = result.get("confidence", "LOW")
@@ -31,6 +35,11 @@ def _build_payload(result: dict[str, Any], session_id: str, app_url: str | None 
     services   = result.get("services_affected", [])
     color      = _CATEGORY_COLORS.get(category, "#95a5a6")
     conf_emoji = _CONFIDENCE_EMOJI.get(confidence, "🔴")
+    header_text = (
+        "🧪 [TEST] OpenDevOps Agent — Investigation Complete"
+        if is_test
+        else "🔍 OpenDevOps Agent — Investigation Complete"
+    )
 
     def _bullets(items: list[str]) -> str:
         return "\n".join(f"• {i}" for i in items) if items else "_None recorded_"
@@ -38,7 +47,7 @@ def _build_payload(result: dict[str, Any], session_id: str, app_url: str | None 
     blocks: list[dict] = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": "🔍 OpenDevOps Agent — Investigation Complete"},
+            "text": {"type": "plain_text", "text": header_text},
         },
         {"type": "divider"},
         {
@@ -89,21 +98,58 @@ def _build_payload(result: dict[str, Any], session_id: str, app_url: str | None 
     }
 
 
+async def _post(webhook_url: str, payload: dict) -> None:
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(webhook_url, json=payload)
+            if resp.status_code != 200:
+                logger.warning("Slack webhook returned {}: {}", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Slack notification failed: {}", e)
+
+
 async def post_investigation(
     webhook_url: str,
     result: dict[str, Any],
     session_id: str,
     app_url: str | None = None,
+    is_test: bool = False,
 ) -> None:
-    """Fire-and-forget: post a completed investigation result to Slack."""
-    try:
-        import httpx
-        payload = _build_payload(result, session_id, app_url)
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(webhook_url, json=payload)
-            if resp.status_code != 200:
-                logger.warning("Slack webhook returned {}: {}", resp.status_code, resp.text)
-            else:
-                logger.info("Slack notification sent for session {}", session_id[:8])
-    except Exception as e:
-        logger.error("Slack notification failed: {}", e)
+    """Post a completed investigation result to Slack."""
+    payload = _build_payload(result, session_id, app_url, is_test=is_test)
+    await _post(webhook_url, payload)
+    logger.info("Slack notification sent for session {}", session_id[:8])
+
+
+async def post_failed_investigation(
+    webhook_url: str,
+    service: str,
+    error: str,
+    session_id: str,
+    aws_error: str = "",
+    is_test: bool = False,
+) -> None:
+    """Post a failed investigation alert to Slack."""
+    header_text = (
+        "🧪 [TEST] OpenDevOps Agent — Investigation Failed"
+        if is_test
+        else "⚠️ OpenDevOps Agent — Investigation Failed"
+    )
+    detail_text = f"*Service:* `{service}`"
+    if aws_error:
+        detail_text += f"\n*AWS error:* {aws_error}"
+    detail_text += f"\n*Agent error:* {error}"
+
+    blocks: list[dict] = [
+        {"type": "header", "text": {"type": "plain_text", "text": header_text}},
+        {"type": "divider"},
+        {"type": "section", "text": {"type": "mrkdwn", "text": detail_text}},
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"Session `{session_id[:8]}`"}],
+        },
+    ]
+    payload = {"attachments": [{"color": "#e74c3c", "blocks": blocks}]}
+    await _post(webhook_url, payload)
+    logger.info("Slack failure notification sent for session {}", session_id[:8])

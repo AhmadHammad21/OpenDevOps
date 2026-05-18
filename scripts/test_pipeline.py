@@ -12,7 +12,26 @@ Usage:
   uv run python scripts/test_pipeline.py --region eu-west-1
   uv run python scripts/test_pipeline.py --invocations 10
   uv run python scripts/test_pipeline.py --list                  # list available Lambdas
-    uv run python scripts/test_pipeline.py --lambda-only           # real alarm path
+  uv run python scripts/test_pipeline.py --lambda-only           # real alarm path (~2-4 min)
+
+─────────────────────────────────────────────────────────────────────────────────
+MANUAL SQS TEST COMMANDS (bypass script — push directly to the queue)
+Replace QUEUE_URL and ACCOUNT_ID with your values from Settings → AWS Configuration.
+─────────────────────────────────────────────────────────────────────────────────
+
+# Syntax error (Runtime.UserCodeSyntaxError) — fast, focused investigation:
+aws sqs send-message --profile devops-agent-readonly --queue-url "https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/opendevops-agent-events" --message-body "{\"source\":\"aws.lambda\",\"detail-type\":\"Lambda Function Invocation Result - Failure\",\"time\":\"2026-05-17T12:00:00Z\",\"detail\":{\"requestContext\":{\"functionArn\":\"arn:aws:lambda:us-east-1:ACCOUNT_ID:function:opendevops-test-failure\",\"condition\":\"RetriesExhausted\",\"approximateInvokeCount\":3},\"responsePayload\":{\"errorMessage\":\"Syntax error in module lambda_function: unexpected indent (lambda_function.py, line 9)\",\"errorType\":\"Runtime.UserCodeSyntaxError\",\"stackTrace\":[\"File /var/task/lambda_function.py line 9: def lambda_handler(event, context):\"]}}}
+
+# CloudWatch alarm event — slower path (~1 min CloudWatch delay in real scenario):
+aws sqs send-message --profile devops-agent-readonly \
+  --queue-url "https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/opendevops-agent-events" \
+  --message-body "{\"source\":\"aws.cloudwatch\",\"detail-type\":\"CloudWatch Alarm State Change\",\"time\":\"2026-05-17T12:00:00Z\",\"detail\":{\"alarmName\":\"opendevops-test-lambda-errors\",\"state\":{\"value\":\"ALARM\",\"reason\":\"TEST: Lambda error rate exceeded threshold\"},\"configuration\":{\"metrics\":[{\"metricStat\":{\"metric\":{\"namespace\":\"AWS/Lambda\",\"name\":\"Errors\",\"dimensions\":{\"FunctionName\":\"opendevops-test-failure\"}},\"period\":300,\"stat\":\"Sum\"}}]}}}"
+
+Notes:
+  - Event consumer picks up the message within 20s (SQS long-poll interval)
+  - Use aws.lambda source for faster, more focused investigations
+  - MAX_TOOL_CALLS=30 recommended to avoid recursion errors with weaker models
+─────────────────────────────────────────────────────────────────────────────────
 """
 
 from __future__ import annotations

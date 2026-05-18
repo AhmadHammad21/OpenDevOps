@@ -17,12 +17,16 @@ async def add_alert(
     confidence: str,
     sns_sent: bool,
     dedup_key: str | None = None,
+    status: str = "completed",
+    session_id: str | None = None,
 ) -> str:
     """Persist an alert to the DB backend."""
     from agent.db import db
 
     try:
-        return await db.add_alert(service, error, resolution, confidence, sns_sent, dedup_key)
+        return await db.add_alert(
+            service, error, resolution, confidence, sns_sent, dedup_key, status, session_id
+        )
     except Exception as e:
         logger.error("Failed to persist alert: {}", e)
         return ""

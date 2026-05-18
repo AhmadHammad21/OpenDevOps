@@ -13,7 +13,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
 - **Context enrichment** — before the LLM runs, deterministic boto3 calls fetch facts about the affected resource (alarm details, recent logs, function config, etc.) to reduce tool call count and speed up investigations
 - **SNS alert delivery** — after each event-driven investigation, findings are published to a configured SNS topic as structured JSON; fires alongside Slack so both channels receive results simultaneously
-- **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level, affected service, root cause summary, SNS status; each alert has a detail page with an **Investigate** button that opens a pre-seeded chat — see [docs/monitoring.md](docs/monitoring.md)
+- **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level (or FAILED badge), affected service, root cause summary, SNS status; each alert links back to its original investigation session via **View investigation** so you can follow up without losing context — see [docs/monitoring.md](docs/monitoring.md)
 - **AWS Configuration settings tab** — admin-only editable tab in Settings for SNS Topic ARN, SQS Queue URL, and AWS Region; shared org-wide (server-side `init.json`); includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
   - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button; supports `?prompt=` deeplink for pre-seeded investigations from the Monitoring dashboard
@@ -251,7 +251,7 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [x] **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules covering CloudWatch alarms, ECS, Lambda, RDS, EC2, CodePipeline, and AWS Health; runs in parallel with the metric poller; see [docs/event_detection.md](docs/event_detection.md)
 - [x] **SNS alert delivery** — findings published to SNS after each event-driven investigation; fires alongside Slack; structured JSON payload for easy downstream processing
 - [x] **Context enrichment** — deterministic boto3 calls per event type before LLM runs; reduces tool call count by front-loading relevant resource facts
-- [x] **Monitoring dashboard** — live incident feed, per-service health summary, alert detail page, investigate deeplink to pre-seeded chat; see [docs/monitoring.md](docs/monitoring.md)
+- [x] **Monitoring dashboard** — live incident feed, per-service health summary, alert detail page; "View investigation" opens the original agent session for follow-up; failed investigations flagged separately; see [docs/monitoring.md](docs/monitoring.md)
 - [x] **AWS Configuration settings tab** — admin-only editable tab for SNS/SQS/region config; shared org-wide via server-side `init.json`; inline IAM permission checker
 
 ### Later

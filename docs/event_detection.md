@@ -84,11 +84,12 @@ Context is appended to the investigation prompt, capped at 3 000 chars to stay w
 
 1. Receives up to 5 messages per poll with a 20-second long-poll wait
 2. Filters noise: only processes events where `_is_real_failure()` returns true (e.g. skips EC2 `running` state changes, healthy RDS events)
-3. Calls `collect_context(event)` to enrich the prompt
-4. Runs a full agent investigation via `agent.ainvoke`
-5. Persists the result to the `alerts` table via `monitor_store.add_alert()`
-6. Delivers findings via SNS and Slack (if configured)
-7. Deletes the SQS message
+3. Deduplicates: checks an in-memory set (`_in_progress`) and the database to skip events already being investigated or investigated within the last 3 minutes
+4. Calls `collect_context(event)` to enrich the prompt
+5. Generates a `session_id` and runs a full agent investigation via `agent.ainvoke`, persisting the session and messages to the database (`source = 'event'`)
+6. Persists the result to the `alerts` table (linked to the session via `session_id`) via `monitor_store.add_alert()`
+7. Delivers findings via SNS and Slack (if configured); failed investigations are flagged with status `'failed'` but are still persisted and notified
+8. Deletes the SQS message
 
 The consumer is started as an `asyncio.Task` in the FastAPI lifespan and shut down cleanly on server stop.
 
@@ -132,15 +133,19 @@ Use **Settings → AWS Configuration → Run checks** to validate all permission
 
 ## Persistence
 
-Completed investigations are stored in the `alerts` table across all three storage backends (memory, SQLite, PostgreSQL). The Monitoring dashboard reads from this table.
+Each event-driven investigation creates a full session (messages, tool calls, usage events) in the database, linked to the alert via `session_id`. This powers the "View investigation" button on the Monitoring page, which opens the original chat instead of starting a fresh one.
 
-For PostgreSQL, run the migration before starting the server:
+Sessions created by the event consumer carry `source = 'event'` and are hidden from the sidebar by default. They become visible after the user sends a follow-up message in the chat (`user_interacted` is then set to `true`).
+
+The `alerts` table records `status` (`'completed'` or `'failed'`), `dedup_key` (MD5 fingerprint of stable event fields for cross-run deduplication), and `session_id` (FK to the session that produced it).
+
+All three storage backends (memory, SQLite, PostgreSQL) support alerts. For PostgreSQL, run migrations before starting the server:
 
 ```bash
 uv run python scripts/setup_db.py
 ```
 
-For SQLite, the `alerts` table is created automatically on first start.
+For SQLite, schema migrations are applied automatically on first start.
 
 ---
 

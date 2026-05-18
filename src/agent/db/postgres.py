@@ -27,8 +27,8 @@ class PostgresBackend(DatabaseBackend):
 
         try:
             import psycopg  # type: ignore
-            from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            from psycopg_pool import AsyncConnectionPool
 
             self._pool = AsyncConnectionPool(
                 conninfo=settings.database_url,
@@ -123,16 +123,21 @@ class PostgresBackend(DatabaseBackend):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None:
         await self._exec(
             """
-            INSERT INTO sessions (id, title, model, aws_region)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO sessions (id, title, model, aws_region, source)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = NOW(),
-                model = EXCLUDED.model
+                model = EXCLUDED.model,
+                user_interacted = CASE
+                    WHEN EXCLUDED.source = 'chat' THEN TRUE
+                    ELSE sessions.user_interacted
+                END
             """,
-            uuid.UUID(session_id), title, model, aws_region,
+            uuid.UUID(session_id), title, model, aws_region, source,
         )
 
     async def save_message(
@@ -198,7 +203,9 @@ class PostgresBackend(DatabaseBackend):
 
     async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions"
+            " WHERE is_deleted = FALSE AND (source = 'chat' OR user_interacted = TRUE)"
+            " ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
             limit, offset,
         )
         return [
@@ -568,11 +575,15 @@ class PostgresBackend(DatabaseBackend):
         confidence: str,
         sns_sent: bool,
         dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         row = await self._fetchrow(
-            "INSERT INTO alerts (service, error, resolution, confidence, sns_sent, dedup_key) "
-            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-            service, error, resolution, confidence, sns_sent, dedup_key,
+            "INSERT INTO alerts"
+            " (service, error, resolution, confidence, sns_sent, dedup_key, status, session_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            service, error, resolution, confidence, sns_sent, dedup_key, status,
+            uuid.UUID(session_id) if session_id else None,
         )
         return str(row["id"]) if row else ""
 
@@ -586,7 +597,7 @@ class PostgresBackend(DatabaseBackend):
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
             "FROM alerts ORDER BY created_at DESC LIMIT %s",
             min(limit, 200),
         )
@@ -598,14 +609,16 @@ class PostgresBackend(DatabaseBackend):
                 "resolution": r["resolution"],
                 "confidence": r["confidence"],
                 "sns_sent": bool(r["sns_sent"]),
+                "status": r["status"],
                 "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
+                "session_id": str(r["session_id"]) if r["session_id"] else None,
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
         row = await self._fetchrow(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
             "FROM alerts WHERE id = %s",
             uuid.UUID(alert_id),
         )
@@ -618,7 +631,9 @@ class PostgresBackend(DatabaseBackend):
             "resolution": row["resolution"],
             "confidence": row["confidence"],
             "sns_sent": bool(row["sns_sent"]),
+            "status": row["status"],
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+            "session_id": str(row["session_id"]) if row["session_id"] else None,
         }
 
     async def get_app_config(self, key: str) -> dict | None:
