@@ -55,7 +55,7 @@ async def test_telegram(
             detail="TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must both be configured",
         )
 
-    from integrations.telegram import post_investigation
+    from integrations.telegram import _build_message, _post
 
     test_result = {
         "root_cause_category": "SYSTEM_CHANGE",
@@ -69,11 +69,15 @@ async def test_telegram(
         "services_affected": ["OpenDevOps Agent"],
     }
     session_id = str(uuid.uuid4())
-    await post_investigation(
+    text = _build_message(test_result, session_id, is_test=True)
+    ok, error_detail = await _post(
         bot_token=settings.telegram_bot_token,
         chat_id=settings.telegram_chat_id,
-        result=test_result,
-        session_id=session_id,
-        is_test=True,
+        text=text,
     )
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram API rejected the message: {error_detail}",
+        )
     return {"ok": True}

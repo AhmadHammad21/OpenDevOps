@@ -46,7 +46,8 @@ def _build_message(
     return "\n".join(lines)
 
 
-async def _post(bot_token: str, chat_id: str, text: str) -> bool:
+async def _post(bot_token: str, chat_id: str, text: str) -> tuple[bool, str]:
+    """Return (success, error_detail). error_detail is empty on success."""
     try:
         import httpx
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -58,12 +59,13 @@ async def _post(bot_token: str, chat_id: str, text: str) -> bool:
                 "disable_web_page_preview": True,
             })
             if resp.status_code != 200:
-                logger.warning("Telegram API returned {}: {}", resp.status_code, resp.text)
-                return False
-            return True
+                detail = resp.text
+                logger.warning("Telegram API returned {}: {}", resp.status_code, detail)
+                return False, detail
+            return True, ""
     except Exception as e:
         logger.error("Telegram notification failed: {}", e)
-        return False
+        return False, str(e)
 
 
 async def post_investigation(
@@ -75,7 +77,7 @@ async def post_investigation(
 ) -> bool:
     """Post a completed investigation result to Telegram. Returns True on success."""
     text = _build_message(result, session_id, is_test=is_test)
-    ok = await _post(bot_token, chat_id, text)
+    ok, _ = await _post(bot_token, chat_id, text)
     if ok:
         logger.info("Telegram notification sent for session {}", session_id[:8])
     return ok
@@ -98,7 +100,7 @@ async def post_failed_investigation(
         f"<b>Error:</b> {error}\n\n"
         f"<i>Session <code>{session_id[:8]}</code></i>"
     )
-    ok = await _post(bot_token, chat_id, text)
+    ok, _ = await _post(bot_token, chat_id, text)
     if ok:
         logger.info("Telegram failure notification sent for session {}", session_id[:8])
     return ok
