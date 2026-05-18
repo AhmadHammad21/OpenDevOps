@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 
 from loguru import logger
@@ -11,21 +10,36 @@ from loguru import logger
 _services: dict[str, dict] = {}
 
 
-def add_alert(service: str, error: str, resolution: str, confidence: str, sns_sent: bool) -> None:
-    """Persist an alert to the DB backend. Called from async context."""
+async def add_alert(
+    service: str,
+    error: str,
+    resolution: str,
+    confidence: str,
+    sns_sent: bool,
+    dedup_key: str | None = None,
+    status: str = "completed",
+    session_id: str | None = None,
+) -> str:
+    """Persist an alert to the DB backend."""
     from agent.db import db
 
-    async def _save() -> None:
-        await db.add_alert(service, error, resolution, confidence, sns_sent)
-
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(_save())
-        else:
-            loop.run_until_complete(_save())
+        return await db.add_alert(
+            service, error, resolution, confidence, sns_sent, dedup_key, status, session_id
+        )
     except Exception as e:
         logger.error("Failed to persist alert: {}", e)
+        return ""
+
+
+async def is_recent_alert(dedup_key: str, within_minutes: int = 3) -> bool:
+    """Return True if an alert with this dedup_key was saved within the last N minutes."""
+    from agent.db import db
+
+    try:
+        return await db.is_recent_alert(dedup_key, within_minutes)
+    except Exception:
+        return False
 
 
 def update_service(name: str, status: str, error: str | None = None) -> None:
@@ -39,11 +53,13 @@ def update_service(name: str, status: str, error: str | None = None) -> None:
 
 async def get_alerts_async(limit: int = 50) -> list[dict]:
     from agent.db import db
+
     return await db.get_alerts(limit)
 
 
 async def get_alert_async(alert_id: str) -> dict | None:
     from agent.db import db
+
     return await db.get_alert(alert_id)
 
 

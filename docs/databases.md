@@ -44,6 +44,10 @@ Uses `aiosqlite` for the app tables and `langgraph-checkpoint-sqlite` for the
 LangGraph checkpointer. Both share the same `.db` file via separate connections
 with WAL mode enabled.
 
+SQLite also stores app-level configuration such as init wizard completion and event
+monitoring infrastructure state in `app_config`. `data/init.json` is only a local
+cache/fallback.
+
 The file and its parent directory are created automatically on first start.
 
 **When to use:** Single-server deployments, personal use, hobbyist setups where
@@ -81,6 +85,8 @@ DATABASE_URL=postgresql://user:password@localhost:5432/opendevops
 Uses `psycopg3` + `AsyncConnectionPool` for the app tables and
 `langgraph-checkpoint-postgres` for the LangGraph checkpointer.
 The checkpointer schema is created automatically via `AsyncPostgresSaver.setup()`.
+Init wizard and event-infrastructure state are stored in the `app_config` table so
+all app instances share the same setup status.
 
 **When to use:** Production deployments, team environments, when you need full
 dashboard analytics, multi-instance horizontal scaling.

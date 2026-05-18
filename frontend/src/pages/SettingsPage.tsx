@@ -77,7 +77,7 @@ export default function SettingsPage() {
         setSnsArn(d.sns_topic_arn || '');
         setSqsUrl(d.sqs_queue_url || '');
         setAwsRegion(d.aws_region || '');
-        setInfraEnabled(!!d.initialized);
+        setInfraEnabled(!!d.event_infra_enabled);
         setInfraRules(d.eventbridge_rule_arns || {});
       })
       .catch(() => {});
@@ -88,11 +88,12 @@ export default function SettingsPage() {
   const saveAwsConfig = async () => {
     setAwsSaving(true);
     try {
-      await apiFetch('/api/init/setup', {
+      const r = await apiFetch('/api/init/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sns_topic_arn: snsArn, sqs_queue_url: sqsUrl, aws_region: awsRegion }),
       });
+      if (!r.ok) throw new Error('save failed');
       toast.success('AWS configuration saved');
     } catch {
       toast.error('Failed to save configuration');
@@ -118,8 +119,8 @@ export default function SettingsPage() {
     setInfraBusy(true);
     try {
       const r = await apiFetch('/api/init/complete', { method: 'POST' });
-      const d = await r.json() as { initialized: boolean; error: string | null };
-      if (!d.initialized) { toast.error(d.error || 'Infrastructure setup failed'); return; }
+      const d = await r.json() as { initialized: boolean; event_infra_enabled?: boolean; error?: string | null; detail?: string };
+      if (!r.ok || !d.event_infra_enabled) { toast.error(d.error || d.detail || 'Infrastructure setup failed'); return; }
       toast.success('Event monitoring enabled');
       // Refresh status
       const s = await apiFetch('/api/init/status').then(res => res.json());
@@ -137,13 +138,17 @@ export default function SettingsPage() {
     if (!window.confirm('Remove SQS queue and EventBridge rules? This will stop all automatic incident detection.')) return;
     setInfraBusy(true);
     try {
-      await apiFetch('/api/init/infra', { method: 'DELETE' });
+      const r = await apiFetch('/api/init/infra', { method: 'DELETE' });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.detail?.errors?.join('\n') || d.detail || 'Teardown failed');
+      }
       toast.success('Event monitoring disabled');
       setInfraEnabled(false);
       setInfraRules({});
       setSqsUrl('');
-    } catch {
-      toast.error('Teardown failed');
+    } catch (err) {
+      toast.error((err as Error).message || 'Teardown failed');
     } finally {
       setInfraBusy(false);
     }

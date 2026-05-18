@@ -21,9 +21,12 @@ export default function AlertDetailPage() {
 
   const investigate = () => {
     if (!alert) return;
-    const prompt = `Investigate this incident further:\n\nService: ${alert.service}\nError: ${alert.error}\nConfidence: ${alert.confidence}\nTime: ${alert.timestamp}\n\nPlease provide deeper root cause analysis, check related services, and suggest preventive measures.`;
-    const sessionId = crypto.randomUUID();
-    navigate(`/chat/${sessionId}?prompt=${encodeURIComponent(prompt)}`);
+    if (alert.session_id) {
+      navigate(`/chat/${alert.session_id}`);
+    } else {
+      const prompt = `Investigate this incident further:\n\nService: ${alert.service}\nError: ${alert.error}\nConfidence: ${alert.confidence}\nTime: ${alert.timestamp}\n\nPlease provide deeper root cause analysis, check related services, and suggest preventive measures.`;
+      navigate(`/chat/${crypto.randomUUID()}?prompt=${encodeURIComponent(prompt)}`);
+    }
   };
 
   if (loading) {
@@ -50,16 +53,23 @@ export default function AlertDetailPage() {
             <div className="flex items-center gap-3 mb-2">
               <div className={cn(
                 'w-3 h-3 rounded-full',
+                alert.status === 'failed' ? 'bg-orange-500' :
                 alert.confidence === 'HIGH' ? 'bg-red-500' :
                 alert.confidence === 'MEDIUM' ? 'bg-amber-500' : 'bg-gray-400'
               )} />
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{alert.service}</h1>
-              <span className={cn(
-                'text-xs font-bold px-2 py-0.5 rounded',
-                alert.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
-                alert.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
-              )}>{alert.confidence}</span>
+              {alert.status === 'failed' ? (
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                  FAILED
+                </span>
+              ) : (
+                <span className={cn(
+                  'text-xs font-bold px-2 py-0.5 rounded',
+                  alert.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
+                  alert.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                  'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
+                )}>{alert.confidence}</span>
+              )}
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#71717A]">
               <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.timestamp).toLocaleString()}</span>
@@ -72,7 +82,7 @@ export default function AlertDetailPage() {
           </div>
           <button onClick={investigate}
             className="flex items-center gap-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 rounded-lg transition-colors">
-            <MessageSquare size={14} /> Investigate
+            <MessageSquare size={14} /> {alert.session_id ? 'View investigation' : 'Investigate'}
           </button>
         </div>
 

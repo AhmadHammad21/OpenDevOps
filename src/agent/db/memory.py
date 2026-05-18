@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
@@ -22,6 +22,7 @@ class MemoryBackend(DatabaseBackend):
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
         self._alerts: list[dict] = []
+        self._app_config: dict[str, dict] = {}
 
     async def init(self) -> Any:
         from langgraph.checkpoint.memory import MemorySaver
@@ -42,7 +43,7 @@ class MemoryBackend(DatabaseBackend):
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     # ── App helpers ───────────────────────────────────────────────────────────
 
@@ -52,16 +53,21 @@ class MemoryBackend(DatabaseBackend):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None:
         if session_id in self._sessions:
             self._sessions[session_id]["last_active_at"] = self._now()
             self._sessions[session_id]["model"] = model
+            if source == "chat":
+                self._sessions[session_id]["user_interacted"] = True
         else:
             self._sessions[session_id] = {
                 "id": session_id,
                 "title": title,
                 "model": model,
                 "aws_region": aws_region,
+                "source": source,
+                "user_interacted": source == "chat",
                 "created_at": self._now(),
                 "last_active_at": self._now(),
                 "is_deleted": False,
@@ -132,7 +138,11 @@ class MemoryBackend(DatabaseBackend):
         })
 
     async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
-        active = [s for s in self._sessions.values() if not s.get("is_deleted")]
+        active = [
+            s for s in self._sessions.values()
+            if not s.get("is_deleted")
+            and (s.get("source", "chat") == "chat" or s.get("user_interacted", False))
+        ]
         sorted_sessions = sorted(active, key=lambda s: s["last_active_at"], reverse=True)
         return sorted_sessions[offset: offset + limit]
 
@@ -240,6 +250,9 @@ class MemoryBackend(DatabaseBackend):
         resolution: str,
         confidence: str,
         sns_sent: bool,
+        dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         alert_id = str(uuid.uuid4())
         self._alerts.append({
@@ -250,6 +263,9 @@ class MemoryBackend(DatabaseBackend):
             "confidence": confidence,
             "sns_sent": sns_sent,
             "timestamp": self._now(),
+            "dedup_key": dedup_key,
+            "status": status,
+            "session_id": session_id,
         })
         return alert_id
 
@@ -261,6 +277,12 @@ class MemoryBackend(DatabaseBackend):
             if a["id"] == alert_id:
                 return a
         return None
+
+    async def get_app_config(self, key: str) -> dict | None:
+        return self._app_config.get(key)
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        self._app_config[key] = value
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

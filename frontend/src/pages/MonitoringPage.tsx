@@ -32,9 +32,9 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    fetch('/api/init/status')
+    apiFetch('/api/init/status')
       .then(r => r.json())
-      .then(d => setInfraEnabled(!!d.initialized))
+      .then(d => setInfraEnabled(!!d.event_infra_enabled))
       .catch(() => setInfraEnabled(false));
   }, [isAdmin]);
 
@@ -75,10 +75,18 @@ export default function MonitoringPage() {
 
   const healthy = services.filter(s => s.status === 'healthy').length;
   const errored = services.filter(s => s.status === 'error').length;
+  const emptyTitle = infraEnabled === false ? 'Event monitoring is not enabled' : 'No activity yet';
+  const emptyCopy = infraEnabled === false
+    ? 'Enable event monitoring in Settings, or turn on proactive polling, to populate this feed.'
+    : 'Listening for AWS events. Incidents will appear here when detected.';
 
   const investigate = (a: Alert) => {
-    const sessionId = crypto.randomUUID();
-    navigate(`/chat/${sessionId}?prompt=${encodeURIComponent(buildPrompt(a))}`);
+    if (a.session_id) {
+      navigate(`/chat/${a.session_id}`);
+    } else {
+      const sessionId = crypto.randomUUID();
+      navigate(`/chat/${sessionId}?prompt=${encodeURIComponent(buildPrompt(a))}`);
+    }
   };
 
   return (
@@ -94,12 +102,12 @@ export default function MonitoringPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-full">
               <Radio size={10} className={loading ? 'animate-pulse' : ''} />
-              <span className="font-medium">Live</span>
+              <span className="font-medium">{infraEnabled === false ? 'Feed' : 'Live'}</span>
             </div>
             {isAdmin && (
               <button
                 onClick={sendTestEvent}
-                disabled={testSending}
+                disabled={testSending || infraEnabled === false}
                 title={infraEnabled === false ? 'Event monitoring not configured' : 'Send a synthetic Lambda alarm to test the pipeline'}
                 className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-3 py-1.5 border border-indigo-200 dark:border-indigo-500/30 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-500/10 disabled:opacity-50 transition-colors"
               >
@@ -148,9 +156,9 @@ export default function MonitoringPage() {
             <div className="w-14 h-14 bg-gray-100 dark:bg-[#18181B] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Activity size={24} className="text-gray-400 dark:text-[#52525B]" />
             </div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No activity yet</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">{emptyTitle}</h2>
             <p className="text-sm text-gray-500 dark:text-[#71717A] max-w-xs mx-auto">
-              Listening for AWS events. Incidents will appear here when detected.
+              {emptyCopy}
             </p>
           </div>
         )}
@@ -171,18 +179,25 @@ export default function MonitoringPage() {
                   <div className="flex items-center gap-3">
                     <div className={cn(
                       'w-2.5 h-2.5 rounded-full shrink-0',
+                      a.status === 'failed' ? 'bg-orange-500' :
                       a.confidence === 'HIGH' ? 'bg-red-500' :
                       a.confidence === 'MEDIUM' ? 'bg-amber-500' : 'bg-gray-400'
                     )} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-gray-900 dark:text-white">{a.service}</span>
-                        <span className={cn(
-                          'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                          a.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
-                          a.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                          'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
-                        )}>{a.confidence}</span>
+                        {a.status === 'failed' ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400">
+                            FAILED
+                          </span>
+                        ) : (
+                          <span className={cn(
+                            'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                            a.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
+                            a.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
+                            'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
+                          )}>{a.confidence}</span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 dark:text-[#A1A1AA] truncate mt-0.5">{a.error}</p>
                     </div>
@@ -192,7 +207,7 @@ export default function MonitoringPage() {
                         onClick={e => { e.stopPropagation(); investigate(a); }}
                         className="hidden group-hover:flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors"
                       >
-                        <MessageSquare size={11} /> Investigate
+                        <MessageSquare size={11} /> {a.session_id ? 'View investigation' : 'Investigate'}
                       </button>
                       <ChevronRight size={14} className="text-gray-300 dark:text-[#3F3F46] group-hover:text-gray-500 dark:group-hover:text-[#71717A] transition-colors" />
                     </div>

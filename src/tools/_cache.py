@@ -18,6 +18,7 @@ from typing import Any, TypeVar
 from cachetools import TTLCache, cached
 from cachetools.keys import hashkey
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -41,7 +42,7 @@ def tool_cached(fn: F) -> F:
         return hashkey(
             fn_name,
             settings.aws_profile,
-            settings.aws_region,
+            get_runtime_aws_region(),
             *[_h(a) for a in args],
             **{k: _h(v) for k, v in kwargs.items()},
         )

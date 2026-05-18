@@ -27,8 +27,8 @@ class PostgresBackend(DatabaseBackend):
 
         try:
             import psycopg  # type: ignore
-            from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            from psycopg_pool import AsyncConnectionPool
 
             self._pool = AsyncConnectionPool(
                 conninfo=settings.database_url,
@@ -123,16 +123,21 @@ class PostgresBackend(DatabaseBackend):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None:
         await self._exec(
             """
-            INSERT INTO sessions (id, title, model, aws_region)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO sessions (id, title, model, aws_region, source)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = NOW(),
-                model = EXCLUDED.model
+                model = EXCLUDED.model,
+                user_interacted = CASE
+                    WHEN EXCLUDED.source = 'chat' THEN TRUE
+                    ELSE sessions.user_interacted
+                END
             """,
-            uuid.UUID(session_id), title, model, aws_region,
+            uuid.UUID(session_id), title, model, aws_region, source,
         )
 
     async def save_message(
@@ -198,7 +203,9 @@ class PostgresBackend(DatabaseBackend):
 
     async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = FALSE ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions"
+            " WHERE is_deleted = FALSE AND (source = 'chat' OR user_interacted = TRUE)"
+            " ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
             limit, offset,
         )
         return [
@@ -474,17 +481,50 @@ class PostgresBackend(DatabaseBackend):
     async def get_user_by_id(self, user_id: str) -> dict | None:
         return await self._fetchrow("SELECT * FROM users WHERE id = %s", uuid.UUID(user_id))
 
-    async def create_user(
-        self, email: str, name: str, password_hash: str, role: str
-    ) -> dict | None:
+    async def create_org(self, name: str, slug: str) -> dict | None:
         row = await self._fetchrow(
             """
-            INSERT INTO users (email, name, password_hash, role)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, email, name, role, created_at
+            INSERT INTO organizations (name, slug)
+            VALUES (%s, %s)
+            ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id, name, slug
             """,
-            email, name, password_hash, role,
+            name, slug,
         )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def get_first_org(self) -> dict | None:
+        row = await self._fetchrow(
+            "SELECT id, name, slug FROM organizations ORDER BY created_at ASC LIMIT 1"
+        )
+        if row:
+            row["id"] = str(row["id"])
+        return row
+
+    async def create_user(
+        self, email: str, name: str, password_hash: str, role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        if org_id:
+            row = await self._fetchrow(
+                """
+                INSERT INTO users (email, name, password_hash, role, org_id)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, email, name, role, created_at
+                """,
+                email, name, password_hash, role, uuid.UUID(org_id),
+            )
+        else:
+            row = await self._fetchrow(
+                """
+                INSERT INTO users (email, name, password_hash, role)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, email, name, role, created_at
+                """,
+                email, name, password_hash, role,
+            )
         if row:
             row["id"] = str(row["id"])
         return row
@@ -516,6 +556,12 @@ class PostgresBackend(DatabaseBackend):
             row["id"] = str(row["id"])
         return row
 
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        await self._exec(
+            "UPDATE users SET org_id = %s WHERE org_id IS NULL",
+            uuid.UUID(org_id),
+        )
+
     async def delete_user(self, user_id: str) -> None:
         await self._exec("DELETE FROM users WHERE id = %s", uuid.UUID(user_id))
 
@@ -528,17 +574,30 @@ class PostgresBackend(DatabaseBackend):
         resolution: str,
         confidence: str,
         sns_sent: bool,
+        dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         row = await self._fetchrow(
-            "INSERT INTO alerts (service, error, resolution, confidence, sns_sent) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            service, error, resolution, confidence, sns_sent,
+            "INSERT INTO alerts"
+            " (service, error, resolution, confidence, sns_sent, dedup_key, status, session_id)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            service, error, resolution, confidence, sns_sent, dedup_key, status,
+            uuid.UUID(session_id) if session_id else None,
         )
         return str(row["id"]) if row else ""
 
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchrow(
+            "SELECT 1 FROM alerts WHERE dedup_key = %s"
+            " AND created_at > NOW() - (%s * INTERVAL '1 minute') LIMIT 1",
+            dedup_key, within_minutes,
+        )
+        return row is not None
+
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
             "FROM alerts ORDER BY created_at DESC LIMIT %s",
             min(limit, 200),
         )
@@ -550,14 +609,16 @@ class PostgresBackend(DatabaseBackend):
                 "resolution": r["resolution"],
                 "confidence": r["confidence"],
                 "sns_sent": bool(r["sns_sent"]),
+                "status": r["status"],
                 "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
+                "session_id": str(r["session_id"]) if r["session_id"] else None,
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
         row = await self._fetchrow(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
             "FROM alerts WHERE id = %s",
             uuid.UUID(alert_id),
         )
@@ -570,8 +631,22 @@ class PostgresBackend(DatabaseBackend):
             "resolution": row["resolution"],
             "confidence": row["confidence"],
             "sns_sent": bool(row["sns_sent"]),
+            "status": row["status"],
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
+            "session_id": str(row["session_id"]) if row["session_id"] else None,
         }
+
+    async def get_app_config(self, key: str) -> dict | None:
+        row = await self._fetchrow("SELECT value FROM app_config WHERE key = %s", key)
+        return row["value"] if row else None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        await self._exec(
+            "INSERT INTO app_config (key, value) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()",
+            key,
+            self._jsonb(value),
+        )
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

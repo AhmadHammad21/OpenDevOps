@@ -31,6 +31,7 @@ class DatabaseBackend(ABC):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None: ...
 
     @abstractmethod
@@ -102,8 +103,15 @@ class DatabaseBackend(ABC):
     async def get_user_by_id(self, user_id: str) -> dict | None:
         return None
 
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        return None
+
+    async def get_first_org(self) -> dict | None:
+        return None
+
     async def create_user(
-        self, email: str, name: str, password_hash: str, role: str
+        self, email: str, name: str, password_hash: str, role: str,
+        org_id: str | None = None,
     ) -> dict | None:
         return None
 
@@ -112,6 +120,9 @@ class DatabaseBackend(ABC):
 
     async def update_user(self, user_id: str, **fields: Any) -> dict | None:
         return None
+
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        pass
 
     async def delete_user(self, user_id: str) -> None:
         pass
@@ -126,11 +137,25 @@ class DatabaseBackend(ABC):
         resolution: str,
         confidence: str,
         sns_sent: bool,
+        dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         return ""
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        return False
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         return []
 
     async def get_alert(self, alert_id: str) -> dict | None:
         return None
+
+    # ── App config (init wizard / infrastructure state) ──────────────────────
+
+    async def get_app_config(self, key: str) -> dict | None:
+        return None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        pass

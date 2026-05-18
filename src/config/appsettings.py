@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     # Slack — leave unset to disable notifications
     slack_webhook_url: str | None = None
 
-    # Proactive polling — set poll_interval_minutes=0 to disable
-    poll_interval_minutes: int = 0          # disabled by default
+    # Proactive polling — set poll_interval_seconds=0 to disable
+    poll_interval_seconds: int = 0          # disabled by default
     poll_error_threshold: float = 5.0       # % Lambda error rate that triggers investigation
     poll_reinvestigate_hours: int = 1       # don't re-investigate the same alarm within N hours
 

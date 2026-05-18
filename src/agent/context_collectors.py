@@ -7,11 +7,16 @@ from typing import Any
 import boto3
 from loguru import logger
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 
 
 def _session() -> boto3.Session:
-    return boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
+    return (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
 
 
 def collect_context(event: dict) -> dict[str, Any]:
@@ -38,7 +43,12 @@ def collect_context(event: dict) -> dict[str, Any]:
         elif source == "aws.guardduty":
             return {"type": "guardduty", "detail": detail}
         else:
-            return {"type": "unknown", "source": source, "detail_type": detail_type, "detail": detail}
+            return {
+                "type": "unknown",
+                "source": source,
+                "detail_type": detail_type,
+                "detail": detail,
+            }
     except Exception as e:
         logger.error("Context collection failed for {}/{}: {}", source, detail_type, e)
         return {"type": source, "error": str(e), "detail": detail}
@@ -47,8 +57,9 @@ def collect_context(event: dict) -> dict[str, Any]:
 def _collect_alarm(detail: dict) -> dict:
     """Collect context for a CloudWatch alarm state change."""
     import datetime
+
     s = _session()
-    region = settings.aws_region
+    region = get_runtime_aws_region()
     cw = s.client("cloudwatch", region_name=region)
 
     alarm_name = detail.get("alarmName", "")
@@ -67,19 +78,22 @@ def _collect_alarm(detail: dict) -> dict:
         start = end - datetime.timedelta(hours=1)
         try:
             metric_resp = cw.get_metric_data(
-                MetricDataQueries=[{
-                    "Id": "m1",
-                    "MetricStat": {
-                        "Metric": {
-                            "Namespace": alarm.get("Namespace", ""),
-                            "MetricName": alarm.get("MetricName", ""),
-                            "Dimensions": alarm.get("Dimensions", []),
+                MetricDataQueries=[
+                    {
+                        "Id": "m1",
+                        "MetricStat": {
+                            "Metric": {
+                                "Namespace": alarm.get("Namespace", ""),
+                                "MetricName": alarm.get("MetricName", ""),
+                                "Dimensions": alarm.get("Dimensions", []),
+                            },
+                            "Period": 60,
+                            "Stat": alarm.get("Statistic", "Average"),
                         },
-                        "Period": 60,
-                        "Stat": alarm.get("Statistic", "Average"),
-                    },
-                }],
-                StartTime=start, EndTime=end,
+                    }
+                ],
+                StartTime=start,
+                EndTime=end,
             )
             values = metric_resp.get("MetricDataResults", [{}])[0].get("Values", [])
             ctx["recent_values"] = values[:10]
@@ -92,13 +106,12 @@ def _collect_alarm(detail: dict) -> dict:
 def _collect_lambda(detail: dict) -> dict:
     """Collect context for a Lambda failure."""
     s = _session()
-    region = settings.aws_region
+    region = get_runtime_aws_region()
     lam = s.client("lambda", region_name=region)
     logs = s.client("logs", region_name=region)
 
-    fn_name = (
-        detail.get("requestContext", {}).get("functionArn", "").split(":")[-1]
-        or detail.get("functionName", "")
+    fn_name = detail.get("requestContext", {}).get("functionArn", "").split(":")[-1] or detail.get(
+        "functionName", ""
     )
     ctx: dict[str, Any] = {"type": "lambda", "function_name": fn_name, "detail": detail}
 
@@ -131,7 +144,7 @@ def _collect_lambda(detail: dict) -> dict:
 def _collect_ecs(detail: dict) -> dict:
     """Collect context for an ECS task stopped event."""
     s = _session()
-    region = settings.aws_region
+    region = get_runtime_aws_region()
     ecs = s.client("ecs", region_name=region)
     logs = s.client("logs", region_name=region)
 
@@ -148,11 +161,13 @@ def _collect_ecs(detail: dict) -> dict:
     }
 
     for container in detail.get("containers", []):
-        ctx["containers"].append({
-            "name": container.get("name", ""),
-            "exit_code": container.get("exitCode"),
-            "reason": container.get("reason", ""),
-        })
+        ctx["containers"].append(
+            {
+                "name": container.get("name", ""),
+                "exit_code": container.get("exitCode"),
+                "reason": container.get("reason", ""),
+            }
+        )
 
     task_def_arn = detail.get("taskDefinitionArn", "")
     if task_def_arn:
@@ -168,7 +183,10 @@ def _collect_ecs(detail: dict) -> dict:
                     task_id = task_arn.split("/")[-1]
                     stream_name = f"{prefix}/{containers[0]['name']}/{task_id}"
                     log_events = logs.get_log_events(
-                        logGroupName=log_group, logStreamName=stream_name, limit=30, startFromHead=False
+                        logGroupName=log_group,
+                        logStreamName=stream_name,
+                        limit=30,
+                        startFromHead=False,
                     )
                     ctx["recent_logs"] = [e["message"] for e in log_events.get("events", [])]
         except Exception:
@@ -180,7 +198,7 @@ def _collect_ecs(detail: dict) -> dict:
 def _collect_ec2(detail: dict) -> dict:
     """Collect context for an EC2 state change."""
     s = _session()
-    region = settings.aws_region
+    region = get_runtime_aws_region()
     ec2 = s.client("ec2", region_name=region)
 
     instance_id = detail.get("instance-id", "")
@@ -211,7 +229,7 @@ def _collect_ec2(detail: dict) -> dict:
 def _collect_rds(detail: dict) -> dict:
     """Collect context for an RDS event."""
     s = _session()
-    region = settings.aws_region
+    region = get_runtime_aws_region()
     rds = s.client("rds", region_name=region)
 
     source_id = detail.get("SourceIdentifier", "")

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 const inp = 'w-full text-base text-gray-900 dark:text-white bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-[#52525B]';
 
@@ -43,11 +45,13 @@ type Step = 1 | 2 | 3 | 4;
 
 export default function InitPage() {
   const navigate = useNavigate();
+  const { user, login, authRequired, loading: authLoading } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
 
   // Step 1
-  const [username, setUsername] = useState('admin');
+  const [orgName,  setOrgName]  = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPw,   setShowPw]   = useState(false);
 
@@ -67,24 +71,35 @@ export default function InitPage() {
   const [error,   setError]   = useState('');
 
   useEffect(() => {
-    fetch('/api/init/status')
+    if (authLoading) return;
+    if (user && user.role !== 'admin') { navigate('/', { replace: true }); return; }
+    apiFetch('/api/init/status')
       .then(r => r.json())
-      .then(d => { if (d.has_user) navigate('/', { replace: true }); })
+      .then(d => {
+        setRegion(d.aws_region || 'us-east-1');
+        setSnsArn(d.sns_topic_arn || '');
+        if (d.initialized && (d.has_user || !d.auth_enabled)) {
+          navigate('/', { replace: true });
+          return;
+        }
+        setStep((user || !authRequired) ? 2 : 1);
+      })
       .catch(() => {});
-  }, [navigate]);
+  }, [authLoading, authRequired, navigate, user]);
 
   // ─── Step 1: create admin account ─────────────────────────────────────────
   const createUser = async () => {
-    if (!username.trim() || !password.trim()) { setError('Both fields are required'); return; }
+    if (!username.trim() || !password.trim()) { setError('Email and password are required'); return; }
     setLoading(true); setError('');
     try {
-      const r = await fetch('/api/init/create-user', {
+      const r = await apiFetch('/api/init/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await r.json();
-      if (data.error) { setError(data.error); return; }
+      if (!r.ok || data.error) { setError(data.detail || data.error || 'Failed to create account'); return; }
+      if (authRequired) await login(username.trim(), password);
       setStep(2);
     } finally {
       setLoading(false);
@@ -95,10 +110,10 @@ export default function InitPage() {
   const saveConfig = async () => {
     setLoading(true); setError('');
     try {
-      const r = await fetch('/api/init/setup', {
+      const r = await apiFetch('/api/init/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aws_region: region, sns_topic_arn: snsArn, sqs_queue_url: '' }),
+        body: JSON.stringify({ aws_region: region, sns_topic_arn: snsArn, sqs_queue_url: '', org_name: orgName.trim() }),
       });
       if (!r.ok) { setError('Failed to save configuration'); return; }
       setStep(3);
@@ -111,7 +126,7 @@ export default function InitPage() {
   const checkPerms = async () => {
     setLoading(true); setError('');
     try {
-      const r = await fetch('/api/init/check-permissions', { method: 'POST' });
+      const r = await apiFetch('/api/init/check-permissions', { method: 'POST' });
       const d = await r.json() as { permissions: Record<string, PermResult> };
       setPerms(d.permissions);
     } catch {
@@ -125,13 +140,30 @@ export default function InitPage() {
   const createInfra = async () => {
     setLoading(true); setError('');
     try {
-      const r = await fetch('/api/init/complete', { method: 'POST' });
-      const d = await r.json() as { initialized: boolean; error: string | null };
-      if (!d.initialized) { setError(d.error || 'Infrastructure setup failed'); return; }
+      const r = await apiFetch('/api/init/complete', { method: 'POST' });
+      const d = await r.json() as { initialized: boolean; error?: string | null; detail?: string };
+      if (!r.ok || !d.initialized) { setError(d.error || d.detail || 'Infrastructure setup failed'); return; }
       setInfraDone(true);
       // Fetch the queue URL from init status to display in summary
-      const s = await fetch('/api/init/status').then(res => res.json());
+      const s = await apiFetch('/api/init/status').then(res => res.json());
       setQueueUrl(s.sqs_queue_url || 'opendevops-agent-events');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finishWithoutInfra = async () => {
+    setLoading(true); setError('');
+    try {
+      const r = await apiFetch('/api/init/skip-services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ services: ['event-monitoring'] }),
+      });
+      if (!r.ok) throw new Error('finish failed');
+      navigate('/', { replace: true });
+    } catch {
+      setError('Failed to finish setup');
     } finally {
       setLoading(false);
     }
@@ -188,8 +220,8 @@ export default function InitPage() {
               </p>
               <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">Username</label>
-                  <input value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" className={inp} />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">Email</label>
+                  <input type="email" value={username} onChange={e => setUsername(e.target.value)} placeholder="you@example.com" className={inp} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">Password</label>
@@ -199,7 +231,7 @@ export default function InitPage() {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && createUser()}
-                      placeholder="At least 6 characters"
+                      placeholder="At least 8 characters"
                       className={inp + ' pr-11'}
                     />
                     <button type="button" onClick={() => setShowPw(p => !p)}
@@ -225,6 +257,15 @@ export default function InitPage() {
                 Configure the AWS region and optional SNS topic for alert delivery.
               </p>
               <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">
+                    Organization name <span className="text-gray-400 dark:text-[#52525B] font-normal">(optional)</span>
+                  </label>
+                  <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Corp" className={inp} />
+                  <p className="mt-1.5 text-xs text-gray-400 dark:text-[#52525B]">
+                    Used to group users. You can add team members later from Settings.
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">AWS Region</label>
                   <select
@@ -257,7 +298,7 @@ export default function InitPage() {
                 className="w-full mt-10 flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-base font-semibold py-4 rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50">
                 {loading ? <Loader2 size={18} className="animate-spin" /> : <>Continue <ArrowRight size={16} /></>}
               </button>
-              <button onClick={() => navigate('/', { replace: true })}
+              <button onClick={finishWithoutInfra} disabled={loading}
                 className="w-full mt-3 text-sm text-gray-400 dark:text-[#52525B] hover:text-gray-600 dark:hover:text-[#A1A1AA] transition-colors py-2">
                 Skip setup — configure later in Settings
               </button>
@@ -268,8 +309,17 @@ export default function InitPage() {
           {step === 3 && (
             <>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-3">Check permissions</h1>
-              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-8 leading-relaxed">
-                Verify that the IAM role has the required permissions for each AWS service.
+              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-2 leading-relaxed">
+                Verify that the IAM user or role has the required permissions for each AWS service.
+              </p>
+              <p className="text-sm text-gray-400 dark:text-[#71717A] mb-8">
+                Need to set up IAM permissions first? See{' '}
+                <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/iam_setup.md"
+                   target="_blank" rel="noopener noreferrer"
+                   className="text-indigo-500 dark:text-[#818CF8] hover:underline">
+                  docs/iam_setup.md
+                </a>
+                {' '}for the exact policy JSON.
               </p>
 
               {!hasPerms ? (
@@ -397,7 +447,7 @@ export default function InitPage() {
                       <p className="text-xs text-gray-400 dark:text-[#52525B]">
                         You can enable this anytime from <span className="font-medium text-gray-600 dark:text-[#A1A1AA]">Settings → AWS Configuration</span>.
                       </p>
-                      <button onClick={() => navigate('/', { replace: true })}
+                      <button onClick={finishWithoutInfra} disabled={loading}
                         className="mt-3 w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#27272A] border border-gray-200 dark:border-[#3F3F46] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#3F3F46] transition-colors">
                         Go to dashboard anyway
                       </button>

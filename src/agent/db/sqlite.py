@@ -12,17 +12,18 @@ from loguru import logger
 from agent.db.base import DatabaseBackend
 from config import settings
 
-
 _DDL = """
 CREATE TABLE IF NOT EXISTS sessions (
     id             TEXT PRIMARY KEY,
     title          TEXT,
     model          TEXT NOT NULL DEFAULT '',
     aws_region     TEXT NOT NULL DEFAULT 'us-east-1',
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
-    last_active_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
-    is_deleted     INTEGER NOT NULL DEFAULT 0,
-    deleted_at     TEXT
+    source           TEXT NOT NULL DEFAULT 'chat',
+    user_interacted  INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    last_active_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    is_deleted       INTEGER NOT NULL DEFAULT 0,
+    deleted_at       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -71,6 +72,12 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS alerts_service_idx ON alerts(service);
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
 """
 
 _SERVICE_MAP: dict[str, str] = {
@@ -126,6 +133,17 @@ class SQLiteBackend(DatabaseBackend):
         except Exception:
             pass  # column already exists
 
+        # Migrate existing sessions tables: add source / user_interacted columns if absent
+        for col_sql in (
+            "ALTER TABLE sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'chat'",
+            "ALTER TABLE sessions ADD COLUMN user_interacted INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                await self._conn.execute(col_sql)
+                await self._conn.commit()
+            except Exception:
+                pass  # column already exists
+
         # Migrate existing databases: create alerts table if absent
         try:
             await self._conn.execute(
@@ -133,7 +151,31 @@ class SQLiteBackend(DatabaseBackend):
                 "id TEXT PRIMARY KEY, service TEXT NOT NULL, error TEXT NOT NULL, "
                 "resolution TEXT NOT NULL DEFAULT '', confidence TEXT NOT NULL DEFAULT 'LOW', "
                 "sns_sent INTEGER NOT NULL DEFAULT 0, "
+                "dedup_key TEXT, status TEXT NOT NULL DEFAULT 'completed', "
+                "session_id TEXT, "
                 "created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass
+
+        # Migrate existing alerts tables: add dedup_key / status / session_id if absent
+        for col_sql in (
+            "ALTER TABLE alerts ADD COLUMN dedup_key TEXT",
+            "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
+            "ALTER TABLE alerts ADD COLUMN session_id TEXT",
+        ):
+            try:
+                await self._conn.execute(col_sql)
+                await self._conn.commit()
+            except Exception:
+                pass  # column already exists
+
+        try:
+            await self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS app_config ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '{}', "
+                "updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
             )
             await self._conn.commit()
         except Exception:
@@ -203,16 +245,21 @@ class SQLiteBackend(DatabaseBackend):
         model: str,
         aws_region: str,
         title: str | None = None,
+        source: str = "chat",
     ) -> None:
         await self._exec(
             """
-            INSERT INTO sessions (id, title, model, aws_region)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO sessions (id, title, model, aws_region, source)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'),
-                model = excluded.model
+                model = excluded.model,
+                user_interacted = CASE
+                    WHEN excluded.source = 'chat' THEN 1
+                    ELSE sessions.user_interacted
+                END
             """,
-            session_id, title, model, aws_region,
+            session_id, title, model, aws_region, source,
         )
 
     async def save_message(
@@ -275,7 +322,9 @@ class SQLiteBackend(DatabaseBackend):
 
     async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, title, last_active_at, model, aws_region FROM sessions WHERE is_deleted = 0 ORDER BY last_active_at DESC LIMIT ? OFFSET ?",
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions"
+            " WHERE is_deleted = 0 AND (source = 'chat' OR user_interacted = 1)"
+            " ORDER BY last_active_at DESC LIMIT ? OFFSET ?",
             limit, offset,
         )
         return [
@@ -608,11 +657,17 @@ class SQLiteBackend(DatabaseBackend):
         resolution: str,
         confidence: str,
         sns_sent: bool,
+        dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
     ) -> str:
         alert_id = str(uuid.uuid4())
         await self._exec(
-            "INSERT INTO alerts (id, service, error, resolution, confidence, sns_sent) VALUES (?, ?, ?, ?, ?, ?)",
-            alert_id, service, error, resolution, confidence, 1 if sns_sent else 0,
+            "INSERT INTO alerts"
+            " (id, service, error, resolution, confidence, sns_sent, dedup_key, status, session_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            alert_id, service, error, resolution, confidence,
+            1 if sns_sent else 0, dedup_key, status, session_id,
         )
         return alert_id
 
@@ -652,6 +707,25 @@ class SQLiteBackend(DatabaseBackend):
             "sns_sent": bool(row["sns_sent"]),
             "timestamp": row["created_at"],
         }
+
+    async def get_app_config(self, key: str) -> dict | None:
+        row = await self._fetchone("SELECT value FROM app_config WHERE key = ?", key)
+        if not row:
+            return None
+        try:
+            return json.loads(row["value"])
+        except Exception:
+            return None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        await self._exec(
+            "INSERT INTO app_config (key, value, updated_at) "
+            "VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now')) "
+            "ON CONFLICT(key) DO UPDATE SET "
+            "value = excluded.value, updated_at = excluded.updated_at",
+            key,
+            json.dumps(value),
+        )
 
     async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
         if not query.strip():

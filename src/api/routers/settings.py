@@ -8,6 +8,7 @@ import os
 
 from fastapi import APIRouter, Depends
 
+from agent.init_store import get_runtime_aws_region
 from api.auth import get_current_user
 from config import settings
 
@@ -43,12 +44,13 @@ async def get_settings(
     ]
 
     agent = [
+        {"key": "EFFECTIVE_AWS_REGION",      "label": "Effective AWS region",  "value": get_runtime_aws_region(),                 "hint": "Wizard setting, falling back to AWS_REGION"},
         {"key": "MAX_TOOL_CALLS",               "label": "Max tool calls",         "value": str(settings.max_tool_calls),              "hint": "Hard cap per investigation run"},
         {"key": "INVESTIGATION_TIMEOUT",         "label": "Timeout (s)",            "value": str(settings.investigation_timeout),       "hint": "Max seconds before run is cancelled"},
         {"key": "TOOL_RESPONSE_MAX_CHARS",       "label": "Tool response cap",      "value": str(settings.tool_response_max_chars),     "hint": "Chars before tool output is truncated"},
         {"key": "SUMMARIZATION_ENABLED",         "label": "Auto-summarize",         "value": str(settings.summarization_enabled).lower(),"hint": "Compact sessions that exceed the threshold"},
         {"key": "SUMMARIZATION_THRESHOLD_CHARS", "label": "Summarize threshold",   "value": str(settings.summarization_threshold_chars),"hint": "Total chars in session before compaction fires"},
-        {"key": "POLL_INTERVAL_MINUTES",         "label": "Poll interval (min)",    "value": str(settings.poll_interval_minutes),        "hint": "0 = proactive polling disabled"},
+        {"key": "POLL_INTERVAL_SECONDS",         "label": "Poll interval (s)",      "value": str(settings.poll_interval_seconds),        "hint": "0 = proactive polling disabled"},
         {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 

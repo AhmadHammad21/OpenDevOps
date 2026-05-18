@@ -13,7 +13,7 @@ OpenDevOps Agent has two complementary detection modes. Both write to the same `
 | **How it works** | Agent polls CloudWatch alarms + Lambda error rates on a timer | AWS fires EventBridge rules → SQS → consumer → agent |
 | **Setup** | Set `POLL_INTERVAL_MINUTES` in `.env` | Create infrastructure via Settings → AWS Configuration |
 | **Detection latency** | Up to N minutes (your poll interval) | 2–5 min for alarm-based events; near-instant for direct events (ECS, RDS, GuardDuty) |
-| **CloudWatch alarm required** | No — reads Lambda error rate directly via API | Yes — EventBridge only fires when an alarm changes state |
+| **CloudWatch alarm required** | No — reads Lambda error rate directly via API | Only for metric/alarm detections; direct AWS service events do not need a CloudWatch alarm |
 | **Works without AWS setup** | Yes — no SQS/EventBridge needed | No — requires SQS queue + EventBridge rules |
 | **Event types covered** | CloudWatch alarms in ALARM state + Lambda error rates | CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, GuardDuty findings, AWS Health events |
 | **Appears in /monitoring** | Yes | Yes |
@@ -131,7 +131,7 @@ When you create infrastructure (Settings → AWS Configuration → Create Infras
 - Trips when any Lambda has ≥ 1 error in a 60-second window
 - Triggers the `opendevops-alarm-state` EventBridge rule → SQS → consumer
 
-This means you get event-driven Lambda coverage without creating per-function alarms.
+This means you get event-driven Lambda coverage without creating per-function alarms. Because it is account-wide and trips on a single error, it is intentionally easy to test but can be noisy in busy accounts. For production, consider replacing it with scoped per-function or per-service alarms once you know which workloads matter.
 
 ### Setup
 
@@ -139,6 +139,8 @@ Go to **Settings → AWS Configuration → Create Infrastructure**. This creates
 - SQS queue: `opendevops-agent-events`
 - 9 EventBridge rules (all prefixed `opendevops-`)
 - Aggregate CloudWatch alarm: `opendevops-lambda-errors-aggregate`
+
+Wizard and infrastructure state is stored in the database for SQLite/PostgreSQL deployments (`app_config`) and mirrored to `data/init.json` as a local cache/fallback. Memory mode keeps only local process/file state. Teardown deletes only infrastructure created by the wizard; queues supplied through `.env` or pasted manually are disconnected from the app but not deleted.
 
 To remove it, click **Teardown**. See [event_detection.md](event_detection.md) for full setup details and IAM permission requirements.
 
@@ -205,7 +207,7 @@ Invokes the Lambda with a bad payload, then exits. The `opendevops-lambda-errors
 
 Each alert card shows:
 
-- **Confidence badge** — `HIGH` (red), `MEDIUM` (amber), or `LOW` (grey)
+- **Status badge** — `HIGH` (red), `MEDIUM` (amber), `LOW` (grey), or `FAILED` (rose) if the agent hit its tool limit or encountered an error
 - **Service** — the affected AWS service and resource name
 - **Error** — the root cause summary from the agent
 - **Time** — when the event was detected
@@ -221,7 +223,16 @@ Shows the full investigation result:
 - Resolution steps produced by the agent
 - Timestamp and SNS notification status
 
-**Investigate button** — opens a new chat session with a pre-seeded prompt for deeper analysis. The prompt auto-submits when the chat page loads.
+**Investigate / View investigation button** — behaviour depends on whether the investigation session was persisted:
+
+- **View investigation** — shown for event-driven and poller alerts. Opens the original investigation chat so you can see the agent's tool calls, reasoning, and evidence, and send follow-up messages.
+- **Investigate** — shown for older alerts (created before session persistence was added). Opens a new chat with a pre-seeded prompt for deeper analysis.
+
+### Session continuity and sidebar
+
+When the event consumer or poller runs an investigation, it creates a session (`source = 'event'`) and links it to the resulting alert via `session_id`. These sessions are **hidden from the sidebar by default** — they represent automated runs the user did not initiate.
+
+If you open a "View investigation" chat and send at least one follow-up message, the session is **promoted to the sidebar** (`user_interacted = true`) so you can navigate back to it without going through the Monitoring page again.
 
 ### Service Health Panel
 

@@ -104,8 +104,10 @@ export interface Alert {
   error: string;
   resolution: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'completed' | 'failed';
   sns_sent: boolean;
   timestamp: string;
+  session_id?: string;
 }
 
 export interface ServiceStatus {

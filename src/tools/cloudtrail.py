@@ -5,17 +5,20 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from loguru import logger
 
+from agent.init_store import get_runtime_aws_region
 from config import settings
 from tools._cache import tool_cached
 
 
-
 def _ct_client() -> Any:
-    session = boto3.Session(profile_name=settings.aws_profile) if settings.aws_profile else boto3.Session()
-    return session.client("cloudtrail", region_name=settings.aws_region)
+    session = (
+        boto3.Session(profile_name=settings.aws_profile)
+        if settings.aws_profile
+        else boto3.Session()
+    )
+    return session.client("cloudtrail", region_name=get_runtime_aws_region())
 
 
 @tool_cached
@@ -25,7 +28,7 @@ def lookup_cloudtrail_events(
     event_name: str | None = None,
     limit: int = 50,
 ) -> dict:
-    """Look up recent CloudTrail API events to find deployments, config changes, and permission changes.
+    """Look up recent CloudTrail API events.
 
     Args:
         hours: How far back to look. Default 2.
@@ -44,9 +47,13 @@ def lookup_cloudtrail_events(
             "MaxResults": min(limit, 50),
         }
         if resource_name:
-            kwargs["LookupAttributes"] = [{"AttributeKey": "ResourceName", "AttributeValue": resource_name}]
+            kwargs["LookupAttributes"] = [
+                {"AttributeKey": "ResourceName", "AttributeValue": resource_name}
+            ]
         elif event_name:
-            kwargs["LookupAttributes"] = [{"AttributeKey": "EventName", "AttributeValue": event_name}]
+            kwargs["LookupAttributes"] = [
+                {"AttributeKey": "EventName", "AttributeValue": event_name}
+            ]
 
         resp = client.lookup_events(**kwargs)
         events = []

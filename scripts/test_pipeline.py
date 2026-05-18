@@ -12,7 +12,26 @@ Usage:
   uv run python scripts/test_pipeline.py --region eu-west-1
   uv run python scripts/test_pipeline.py --invocations 10
   uv run python scripts/test_pipeline.py --list                  # list available Lambdas
-  uv run python scripts/test_pipeline.py --lambda-only           # invoke + wait for alarm (no manual SQS push)
+  uv run python scripts/test_pipeline.py --lambda-only           # real alarm path (~2-4 min)
+
+─────────────────────────────────────────────────────────────────────────────────
+MANUAL SQS TEST COMMANDS (bypass script — push directly to the queue)
+Replace QUEUE_URL and ACCOUNT_ID with your values from Settings → AWS Configuration.
+─────────────────────────────────────────────────────────────────────────────────
+
+# Syntax error (Runtime.UserCodeSyntaxError) — fast, focused investigation:
+aws sqs send-message --profile devops-agent-readonly --queue-url "https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/opendevops-agent-events" --message-body "{\"source\":\"aws.lambda\",\"detail-type\":\"Lambda Function Invocation Result - Failure\",\"time\":\"2026-05-17T12:00:00Z\",\"detail\":{\"requestContext\":{\"functionArn\":\"arn:aws:lambda:us-east-1:ACCOUNT_ID:function:opendevops-test-failure\",\"condition\":\"RetriesExhausted\",\"approximateInvokeCount\":3},\"responsePayload\":{\"errorMessage\":\"Syntax error in module lambda_function: unexpected indent (lambda_function.py, line 9)\",\"errorType\":\"Runtime.UserCodeSyntaxError\",\"stackTrace\":[\"File /var/task/lambda_function.py line 9: def lambda_handler(event, context):\"]}}}
+
+# CloudWatch alarm event — slower path (~1 min CloudWatch delay in real scenario):
+aws sqs send-message --profile devops-agent-readonly \
+  --queue-url "https://sqs.us-east-1.amazonaws.com/ACCOUNT_ID/opendevops-agent-events" \
+  --message-body "{\"source\":\"aws.cloudwatch\",\"detail-type\":\"CloudWatch Alarm State Change\",\"time\":\"2026-05-17T12:00:00Z\",\"detail\":{\"alarmName\":\"opendevops-test-lambda-errors\",\"state\":{\"value\":\"ALARM\",\"reason\":\"TEST: Lambda error rate exceeded threshold\"},\"configuration\":{\"metrics\":[{\"metricStat\":{\"metric\":{\"namespace\":\"AWS/Lambda\",\"name\":\"Errors\",\"dimensions\":{\"FunctionName\":\"opendevops-test-failure\"}},\"period\":300,\"stat\":\"Sum\"}}]}}}"
+
+Notes:
+  - Event consumer picks up the message within 20s (SQS long-poll interval)
+  - Use aws.lambda source for faster, more focused investigations
+  - MAX_TOOL_CALLS=30 recommended to avoid recursion errors with weaker models
+─────────────────────────────────────────────────────────────────────────────────
 """
 
 from __future__ import annotations
@@ -26,17 +45,26 @@ import sys
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 from dotenv import load_dotenv
+
 load_dotenv()
 
-GREEN  = "\033[0;32m"
+GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
-RED    = "\033[0;31m"
-NC     = "\033[0m"
+RED = "\033[0;31m"
+NC = "\033[0m"
 
 
-def log(msg: str)  -> None: print(f"{GREEN}[+]{NC} {msg}")
-def warn(msg: str) -> None: print(f"{YELLOW}[!]{NC} {msg}")
-def die(msg: str)  -> None: print(f"{RED}[✗]{NC} {msg}", file=sys.stderr); sys.exit(1)
+def log(msg: str) -> None:
+    print(f"{GREEN}[+]{NC} {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"{YELLOW}[!]{NC} {msg}")
+
+
+def die(msg: str) -> None:
+    print(f"{RED}[✗]{NC} {msg}", file=sys.stderr)
+    sys.exit(1)
 
 
 def get_queue_url() -> str:
@@ -61,11 +89,18 @@ def list_functions(lam) -> list[str]:
     return sorted(names)
 
 
-def run(region: str, invocations: int, function_name: str | None, list_only: bool, lambda_only: bool = False) -> None:
+def run(
+    region: str,
+    invocations: int,
+    function_name: str | None,
+    list_only: bool,
+    lambda_only: bool = False,
+) -> None:
     try:
         session = boto3.Session()
         lam = session.client("lambda", region_name=region)
         sqs = session.client("sqs", region_name=region)
+        cw = session.client("cloudwatch", region_name=region)
     except NoCredentialsError:
         die("No AWS credentials found. Configure via environment variables or ~/.aws/credentials.")
 
@@ -75,7 +110,10 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
         identity = sts.get_caller_identity()
         log(f"AWS identity: {identity.get('Arn', 'unknown')}")
     except ClientError as e:
-        die(f"AWS credentials error: {e}\nRun 'aws sso login' or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.")
+        die(
+            f"AWS credentials error: {e}\n"
+            "Run 'aws sso login' or set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY."
+        )
 
     # ── list mode ─────────────────────────────────────────────────────────────
     functions = list_functions(lam)
@@ -103,7 +141,9 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
 
     queue_url = get_queue_url()
     if not queue_url:
-        die("No SQS queue URL found. Run 'Create Infrastructure' in Settings → AWS Configuration first.")
+        die(
+            "No SQS queue URL found. Run 'Create Infrastructure' in Settings first."
+        )
 
     log(f"Region    : {region}")
     log(f"Queue     : {queue_url}")
@@ -114,6 +154,7 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
     log(f"Invoking '{function_name}' {invocations}× with a bad payload to generate real errors...")
     bad_payload = b'{"__test_force_error": true, "trigger": "opendevops-pipeline-test"}'
     succeeded = 0
+    errors_observed = 0
     for i in range(1, invocations + 1):
         try:
             resp = lam.invoke(
@@ -125,27 +166,50 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
             fn_error = resp.get("FunctionError", "")
             if fn_error or status >= 400:
                 print(f"  invocation {i}/{invocations}  → error (good)")
+                errors_observed += 1
             else:
-                print(f"  invocation {i}/{invocations}  → success (function handled bad input gracefully)")
+                print(
+                    f"  invocation {i}/{invocations}  → success "
+                    "(function handled bad input gracefully)"
+                )
             succeeded += 1
         except ClientError as e:
             warn(f"  invocation {i}/{invocations}  → invoke failed: {e}")
 
     if succeeded == 0:
         warn("All invocations failed to reach the function — no logs may exist.")
+    elif errors_observed == 0:
+        warn(
+            "The function handled the test payload successfully — Lambda Errors may stay at 0."
+        )
     else:
         log(f"Real invocation logs at: CloudWatch → /aws/lambda/{function_name}")
     print()
 
     # ── lambda-only: skip manual SQS push, let alarm fire naturally ──────────
     if lambda_only:
+        if errors_observed == 0:
+            die(
+                "No Lambda function errors were observed; the alarm is unlikely to fire."
+            )
+        try:
+            alarm = cw.describe_alarms(AlarmNames=["opendevops-lambda-errors-aggregate"]).get(
+                "MetricAlarms", []
+            )
+            if alarm and alarm[0].get("StateValue") == "ALARM":
+                warn(
+                    "Aggregate alarm is already in ALARM; EventBridge may not emit a transition."
+                )
+        except ClientError as e:
+            warn(f"Could not inspect aggregate alarm state: {e}")
+
         sep = "━" * 60
         print(f"\n{GREEN}{sep}{NC}")
         print(f"{GREEN}✓ Lambda invoked — waiting for alarm to fire automatically{NC}")
         print(f"  Function  : {function_name}")
-        print(f"  Alarm     : opendevops-lambda-errors-aggregate")
+        print("  Alarm     : opendevops-lambda-errors-aggregate")
         print(f"  Real logs : CloudWatch → /aws/lambda/{function_name}")
-        print(f"  Monitoring: http://localhost/monitoring")
+        print("  Monitoring: http://localhost/monitoring")
         print(f"{GREEN}{sep}{NC}\n")
         warn("CloudWatch evaluates every 60s — alarm should trip in ~1-2 minutes.")
         warn("EventBridge fires → SQS → agent investigates automatically.")
@@ -169,17 +233,19 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
                 ),
             },
             "configuration": {
-                "metrics": [{
-                    "metricStat": {
-                        "metric": {
-                            "namespace": "AWS/Lambda",
-                            "name": "Errors",
-                            "dimensions": {"FunctionName": function_name},
+                "metrics": [
+                    {
+                        "metricStat": {
+                            "metric": {
+                                "namespace": "AWS/Lambda",
+                                "name": "Errors",
+                                "dimensions": {"FunctionName": function_name},
+                            },
+                            "period": 60,
+                            "stat": "Sum",
                         },
-                        "period": 60,
-                        "stat": "Sum",
-                    },
-                }],
+                    }
+                ],
             },
         },
     }
@@ -199,7 +265,7 @@ def run(region: str, invocations: int, function_name: str | None, list_only: boo
     print(f"  MessageId : {msg_id}")
     print(f"  Function  : {function_name}")
     print(f"  Real logs : CloudWatch → /aws/lambda/{function_name}")
-    print(f"  Monitoring: http://localhost/monitoring")
+    print("  Monitoring: http://localhost/monitoring")
     print(f"{GREEN}{sep}{NC}\n")
     warn("The agent will pull REAL CloudWatch logs from that function.")
     warn("Investigation takes ~30–90s. Watch the Monitoring page.")
@@ -209,12 +275,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Trigger a real Lambda failure through the monitoring pipeline"
     )
-    parser.add_argument("--function",    help="Lambda function name to use (auto-picks first if omitted)")
-    parser.add_argument("--region",      default=os.environ.get("AWS_REGION", "us-east-1"))
+    parser.add_argument(
+        "--function", help="Lambda function name to use (auto-picks first if omitted)"
+    )
+    parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
     parser.add_argument("--invocations", type=int, default=5)
-    parser.add_argument("--list",        action="store_true", help="List available Lambda functions and exit")
-    parser.add_argument("--lambda-only", action="store_true", dest="lambda_only",
-                        help="Invoke Lambda and let the CloudWatch alarm fire automatically (no manual SQS push)")
+    parser.add_argument(
+        "--list", action="store_true", help="List available Lambda functions and exit"
+    )
+    parser.add_argument(
+        "--lambda-only",
+        action="store_true",
+        dest="lambda_only",
+        help="Invoke Lambda and let the CloudWatch alarm fire automatically",
+    )
     args = parser.parse_args()
     run(args.region, args.invocations, args.function, args.list, args.lambda_only)
 

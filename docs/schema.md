@@ -15,6 +15,8 @@ psql $DATABASE_URL -f migrations/001_initial.sql
 psql $DATABASE_URL -f migrations/002_soft_delete.sql
 psql $DATABASE_URL -f migrations/003_usage_events_metadata.sql
 psql $DATABASE_URL -f migrations/004_users_rbac.sql
+psql $DATABASE_URL -f migrations/005_alerts.sql
+psql $DATABASE_URL -f migrations/006_app_config.sql
 ```
 
 All migrations are idempotent (`IF NOT EXISTS`, `IF column does not already exist`).
@@ -133,6 +135,28 @@ Structured root-cause analysis rows extracted from agent final answers. Table ex
 
 ### `api_keys` *(future — Phase 3)*
 Hashed API keys for programmatic access. Table exists but not yet implemented.
+
+### `alerts`
+Persisted event-driven and proactive polling investigation results shown on `/monitoring`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | `gen_random_uuid()` |
+| `service` | TEXT | Affected service/resource label |
+| `error` | TEXT | Root cause summary |
+| `resolution` | TEXT | Mitigation steps joined as text |
+| `confidence` | TEXT | `HIGH`, `MEDIUM`, or `LOW` |
+| `sns_sent` | BOOLEAN | Whether SNS publish succeeded |
+| `created_at` | TIMESTAMPTZ | |
+
+### `app_config`
+Application-level key/value configuration shared by all server instances. The init wizard stores its setup and event-infrastructure state under key `init`. `data/init.json` is kept as a local cache/fallback for memory mode and bootstrap recovery.
+
+| Column | Type | Notes |
+|---|---|---|
+| `key` | TEXT PK | e.g. `init` |
+| `value` | JSONB | Setup state, AWS region, SQS URL, rule ARNs |
+| `updated_at` | TIMESTAMPTZ | |
 
 ---
 

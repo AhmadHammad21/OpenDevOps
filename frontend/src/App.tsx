@@ -11,7 +11,7 @@ import MonitoringPage from './pages/MonitoringPage';
 import AlertDetailPage from './pages/AlertDetailPage';
 import InitPage from './pages/InitPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import { fetchSessions, deleteSession as apiDeleteSession, renameSession as apiRenameSession } from './lib/api';
+import { apiFetch, fetchSessions, deleteSession as apiDeleteSession, renameSession as apiRenameSession } from './lib/api';
 import { useAuth } from './context/AuthContext';
 import type { Session } from './types';
 
@@ -29,13 +29,46 @@ function LogoutPage() {
 }
 
 function RedirectToSession() {
-  const stored = localStorage.getItem('devops-session-id');
-  const id = stored ?? (() => {
-    const newId = crypto.randomUUID();
-    localStorage.setItem('devops-session-id', newId);
-    return newId;
-  })();
-  return <Navigate to={`/chat/${id}`} replace />;
+  const [ready, setReady] = useState<'init' | 'chat' | null>(null);
+  const { user, authRequired, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+
+    let cancelled = false;
+    const routeAfterInitCheck = async () => {
+      if (authRequired && user?.role !== 'admin') {
+        if (!cancelled) setReady('chat');
+        return;
+      }
+
+      try {
+        const r = await apiFetch('/api/init/status');
+        const d = await r.json();
+        const setupComplete = Boolean(d.setup_complete ?? d.initialized);
+        const accountReady = Boolean(d.has_user || !d.auth_enabled);
+        if (!cancelled) setReady(setupComplete && accountReady ? 'chat' : 'init');
+      } catch {
+        if (!cancelled) setReady('chat');
+      }
+    };
+
+    setReady(null);
+    void routeAfterInitCheck();
+    return () => { cancelled = true; };
+  }, [authRequired, loading, user?.role]);
+
+  if (ready === 'init') return <Navigate to="/init" replace />;
+  if (ready === 'chat') {
+    const stored = localStorage.getItem('devops-session-id');
+    const id = stored ?? (() => {
+      const newId = crypto.randomUUID();
+      localStorage.setItem('devops-session-id', newId);
+      return newId;
+    })();
+    return <Navigate to={`/chat/${id}`} replace />;
+  }
+  return null;
 }
 
 const PAGE_SIZE = 15;
