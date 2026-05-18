@@ -409,13 +409,13 @@ export default function InitPage() {
                     Continue anyway <ChevronRight size={16} />
                   </button>
 
-                  <div className="flex gap-3 mt-3">
+                  <div className="flex items-center justify-between mt-3">
                     <button onClick={() => setStep(2)}
-                      className="flex items-center justify-center gap-1.5 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
+                      className="flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
                       <ArrowLeft size={14} /> Back
                     </button>
                     <button onClick={checkPerms} disabled={loading}
-                      className="flex-1 flex items-center justify-center gap-2 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
+                      className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
                       {loading ? <Loader2 size={14} className="animate-spin" /> : 'Re-check'}
                     </button>
                   </div>

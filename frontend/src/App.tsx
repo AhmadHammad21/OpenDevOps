@@ -37,7 +37,7 @@ function RedirectToSession() {
 
     let cancelled = false;
     const routeAfterInitCheck = async () => {
-      if (authRequired && user?.role !== 'admin') {
+      if (authRequired && user !== null && user?.role !== 'admin') {
         if (!cancelled) setReady('chat');
         return;
       }
