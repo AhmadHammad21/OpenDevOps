@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield, Radio, Trash2, Zap, Send } from 'lucide-react';
-import { SlackIcon, IntegrationIcon } from '../components/icons/IntegrationIcon';
+import { SlackIcon, TelegramIcon, IntegrationIcon } from '../components/icons/IntegrationIcon';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -28,10 +28,9 @@ const SVC: Record<string, { label: string; desc: string }> = {
 };
 
 const COMING_SOON_INTEGRATIONS = [
-  { name: 'GitHub',    desc: 'Connect your repositories',   iconKey: 'github' },
-  { name: 'PagerDuty', desc: 'Alert on failures',           iconKey: 'pagerduty' },
-  { name: 'Datadog',   desc: 'Send metrics and traces',     iconKey: 'datadog' },
-  { name: 'Telegram',  desc: 'Get alerts via Telegram bot', iconKey: 'telegram' },
+  { name: 'GitHub',    desc: 'Connect your repositories', iconKey: 'github' },
+  { name: 'PagerDuty', desc: 'Alert on failures',         iconKey: 'pagerduty' },
+  { name: 'Datadog',   desc: 'Send metrics and traces',   iconKey: 'datadog' },
 ];
 
 const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#818CF8]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#3F3F47]';
@@ -44,8 +43,10 @@ export default function SettingsPage() {
   const [data, setData]   = useState<SettingsData | null>(null);
 
   // Integrations tab state
-  const [slackConfigured, setSlackConfigured] = useState(false);
-  const [slackTesting,    setSlackTesting]    = useState(false);
+  const [slackConfigured,    setSlackConfigured]    = useState(false);
+  const [slackTesting,       setSlackTesting]       = useState(false);
+  const [telegramConfigured, setTelegramConfigured] = useState(false);
+  const [telegramTesting,    setTelegramTesting]    = useState(false);
 
   // AWS tab state
   const [snsArn,        setSnsArn]        = useState('');
@@ -75,6 +76,12 @@ export default function SettingsPage() {
         setData(sd);
         const slackEnv = sd.env.find(e => e.key === 'SLACK_WEBHOOK_URL');
         setSlackConfigured(!!slackEnv && slackEnv.value !== '(not set)');
+        const tgToken = sd.env.find(e => e.key === 'TELEGRAM_BOT_TOKEN');
+        const tgChat  = sd.env.find(e => e.key === 'TELEGRAM_CHAT_ID');
+        setTelegramConfigured(
+          !!tgToken && tgToken.value !== '(not set)' &&
+          !!tgChat  && tgChat.value  !== '(not set)'
+        );
       })
       .catch(() => {});
   }, []);
@@ -174,6 +181,19 @@ export default function SettingsPage() {
       toast.error('Failed to send test message');
     } finally {
       setSlackTesting(false);
+    }
+  };
+
+  const testTelegram = async () => {
+    setTelegramTesting(true);
+    try {
+      const r = await apiFetch('/api/integrations/telegram/test', { method: 'POST' });
+      if (!r.ok) throw new Error('Request failed');
+      toast.success('Test message sent to Telegram');
+    } catch {
+      toast.error('Failed to send test message');
+    } finally {
+      setTelegramTesting(false);
     }
   };
 
@@ -295,6 +315,50 @@ export default function SettingsPage() {
                       className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-[5px] bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-[5px] transition-colors"
                     >
                       {slackTesting
+                        ? <><Loader2 size={11} className="animate-spin" /> Sending…</>
+                        : <><Send size={11} /> Send test message</>
+                      }
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Telegram — live integration */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Telegram</span>
+                <span className={cn(
+                  'text-[10px] font-semibold px-1.5 py-0.5 rounded',
+                  telegramConfigured
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                )}>
+                  {telegramConfigured ? 'Configured' : 'Not configured'}
+                </span>
+              </div>
+              <div className="px-[18px] py-[14px] flex items-start gap-3">
+                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                  <TelegramIcon size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] mb-0.5">Telegram Notifications</div>
+                  <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mb-3">
+                    Sends a formatted message to your Telegram bot after each investigation completes.
+                  </div>
+                  {!telegramConfigured && (
+                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-2 font-mono space-y-1">
+                      <div>Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">TELEGRAM_BOT_TOKEN</span>=123456:ABC-… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file</div>
+                      <div>Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">TELEGRAM_CHAT_ID</span>=-100… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart</div>
+                    </div>
+                  )}
+                  {telegramConfigured && (
+                    <button
+                      onClick={testTelegram}
+                      disabled={telegramTesting}
+                      className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-[5px] bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-[5px] transition-colors"
+                    >
+                      {telegramTesting
                         ? <><Loader2 size={11} className="animate-spin" /> Sending…</>
                         : <><Send size={11} /> Send test message</>
                       }

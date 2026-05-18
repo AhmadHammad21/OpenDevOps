@@ -42,3 +42,38 @@ async def test_slack(
         is_test=True,
     )
     return {"ok": True}
+
+
+@router.post("/telegram/test")
+async def test_telegram(
+    _user: Annotated[dict | None, Depends(get_current_user)],
+) -> dict:
+    """Send a test Telegram message to verify the bot token and chat ID are working."""
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail="TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must both be configured",
+        )
+
+    from integrations.telegram import post_investigation
+
+    test_result = {
+        "root_cause_category": "SYSTEM_CHANGE",
+        "root_cause_summary": (
+            "This is a test message from OpenDevOps Agent "
+            "to verify your Telegram integration is working correctly."
+        ),
+        "confidence": "HIGH",
+        "evidence": ["Test triggered from Settings → Integrations"],
+        "mitigation_steps": ["No action needed — this is a test"],
+        "services_affected": ["OpenDevOps Agent"],
+    }
+    session_id = str(uuid.uuid4())
+    await post_investigation(
+        bot_token=settings.telegram_bot_token,
+        chat_id=settings.telegram_chat_id,
+        result=test_result,
+        session_id=session_id,
+        is_test=True,
+    )
+    return {"ok": True}

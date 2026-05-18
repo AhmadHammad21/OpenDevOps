@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Slack — leave unset to disable notifications
     slack_webhook_url: str | None = None
 
+    # Telegram — leave unset to disable notifications
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+
     # Proactive polling — set poll_interval_seconds=0 to disable
     poll_interval_seconds: int = 0          # disabled by default
     poll_error_threshold: float = 5.0       # % Lambda error rate that triggers investigation

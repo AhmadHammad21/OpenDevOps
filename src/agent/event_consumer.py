@@ -333,6 +333,25 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         except Exception as e:
             logger.error("Slack delivery failed from event consumer: {}", e)
 
+    telegram_sent = False
+    if settings.telegram_bot_token and settings.telegram_chat_id:
+        try:
+            from integrations.telegram import post_failed_investigation as tg_fail
+            from integrations.telegram import post_investigation as tg_ok
+
+            if status == "failed":
+                telegram_sent = await tg_fail(
+                    settings.telegram_bot_token, settings.telegram_chat_id,
+                    service, root_cause, session_id, is_test=is_test,
+                )
+            else:
+                telegram_sent = await tg_ok(
+                    settings.telegram_bot_token, settings.telegram_chat_id,
+                    result, session_id, is_test=is_test,
+                )
+        except Exception as e:
+            logger.error("Telegram delivery failed from event consumer: {}", e)
+
     update_service(service, status, root_cause)
     alert_id = await add_alert(
         service=service,
@@ -350,6 +369,8 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
             await add_notification(alert_id, "sns", "delivered" if sns_sent else "failed")
         if settings.slack_webhook_url:
             await add_notification(alert_id, "slack", "delivered" if slack_sent else "failed")
+        if settings.telegram_bot_token and settings.telegram_chat_id:
+            await add_notification(alert_id, "telegram", "delivered" if telegram_sent else "failed")
     logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
 
 
