@@ -92,7 +92,7 @@ CHECKPOINT_BACKEND=postgres
 DATABASE_URL=postgresql://dev:dev@localhost:5433/opendevops
 
 # Create app tables (safe to re-run)
-uv run python scripts/setup_db.py
+uv run migrate
 ```
 
 ### 5. Run
@@ -114,8 +114,8 @@ an IAM role to the instance/task instead.
 **Option B — Local dev (two terminals)**
 
 ```bash
-# Terminal 1 — FastAPI backend
-uv run uvicorn api.app:app --reload
+# Terminal 1 — FastAPI backend with hot reload
+uv run dev
 ```
 
 ```bash
