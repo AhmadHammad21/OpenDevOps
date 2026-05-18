@@ -19,17 +19,34 @@ async def add_alert(
     dedup_key: str | None = None,
     status: str = "completed",
     session_id: str | None = None,
+    trigger_source: str | None = None,
 ) -> str:
     """Persist an alert to the DB backend."""
     from agent.db import db
 
     try:
         return await db.add_alert(
-            service, error, resolution, confidence, sns_sent, dedup_key, status, session_id
+            service, error, resolution, confidence, sns_sent,
+            dedup_key, status, session_id, trigger_source,
         )
     except Exception as e:
         logger.error("Failed to persist alert: {}", e)
         return ""
+
+
+async def add_notification(
+    alert_id: str,
+    channel: str,
+    status: str = "attempted",
+    error: str | None = None,
+) -> None:
+    """Record a delivery attempt for a channel against an alert."""
+    from agent.db import db
+
+    try:
+        await db.add_notification(alert_id, channel, status, error)
+    except Exception as e:
+        logger.error("Failed to persist notification: {}", e)
 
 
 async def is_recent_alert(dedup_key: str, within_minutes: int = 3) -> bool:

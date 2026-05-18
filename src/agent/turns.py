@@ -87,13 +87,16 @@ async def save_turn(
         logger.error("[{}]  DB save failed: {}", session_id[:8], e)
 
 
-async def notify_slack(session_id: str, tool_calls_log: list[dict[str, Any]]) -> None:
-    """Post to Slack if submit_investigation was called and a webhook is configured."""
+async def notify_slack(session_id: str, tool_calls_log: list[dict[str, Any]]) -> bool:
+    """Post to Slack if submit_investigation was called and a webhook is configured.
+
+    Returns True if the message was sent successfully, False otherwise.
+    """
     if not settings.slack_webhook_url:
-        return
+        return False
     for tc in tool_calls_log:
         if tc.get("tool") == "submit_investigation":
             from integrations.slack_webhook import post_investigation
 
-            await post_investigation(settings.slack_webhook_url, tc["args"], session_id)
-            return
+            return await post_investigation(settings.slack_webhook_url, tc["args"], session_id)
+    return False

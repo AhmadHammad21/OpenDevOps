@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield, Radio, Trash2, Zap } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield, Radio, Trash2, Zap, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -26,11 +26,11 @@ const SVC: Record<string, { label: string; desc: string }> = {
   events:     { label: 'EventBridge', desc: 'Event rules' },
 };
 
-const INTEGRATIONS = [
-  { name: 'GitHub',    desc: 'Connect your repositories',  icon: '🐱' },
-  { name: 'Slack',     desc: 'Get incident notifications', icon: '💬' },
-  { name: 'PagerDuty', desc: 'Alert on failures',          icon: '📟' },
-  { name: 'Datadog',   desc: 'Send metrics and traces',    icon: '📊' },
+const COMING_SOON_INTEGRATIONS = [
+  { name: 'GitHub',    desc: 'Connect your repositories', icon: '🐱' },
+  { name: 'PagerDuty', desc: 'Alert on failures',         icon: '📟' },
+  { name: 'Datadog',   desc: 'Send metrics and traces',   icon: '📊' },
+  { name: 'Telegram',  desc: 'Get alerts via Telegram bot', icon: '✈️' },
 ];
 
 const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#818CF8]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#3F3F47]';
@@ -41,6 +41,10 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>(isAdmin ? 'aws' : 'env');
   const [shown, setShown] = useState<Record<string, boolean>>({});
   const [data, setData]   = useState<SettingsData | null>(null);
+
+  // Integrations tab state
+  const [slackConfigured, setSlackConfigured] = useState(false);
+  const [slackTesting,    setSlackTesting]    = useState(false);
 
   // AWS tab state
   const [snsArn,        setSnsArn]        = useState('');
@@ -65,7 +69,12 @@ export default function SettingsPage() {
   useEffect(() => {
     apiFetch('/api/settings')
       .then(r => r.json())
-      .then(d => setData(d as SettingsData))
+      .then(d => {
+        const sd = d as SettingsData;
+        setData(sd);
+        const slackEnv = sd.env.find(e => e.key === 'SLACK_WEBHOOK_URL');
+        setSlackConfigured(!!slackEnv && slackEnv.value !== '(not set)');
+      })
       .catch(() => {});
   }, []);
 
@@ -154,6 +163,19 @@ export default function SettingsPage() {
     }
   };
 
+  const testSlack = async () => {
+    setSlackTesting(true);
+    try {
+      const r = await apiFetch('/api/integrations/slack/test', { method: 'POST' });
+      if (!r.ok) throw new Error('Request failed');
+      toast.success('Test message sent to Slack');
+    } catch {
+      toast.error('Failed to send test message');
+    } finally {
+      setSlackTesting(false);
+    }
+  };
+
   const passed = Object.values(perms).filter(r => r.passed).length;
   const total  = Object.keys(perms).length;
 
@@ -235,10 +257,56 @@ export default function SettingsPage() {
 
         {/* Integrations tab */}
         {tab === 'integrations' && (
-          <>
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-4">
-              {INTEGRATIONS.map((intg, i) => (
-                <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
+          <div className="space-y-4">
+
+            {/* Slack — live integration */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Slack</span>
+                <span className={cn(
+                  'text-[10px] font-semibold px-1.5 py-0.5 rounded',
+                  slackConfigured
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                )}>
+                  {slackConfigured ? 'Configured' : 'Not configured'}
+                </span>
+              </div>
+
+              <div className="px-[18px] py-[14px] flex items-start gap-3">
+                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-sm">💬</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] mb-0.5">Slack Notifications</div>
+                  <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mb-3">
+                    Sends a rich Block Kit message to your Slack channel after each investigation completes.
+                  </div>
+                  {!slackConfigured && (
+                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-2 font-mono">
+                      Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">SLACK_WEBHOOK_URL</span>=https://hooks.slack.com/… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart
+                    </div>
+                  )}
+                  {slackConfigured && (
+                    <button
+                      onClick={testSlack}
+                      disabled={slackTesting}
+                      className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-[5px] bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-[5px] transition-colors"
+                    >
+                      {slackTesting
+                        ? <><Loader2 size={11} className="animate-spin" /> Sending…</>
+                        : <><Send size={11} /> Send test message</>
+                      }
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Coming soon integrations */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              {COMING_SOON_INTEGRATIONS.map((intg, i) => (
+                <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < COMING_SOON_INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
                   <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0">
                     <span className="text-sm">{intg.icon}</span>
                   </div>
@@ -246,17 +314,18 @@ export default function SettingsPage() {
                     <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9]">{intg.name}</div>
                     <div className="text-[13px] text-gray-500 dark:text-[#94A3B8]">{intg.desc}</div>
                   </div>
-                  <button className="text-[12px] font-medium text-gray-600 dark:text-[#94A3B8] bg-white dark:bg-[#18181C] hover:bg-gray-50 dark:hover:bg-[#27272F] border border-gray-300 dark:border-[#3F3F47] rounded-[5px] px-2.5 py-[5px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
-                    Connect
-                  </button>
+                  <span className="text-[11px] font-medium text-gray-400 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F] px-2 py-[3px] rounded-full">
+                    Coming soon
+                  </span>
                 </div>
               ))}
             </div>
+
             <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-[13px] text-indigo-500 dark:text-[#818CF8] hover:text-indigo-600 dark:hover:text-[#6366F1] transition-colors">
               Browse available models on OpenRouter <ExternalLink size={13} />
             </a>
-          </>
+          </div>
         )}
 
         {/* AWS Configuration tab */}

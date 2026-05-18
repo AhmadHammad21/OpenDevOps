@@ -20,6 +20,7 @@ from api.routers import (  # noqa: E402
     chat,
     dashboard,
     history,
+    integrations,
     monitoring,
     sessions,
     settings,
@@ -143,6 +144,7 @@ app.include_router(history.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(settings.router)
+app.include_router(integrations.router)
 app.include_router(init_router.router)
 app.include_router(monitoring.router)
 

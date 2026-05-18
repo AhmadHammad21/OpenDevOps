@@ -98,15 +98,18 @@ def _build_payload(
     }
 
 
-async def _post(webhook_url: str, payload: dict) -> None:
+async def _post(webhook_url: str, payload: dict) -> bool:
     try:
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(webhook_url, json=payload)
             if resp.status_code != 200:
                 logger.warning("Slack webhook returned {}: {}", resp.status_code, resp.text)
+                return False
+            return True
     except Exception as e:
         logger.error("Slack notification failed: {}", e)
+        return False
 
 
 async def post_investigation(
@@ -115,11 +118,13 @@ async def post_investigation(
     session_id: str,
     app_url: str | None = None,
     is_test: bool = False,
-) -> None:
-    """Post a completed investigation result to Slack."""
+) -> bool:
+    """Post a completed investigation result to Slack. Returns True on success."""
     payload = _build_payload(result, session_id, app_url, is_test=is_test)
-    await _post(webhook_url, payload)
-    logger.info("Slack notification sent for session {}", session_id[:8])
+    ok = await _post(webhook_url, payload)
+    if ok:
+        logger.info("Slack notification sent for session {}", session_id[:8])
+    return ok
 
 
 async def post_failed_investigation(
@@ -129,8 +134,8 @@ async def post_failed_investigation(
     session_id: str,
     aws_error: str = "",
     is_test: bool = False,
-) -> None:
-    """Post a failed investigation alert to Slack."""
+) -> bool:
+    """Post a failed investigation alert to Slack. Returns True on success."""
     header_text = (
         "🧪 [TEST] OpenDevOps Agent — Investigation Failed"
         if is_test
@@ -151,5 +156,7 @@ async def post_failed_investigation(
         },
     ]
     payload = {"attachments": [{"color": "#e74c3c", "blocks": blocks}]}
-    await _post(webhook_url, payload)
-    logger.info("Slack failure notification sent for session {}", session_id[:8])
+    ok = await _post(webhook_url, payload)
+    if ok:
+        logger.info("Slack failure notification sent for session {}", session_id[:8])
+    return ok
