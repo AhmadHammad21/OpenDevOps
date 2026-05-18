@@ -33,54 +33,150 @@ def _mark_investigated(key: str) -> None:
     _last_investigated[key] = datetime.now(UTC)
 
 
-async def _run_investigation(prompt: str, trigger_key: str) -> dict[str, Any] | None:
-    """Invoke the agent synchronously in a thread and return the submit_investigation args."""
-    import uuid
+async def _run_investigation(
+    prompt: str, session_id: str
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Run a full agent investigation using the same streaming path as the chat endpoint."""
+    import json
 
     from agent.core import get_agent
+    from agent.turns import save_turn
 
-    thread_id = str(uuid.uuid4())
+    def _f(obj: Any, key: str, default: Any = None) -> Any:
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {"thread_id": session_id},
         "recursion_limit": settings.max_tool_calls * 3 + 15,
     }
 
+    tc_accum: dict[int, dict[str, Any]] = {}
+    pending_calls: dict[str, dict[str, Any]] = {}
+    tool_calls_log: list[dict[str, Any]] = []
+    investigation_result: dict[str, Any] | None = None
+    response_text = ""
+    usage_meta: Any = None
+
     try:
-        agent = get_agent()
-        result = await agent.ainvoke(
+        async for chunk, _meta in get_agent().astream(
             {"messages": [{"role": "user", "content": prompt}]},
             config=config,
-        )
-        # Extract submit_investigation args from tool calls in the message history
-        for msg in reversed(result.get("messages", [])):
-            for tc in getattr(msg, "tool_calls", []) or []:
-                name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-                args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
-                if name == "submit_investigation":
-                    return args
+            stream_mode="messages",
+        ):
+            um = getattr(chunk, "usage_metadata", None)
+            if um:
+                usage_meta = um
+
+            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                idx = _f(tcc, "index", 0)
+                if idx not in tc_accum:
+                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                if tc_id := _f(tcc, "id"):
+                    tc_accum[idx]["id"] = tc_id
+                if name := (_f(tcc, "name") or ""):
+                    tc_accum[idx]["name"] += name
+                if args := (_f(tcc, "args") or ""):
+                    tc_accum[idx]["args_str"] += args
+
+            for tc in getattr(chunk, "tool_calls", []) or []:
+                tc_id = _f(tc, "id") or ""
+                name = _f(tc, "name") or ""
+                args = _f(tc, "args") or {}
+                if tc_id and name:
+                    pending_calls[tc_id] = {
+                        "tool": name, "args": args if isinstance(args, dict) else {}
+                    }
+
+            content = getattr(chunk, "content", "")
+            tc_id = getattr(chunk, "tool_call_id", None)
+
+            if content and isinstance(content, str) and not tc_id:
+                response_text += content
+
+            if tc_id:
+                for entry in tc_accum.values():
+                    if eid := entry["id"]:
+                        try:
+                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
+                        except json.JSONDecodeError:
+                            eargs = {}
+                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                tc_accum.clear()
+
+                call_info = pending_calls.pop(
+                    tc_id,
+                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                )
+                try:
+                    result = json.loads(content)
+                except (json.JSONDecodeError, TypeError):
+                    result = {"raw": str(content)[:500]}
+
+                tool_calls_log.append({
+                    "tool": call_info["tool"], "args": call_info["args"], "result": result
+                })
+                if call_info["tool"] == "submit_investigation":
+                    investigation_result = call_info["args"]
+
     except Exception as e:
-        logger.error("Poller investigation failed for {}: {}", trigger_key, e)
-    return None
+        logger.error("Poller investigation failed: {}", e)
+        investigation_result = {
+            "_status": "failed",
+            "root_cause_summary": f"Investigation failed: {e}",
+            "confidence": "LOW",
+            "mitigation_steps": [
+                "Re-investigate manually via the chat — use a higher MAX_TOOL_CALLS if needed.",
+            ],
+        }
+
+    if (investigation_result and investigation_result.get("root_cause_summary")
+            and "_status" not in investigation_result):
+        steps = investigation_result.get("mitigation_steps", [])
+        steps_text = "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
+        confidence = investigation_result.get("confidence", "MEDIUM")
+        assistant_text = (
+            f"**Root Cause ({confidence} confidence):** "
+            f"{investigation_result['root_cause_summary']}\n\n"
+            f"**Mitigation Steps:**\n{steps_text}"
+        )
+    elif response_text.strip():
+        assistant_text = response_text.strip()
+    else:
+        assistant_text = "Investigation completed. See tool calls for details."
+
+    await save_turn(
+        session_id=session_id,
+        user_message=prompt,
+        assistant_text=assistant_text,
+        tool_calls_log=tool_calls_log,
+        usage={
+            "model": settings.llm_model,
+            "input_tokens": _f(usage_meta, "input_tokens", 0) or 0,
+            "output_tokens": _f(usage_meta, "output_tokens", 0) or 0,
+            "latency_ms": 0,
+        },
+        source="event",
+    )
+
+    return investigation_result, tool_calls_log
 
 
 async def _persist_and_notify(
-    prompt: str, result: dict[str, Any], session_id: str, dedup_key: str
+    result: dict[str, Any], tool_calls_log: list[dict[str, Any]], session_id: str, dedup_key: str
 ) -> None:
     from agent.monitor_store import add_alert, update_service
-    from agent.turns import notify_slack, save_turn
+    from agent.turns import notify_slack
 
-    tool_calls_log = [{"tool": "submit_investigation", "args": result, "result": {}}]
-    usage = {"model": settings.llm_model, "latency_ms": 0}
-    await save_turn(session_id, prompt, "", tool_calls_log, usage, source="event")
     await notify_slack(session_id, tool_calls_log)
 
+    status = result.pop("_status", "completed")
     services_affected = result.get("services_affected", [])
     service = services_affected[0] if services_affected else "unknown"
     root_cause = result.get("root_cause_summary", "")
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
-    update_service(service, "error", root_cause)
+    update_service(service, status, root_cause)
     await add_alert(
         service=service,
         error=root_cause,
@@ -88,6 +184,7 @@ async def _persist_and_notify(
         confidence=confidence,
         sns_sent=False,
         dedup_key=dedup_key,
+        status=status,
         session_id=session_id,
     )
 
@@ -123,10 +220,10 @@ async def _check_alarms() -> None:
             "Please investigate the root cause and provide mitigation steps."
         )
         session_id = str(uuid.uuid4())
-        result = await _run_investigation(prompt, key)
+        result, tool_calls_log = await _run_investigation(prompt, session_id)
         if result:
             logger.info("Poller investigation complete for alarm: {}", name)
-            await _persist_and_notify(prompt, result, session_id, key)
+            await _persist_and_notify(result, tool_calls_log, session_id, key)
 
 
 async def _check_lambda_errors() -> None:
@@ -175,10 +272,10 @@ async def _check_lambda_errors() -> None:
             "Please investigate the root cause and suggest a fix."
         )
         session_id = str(uuid.uuid4())
-        result = await _run_investigation(prompt, key)
+        result, tool_calls_log = await _run_investigation(prompt, session_id)
         if result:
             logger.info("Poller investigation complete for Lambda: {}", name)
-            await _persist_and_notify(prompt, result, session_id, key)
+            await _persist_and_notify(result, tool_calls_log, session_id, key)
 
 
 async def polling_loop() -> None:

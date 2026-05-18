@@ -107,42 +107,82 @@ def _build_investigation_prompt(event: dict) -> str:
 
 
 async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | None:
-    """Run a full agent investigation, persist the session, and return the result."""
+    """Run a full agent investigation using the same streaming path as the chat endpoint."""
     from agent.core import get_agent
     from agent.turns import save_turn
+
+    def _f(obj: Any, key: str, default: Any = None) -> Any:
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
     config = {
         "configurable": {"thread_id": session_id},
         "recursion_limit": settings.max_tool_calls * 3 + 15,
     }
 
+    tc_accum: dict[int, dict[str, Any]] = {}
+    pending_calls: dict[str, dict[str, Any]] = {}
+    tool_calls_log: list[dict[str, Any]] = []
     investigation_result: dict[str, Any] | None = None
-    messages: list = []
+    response_text = ""
+    usage_meta: Any = None
 
     try:
-        result = await get_agent().ainvoke(
+        async for chunk, _meta in get_agent().astream(
             {"messages": [{"role": "user", "content": prompt}]},
             config=config,
-        )
-        messages = result.get("messages", [])
-        for msg in reversed(messages):
-            for tc in getattr(msg, "tool_calls", []) or []:
-                name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-                args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
-                if name == "submit_investigation":
-                    investigation_result = args
-                    break
-            if investigation_result:
-                break
-        if not investigation_result and messages:
-            last = messages[-1]
-            content = last.content if hasattr(last, "content") else str(last)
-            if content:
-                investigation_result = {
-                    "root_cause_summary": content,
-                    "confidence": "MEDIUM",
-                    "mitigation_steps": [],
-                }
+            stream_mode="messages",
+        ):
+            um = getattr(chunk, "usage_metadata", None)
+            if um:
+                usage_meta = um
+
+            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                idx = _f(tcc, "index", 0)
+                if idx not in tc_accum:
+                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                if tc_id := _f(tcc, "id"):
+                    tc_accum[idx]["id"] = tc_id
+                if name := (_f(tcc, "name") or ""):
+                    tc_accum[idx]["name"] += name
+                if args := (_f(tcc, "args") or ""):
+                    tc_accum[idx]["args_str"] += args
+
+            for tc in getattr(chunk, "tool_calls", []) or []:
+                tc_id = _f(tc, "id") or ""
+                name = _f(tc, "name") or ""
+                args = _f(tc, "args") or {}
+                if tc_id and name:
+                    pending_calls[tc_id] = {"tool": name, "args": args if isinstance(args, dict) else {}}
+
+            content = getattr(chunk, "content", "")
+            tc_id = getattr(chunk, "tool_call_id", None)
+
+            if content and isinstance(content, str) and not tc_id:
+                response_text += content
+
+            if tc_id:
+                for entry in tc_accum.values():
+                    if eid := entry["id"]:
+                        try:
+                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
+                        except json.JSONDecodeError:
+                            eargs = {}
+                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                tc_accum.clear()
+
+                call_info = pending_calls.pop(
+                    tc_id,
+                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                )
+                try:
+                    result = json.loads(content)
+                except (json.JSONDecodeError, TypeError):
+                    result = {"raw": str(content)[:500]}
+
+                tool_calls_log.append({"tool": call_info["tool"], "args": call_info["args"], "result": result})
+                if call_info["tool"] == "submit_investigation":
+                    investigation_result = call_info["args"]
+
     except Exception as e:
         logger.error("Agent investigation failed: {}", e)
         investigation_result = {
@@ -150,30 +190,22 @@ async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | N
             "root_cause_summary": f"Investigation failed: {e}",
             "confidence": "LOW",
             "mitigation_steps": [
-                "The agent hit its tool call limit or encountered an error.",
                 "Re-investigate manually via the chat — use a higher MAX_TOOL_CALLS if needed.",
             ],
         }
 
-    # Persist the session regardless of success/failure
-    input_tokens, output_tokens = 0, 0
-    for msg in messages:
-        um = getattr(msg, "usage_metadata", None) or {}
-        input_tokens += um.get("input_tokens", 0)
-        output_tokens += um.get("output_tokens", 0)
-
-    # Build a readable assistant summary from the investigation result
-    if investigation_result and investigation_result.get("root_cause_summary"):
+    # Build readable assistant summary
+    if investigation_result and investigation_result.get("root_cause_summary") and "_status" not in investigation_result:
         steps = investigation_result.get("mitigation_steps", [])
-        steps_text = (
-            "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
-        )
+        steps_text = "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
         confidence = investigation_result.get("confidence", "MEDIUM")
         assistant_text = (
             f"**Root Cause ({confidence} confidence):** "
             f"{investigation_result['root_cause_summary']}\n\n"
             f"**Mitigation Steps:**\n{steps_text}"
         )
+    elif response_text.strip():
+        assistant_text = response_text.strip()
     else:
         assistant_text = "Investigation completed. See tool calls for details."
 
@@ -181,11 +213,11 @@ async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | N
         session_id=session_id,
         user_message=prompt,
         assistant_text=assistant_text,
-        tool_calls_log=[],
+        tool_calls_log=tool_calls_log,
         usage={
             "model": settings.llm_model,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
+            "input_tokens": _f(usage_meta, "input_tokens", 0) or 0,
+            "output_tokens": _f(usage_meta, "output_tokens", 0) or 0,
             "latency_ms": 0,
         },
         source="event",
