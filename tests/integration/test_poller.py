@@ -31,22 +31,24 @@ def test_check_alarms_dispatches_once(monkeypatch):
             ]
         }
 
-    async def fake_run(prompt, trigger_key):
+    async def fake_run(prompt, session_id):
         calls["run"] += 1
         assert "HighErrorRate-payment-processor" in prompt
-        assert trigger_key == "alarm:HighErrorRate-payment-processor"
-        return {
-            "root_cause_category": "RESOURCE_LIMIT",
-            "root_cause_summary": "concurrency exhausted",
-            "confidence": "HIGH",
-            "evidence": ["throttles spiked"],
-            "mitigation_steps": ["increase reserved concurrency"],
-            "validation_steps": ["watch metrics"],
-            "services_affected": ["Lambda"],
-            "recommended_follow_up": "add alarm",
-        }
+        return (
+            {
+                "root_cause_category": "RESOURCE_LIMIT",
+                "root_cause_summary": "concurrency exhausted",
+                "confidence": "HIGH",
+                "evidence": ["throttles spiked"],
+                "mitigation_steps": ["increase reserved concurrency"],
+                "validation_steps": ["watch metrics"],
+                "services_affected": ["Lambda"],
+                "recommended_follow_up": "add alarm",
+            },
+            [],
+        )
 
-    async def fake_persist(_prompt, _result, _session_id):
+    async def fake_persist(_result, _tool_calls_log, _session_id, _dedup_key):
         calls["persist"] += 1
 
     monkeypatch.setattr("tools.cloudwatch.get_alarms", fake_get_alarms)
@@ -70,22 +72,24 @@ def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
     def fake_get_lambda_error_rate(_name, _hours):
         return {"error_rate_pct": 12.5}
 
-    async def fake_run(prompt, trigger_key):
+    async def fake_run(prompt, session_id):
         calls["run"] += 1
         assert "payment-processor" in prompt
-        assert trigger_key == "lambda_errors:payment-processor"
-        return {
-            "root_cause_category": "RESOURCE_LIMIT",
-            "root_cause_summary": "lambda saturation",
-            "confidence": "HIGH",
-            "evidence": ["high throttles"],
-            "mitigation_steps": ["raise concurrency"],
-            "validation_steps": ["observe errors"],
-            "services_affected": ["Lambda"],
-            "recommended_follow_up": "right-size limits",
-        }
+        return (
+            {
+                "root_cause_category": "RESOURCE_LIMIT",
+                "root_cause_summary": "lambda saturation",
+                "confidence": "HIGH",
+                "evidence": ["high throttles"],
+                "mitigation_steps": ["raise concurrency"],
+                "validation_steps": ["observe errors"],
+                "services_affected": ["Lambda"],
+                "recommended_follow_up": "right-size limits",
+            },
+            [],
+        )
 
-    async def fake_persist(_prompt, _result, _session_id):
+    async def fake_persist(_result, _tool_calls_log, _session_id, _dedup_key):
         calls["persist"] += 1
 
     monkeypatch.setattr("tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
