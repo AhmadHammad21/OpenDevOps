@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ExternalLink, Eye, EyeOff, Key, CheckCircle, XCircle, AlertTriangle, Loader2, Shield, Radio, Trash2, Zap, Send } from 'lucide-react';
+import { SlackIcon, IntegrationIcon } from '../components/icons/IntegrationIcon';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -27,10 +28,10 @@ const SVC: Record<string, { label: string; desc: string }> = {
 };
 
 const COMING_SOON_INTEGRATIONS = [
-  { name: 'GitHub',    desc: 'Connect your repositories', icon: '🐱' },
-  { name: 'PagerDuty', desc: 'Alert on failures',         icon: '📟' },
-  { name: 'Datadog',   desc: 'Send metrics and traces',   icon: '📊' },
-  { name: 'Telegram',  desc: 'Get alerts via Telegram bot', icon: '✈️' },
+  { name: 'GitHub',    desc: 'Connect your repositories',   iconKey: 'github' },
+  { name: 'PagerDuty', desc: 'Alert on failures',           iconKey: 'pagerduty' },
+  { name: 'Datadog',   desc: 'Send metrics and traces',     iconKey: 'datadog' },
+  { name: 'Telegram',  desc: 'Get alerts via Telegram bot', iconKey: 'telegram' },
 ];
 
 const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#818CF8]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#3F3F47]';
@@ -275,7 +276,7 @@ export default function SettingsPage() {
 
               <div className="px-[18px] py-[14px] flex items-start gap-3">
                 <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-sm">💬</span>
+                  <SlackIcon size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] mb-0.5">Slack Notifications</div>
@@ -308,7 +309,7 @@ export default function SettingsPage() {
               {COMING_SOON_INTEGRATIONS.map((intg, i) => (
                 <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < COMING_SOON_INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
                   <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0">
-                    <span className="text-sm">{intg.icon}</span>
+                    <IntegrationIcon name={intg.iconKey} size={20} />
                   </div>
                   <div className="flex-1">
                     <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9]">{intg.name}</div>
