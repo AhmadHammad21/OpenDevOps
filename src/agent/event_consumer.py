@@ -413,6 +413,7 @@ async def _process_event(event: dict) -> None:
 
     session_id = str(uuid.uuid4())
     try:
+        logger.debug("Event consumer: starting investigation for {} / {} (session {})", source, detail_type, session_id[:8])
         result = await _run_investigation(prompt, session_id)
         if not result:
             logger.warning("Investigation produced no result for {} / {}", source, detail_type)

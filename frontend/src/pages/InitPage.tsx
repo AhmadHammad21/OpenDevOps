@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -65,7 +65,8 @@ export default function InitPage() {
   // Step 4
   const [infraDone, setInfraDone] = useState(false);
   const [queueUrl,  setQueueUrl]  = useState('');
-  const [showSkipDisclaimer, setShowSkipDisclaimer] = useState(false);
+  const [showSkipDisclaimer,  setShowSkipDisclaimer]  = useState(false);
+  const [showSkipDisclaimer2, setShowSkipDisclaimer2] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -298,10 +299,34 @@ export default function InitPage() {
                 className="w-full mt-10 flex items-center justify-center gap-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-base font-semibold py-4 rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50">
                 {loading ? <Loader2 size={18} className="animate-spin" /> : <>Continue <ArrowRight size={16} /></>}
               </button>
-              <button onClick={finishWithoutInfra} disabled={loading}
+              <button onClick={() => setShowSkipDisclaimer2(p => !p)} disabled={loading}
                 className="w-full mt-3 text-sm text-gray-400 dark:text-[#52525B] hover:text-gray-600 dark:hover:text-[#A1A1AA] transition-colors py-2">
                 Skip setup — configure later in Settings
               </button>
+              {showSkipDisclaimer2 && (
+                <div className="mt-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-2">Skipping this step disables event monitoring</p>
+                  <ul className="space-y-1 mb-3">
+                    {['Automatic incident detection will not run', 'Monitoring page will have no alerts', 'Slack / SNS notifications will not fire'].map(item => (
+                      <li key={item} className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+                        <XCircle size={12} className="shrink-0" /> {item}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
+                    You can enable this anytime from <span className="font-medium">Settings → AWS Configuration</span>.{' '}
+                    <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/monitoring.md"
+                       target="_blank" rel="noopener noreferrer"
+                       className="underline hover:text-amber-800 dark:hover:text-amber-200">
+                      Learn more in monitoring.md
+                    </a>
+                  </p>
+                  <button onClick={finishWithoutInfra} disabled={loading}
+                    className="w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#27272A] border border-gray-200 dark:border-[#3F3F46] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#3F3F46] transition-colors">
+                    Go to dashboard anyway
+                  </button>
+                </div>
+              )}
             </>
           )}
 
@@ -366,8 +391,14 @@ export default function InitPage() {
 
                   {!requiredPassed && (
                     <div className="mb-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-sm text-amber-700 dark:text-amber-300">
-                      Some required permissions are missing. Event monitoring may not work correctly.
-                      You can still continue — fix the IAM permissions and re-check in Settings.
+                      Some required permissions are missing. Event monitoring will not work until these are fixed.
+                      You can still continue and fix IAM permissions later — re-check in{' '}
+                      <span className="font-medium">Settings → AWS Configuration</span>.{' '}
+                      <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/monitoring.md"
+                         target="_blank" rel="noopener noreferrer"
+                         className="underline hover:text-amber-800 dark:hover:text-amber-200">
+                        monitoring.md
+                      </a>
                     </div>
                   )}
 
@@ -378,10 +409,16 @@ export default function InitPage() {
                     Continue anyway <ChevronRight size={16} />
                   </button>
 
-                  <button onClick={checkPerms} disabled={loading}
-                    className="w-full mt-3 flex items-center justify-center gap-2 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
-                    {loading ? <Loader2 size={14} className="animate-spin" /> : 'Re-check'}
-                  </button>
+                  <div className="flex gap-3 mt-3">
+                    <button onClick={() => setStep(2)}
+                      className="flex items-center justify-center gap-1.5 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
+                      <ArrowLeft size={14} /> Back
+                    </button>
+                    <button onClick={checkPerms} disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-2 transition-colors">
+                      {loading ? <Loader2 size={14} className="animate-spin" /> : 'Re-check'}
+                    </button>
+                  </div>
                 </>
               )}
             </>
@@ -421,6 +458,11 @@ export default function InitPage() {
                       ? <><Loader2 size={18} className="animate-spin" /> Creating infrastructure…</>
                       : 'Create infrastructure'
                     }
+                  </button>
+
+                  <button onClick={() => setStep(3)}
+                    className="flex items-center gap-1.5 mt-3 text-sm font-medium text-gray-500 dark:text-[#A1A1AA] hover:text-gray-700 dark:hover:text-white py-1 transition-colors">
+                    <ArrowLeft size={14} /> Back
                   </button>
 
                   {/* Skip option */}

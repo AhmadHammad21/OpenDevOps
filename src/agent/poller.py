@@ -167,8 +167,6 @@ async def _persist_and_notify(
     from agent.monitor_store import add_alert, add_notification, update_service
     from agent.turns import notify_slack
 
-    slack_sent = await notify_slack(session_id, tool_calls_log)
-
     status = result.pop("_status", "completed")
     services_affected = result.get("services_affected", [])
     service = services_affected[0] if services_affected else "unknown"
@@ -176,6 +174,17 @@ async def _persist_and_notify(
     mitigation = result.get("mitigation_steps", [])
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
+
+    slack_sent = False
+    if settings.slack_webhook_url:
+        if status == "failed":
+            from integrations.slack_webhook import post_failed_investigation
+            slack_sent = await post_failed_investigation(
+                settings.slack_webhook_url, service, root_cause, session_id
+            )
+        else:
+            slack_sent = await notify_slack(session_id, tool_calls_log)
+
     update_service(service, status, root_cause)
     alert_id = await add_alert(
         service=service,
@@ -202,7 +211,9 @@ async def _check_alarms() -> None:
     from tools.cloudwatch import get_alarms
 
     data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
-    for alarm in data.get("alarms", []):
+    alarms = data.get("alarms", [])
+    logger.debug("Poller: {} alarm(s) in ALARM state", len(alarms))
+    for alarm in alarms:
         name = alarm.get("name", "unknown")
         reason = alarm.get("reason", "")
         metric = alarm.get("metric", "")
@@ -225,9 +236,10 @@ async def _check_alarms() -> None:
             "Please investigate the root cause and provide mitigation steps."
         )
         session_id = str(uuid.uuid4())
+        logger.debug("Poller: starting investigation for alarm {} (session {})", name, session_id[:8])
         result, tool_calls_log = await _run_investigation(prompt, session_id)
         if result:
-            logger.info("Poller investigation complete for alarm: {}", name)
+            logger.info("Poller: investigation complete for alarm {} — {}", name, result.get("confidence", "?"))
             await _persist_and_notify(result, tool_calls_log, session_id, key)
 
 
@@ -239,16 +251,19 @@ async def _check_lambda_errors() -> None:
     from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
     funcs = await asyncio.get_event_loop().run_in_executor(None, list_lambda_functions)
-    for fn in funcs.get("functions", [])[:20]:  # cap at 20 to avoid runaway API calls
+    fn_list = funcs.get("functions", [])[:20]
+    logger.debug("Poller: checking error rates for {} Lambda function(s)", len(fn_list))
+    for fn in fn_list:  # cap at 20 to avoid runaway API calls
         name = fn.get("name", "")
         if not name:
             continue
 
+        window_hours = max(1 / 60, settings.poll_interval_seconds / 3600)
         metrics = await asyncio.get_event_loop().run_in_executor(
             None,
             get_lambda_error_rate,
             name,
-            1,  # last 1 hour
+            window_hours,
         )
         error_rate = metrics.get("error_rate_pct", 0) or 0
         if error_rate < settings.poll_error_threshold:
@@ -277,9 +292,12 @@ async def _check_lambda_errors() -> None:
             "Please investigate the root cause and suggest a fix."
         )
         session_id = str(uuid.uuid4())
+        logger.debug("Poller: starting investigation for Lambda {} (session {})", name, session_id[:8])
         result, tool_calls_log = await _run_investigation(prompt, session_id)
         if result:
-            logger.info("Poller investigation complete for Lambda: {}", name)
+            logger.info(
+                "Poller: investigation complete for Lambda {} — {}", name, result.get("confidence", "?")
+            )
             await _persist_and_notify(result, tool_calls_log, session_id, key)
 
 
@@ -294,12 +312,13 @@ async def polling_loop() -> None:
     )
     while True:
         await asyncio.sleep(interval)
-        logger.debug("Poller tick")
+        logger.debug("Poller tick — checking alarms and Lambda error rates")
         try:
             from agent.init_store import is_event_infra_enabled
             if not is_event_infra_enabled():
                 # EventBridge → SQS already covers alarm state changes when infra is active
                 await _check_alarms()
             await _check_lambda_errors()
+            logger.debug("Poller tick complete — next check in {}s", interval)
         except Exception as e:
             logger.error("Poller tick failed: {}", e)
