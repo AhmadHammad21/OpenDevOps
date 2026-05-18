@@ -25,8 +25,14 @@ OpenDevOps Agent is an open-source AWS incident investigation tool powered by an
 # Install / update dependencies
 uv sync
 
-# Run the web UI (FastAPI backend + serves built frontend)
+# Development server — FastAPI with hot reload (equivalent to uv run python src/run.py)
+uv run dev
+
+# Production web UI (FastAPI backend + serves built frontend, no reload)
 uv run devops-agent ui
+
+# Apply SQL migrations to PostgreSQL (requires CHECKPOINT_BACKEND=postgres + DATABASE_URL)
+uv run migrate
 
 # CLI investigation
 uv run devops-agent investigate "Lambda high error rate on payment service"
@@ -39,7 +45,6 @@ uv run devops-agent mcp --http       # HTTP+SSE transport, port 8001
 
 # Tests
 uv run pytest
-uv run pytest tests/test_api/ -v
 
 # Lint / format
 uv run ruff check src/
@@ -191,6 +196,8 @@ AWS_PROFILE=                           # optional named ~/.aws profile
 MAX_TOOL_CALLS=20                      # recursion_limit = MAX_TOOL_CALLS * 3 + 15
 INVESTIGATION_TIMEOUT=120              # seconds before asyncio.TimeoutError
 LOG_LEVEL=INFO
+LOG_CONSOLE_ENABLED=true               # false = suppress all console output
+LOG_CONSOLE_COLORIZE=true              # false = strip ANSI colours (CI / Docker)
 TOOL_RESPONSE_MAX_CHARS=40000          # 0 = disabled; ~10K tokens at 4 chars/token
 
 # Storage backend — pick exactly one
