@@ -4,6 +4,7 @@ import { ArrowLeft, Clock, MessageSquare, Loader2, CheckCircle2, XCircle, Radio 
 import { cn } from '../lib/utils';
 import { fetchAlert } from '../lib/api';
 import type { Alert, AlertNotification } from '../types';
+import { IntegrationIcon } from '../components/icons/IntegrationIcon';
 
 const CHANNEL_LABELS: Record<string, string> = {
   slack: 'Slack',
@@ -13,20 +14,11 @@ const CHANNEL_LABELS: Record<string, string> = {
   pagerduty: 'PagerDuty',
 };
 
-const CHANNEL_ICONS: Record<string, string> = {
-  slack: '💬',
-  sns: '📡',
-  telegram: '✈️',
-  email: '📧',
-  pagerduty: '📟',
-};
-
 function NotificationRow({ n }: { n: AlertNotification }) {
   const label = CHANNEL_LABELS[n.channel] ?? n.channel;
-  const icon = CHANNEL_ICONS[n.channel] ?? '🔔';
   return (
     <div className="flex items-center gap-2.5">
-      <span className="text-sm">{icon}</span>
+      <IntegrationIcon name={n.channel} size={16} />
       <span className="text-[13px] text-gray-700 dark:text-[#CBD5E1] font-medium w-20">{label}</span>
       {n.status === 'delivered'
         ? <CheckCircle2 size={13} className="text-emerald-500" />

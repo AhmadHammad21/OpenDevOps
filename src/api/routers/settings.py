@@ -39,8 +39,10 @@ async def get_settings(
         {"key": "AWS_SECRET_ACCESS_KEY",  "value": _mask(os.environ.get("AWS_SECRET_ACCESS_KEY")),              "secret": True},
         {"key": "CHECKPOINT_BACKEND",  "value": settings.checkpoint_backend,                                  "secret": False},
         {"key": "DATABASE_URL",        "value": _mask(settings.database_url),                                  "secret": True},
-        {"key": "SLACK_WEBHOOK_URL",   "value": _mask(settings.slack_webhook_url),                            "secret": True},
-        {"key": "JWT_SECRET",          "value": _mask(settings.jwt_secret),                                   "secret": True},
+        {"key": "SLACK_WEBHOOK_URL",    "value": _mask(settings.slack_webhook_url),                           "secret": True},
+        {"key": "TELEGRAM_BOT_TOKEN",   "value": _mask(settings.telegram_bot_token),                          "secret": True},
+        {"key": "TELEGRAM_CHAT_ID",     "value": settings.telegram_chat_id or "(not set)",                   "secret": False},
+        {"key": "JWT_SECRET",           "value": _mask(settings.jwt_secret),                                  "secret": True},
     ]
 
     agent = [
