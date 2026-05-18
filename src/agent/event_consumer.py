@@ -16,7 +16,7 @@ from agent.init_store import (
     get_runtime_sns_topic_arn,
     get_runtime_sqs_queue_url,
 )
-from agent.monitor_store import add_alert, is_recent_alert, update_service
+from agent.monitor_store import add_alert, add_notification, is_recent_alert, update_service
 from config import settings
 
 # In-memory set of dedup keys currently being investigated.
@@ -286,7 +286,9 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
     sns_arn = get_runtime_sns_topic_arn()
 
     sns_sent = False
+    sns_attempted = False
     if sns_arn:
+        sns_attempted = True
         try:
             from tools.sns import publish_sns_alert
 
@@ -314,25 +316,25 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         except Exception as e:
             logger.error("SNS delivery failed: {}", e)
 
-    # Also notify Slack (keeps parity with the poller)
+    slack_sent = False
     if settings.slack_webhook_url:
         try:
             from integrations.slack_webhook import post_failed_investigation, post_investigation
 
             if status == "failed":
-                await post_failed_investigation(
+                slack_sent = await post_failed_investigation(
                     settings.slack_webhook_url, service, root_cause,
                     session_id, aws_error=aws_error, is_test=is_test,
                 )
             else:
-                await post_investigation(
+                slack_sent = await post_investigation(
                     settings.slack_webhook_url, result, session_id, is_test=is_test
                 )
         except Exception as e:
             logger.error("Slack delivery failed from event consumer: {}", e)
 
     update_service(service, status, root_cause)
-    await add_alert(
+    alert_id = await add_alert(
         service=service,
         error=root_cause,
         resolution=resolution,
@@ -341,7 +343,13 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         dedup_key=dedup_key,
         status=status,
         session_id=session_id,
+        trigger_source="event_consumer",
     )
+    if alert_id:
+        if sns_attempted:
+            await add_notification(alert_id, "sns", "delivered" if sns_sent else "failed")
+        if settings.slack_webhook_url:
+            await add_notification(alert_id, "slack", "delivered" if slack_sent else "failed")
     logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
 
 

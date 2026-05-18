@@ -577,15 +577,31 @@ class PostgresBackend(DatabaseBackend):
         dedup_key: str | None = None,
         status: str = "completed",
         session_id: str | None = None,
+        trigger_source: str | None = None,
     ) -> str:
         row = await self._fetchrow(
             "INSERT INTO alerts"
-            " (service, error, resolution, confidence, sns_sent, dedup_key, status, session_id)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            " (service, error, resolution, confidence, sns_sent, dedup_key, status,"
+            "  session_id, trigger_source)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             service, error, resolution, confidence, sns_sent, dedup_key, status,
             uuid.UUID(session_id) if session_id else None,
+            trigger_source,
         )
         return str(row["id"]) if row else ""
+
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO alert_notifications (alert_id, channel, status, error)"
+            " VALUES (%s, %s, %s, %s)",
+            uuid.UUID(alert_id), channel, status, error,
+        )
 
     async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
         row = await self._fetchrow(
@@ -597,8 +613,9 @@ class PostgresBackend(DatabaseBackend):
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
-            "FROM alerts ORDER BY created_at DESC LIMIT %s",
+            "SELECT id, service, error, resolution, confidence, sns_sent, status,"
+            "       created_at, session_id, trigger_source"
+            " FROM alerts ORDER BY created_at DESC LIMIT %s",
             min(limit, 200),
         )
         return [
@@ -612,18 +629,25 @@ class PostgresBackend(DatabaseBackend):
                 "status": r["status"],
                 "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
                 "session_id": str(r["session_id"]) if r["session_id"] else None,
+                "trigger_source": r["trigger_source"],
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
         row = await self._fetchrow(
-            "SELECT id, service, error, resolution, confidence, sns_sent, status, created_at, session_id "
-            "FROM alerts WHERE id = %s",
+            "SELECT id, service, error, resolution, confidence, sns_sent, status,"
+            "       created_at, session_id, trigger_source"
+            " FROM alerts WHERE id = %s",
             uuid.UUID(alert_id),
         )
         if not row:
             return None
+        notif_rows = await self._fetchall(
+            "SELECT channel, status, error, sent_at FROM alert_notifications"
+            " WHERE alert_id = %s ORDER BY sent_at ASC",
+            uuid.UUID(alert_id),
+        )
         return {
             "id": str(row["id"]),
             "service": row["service"],
@@ -634,6 +658,16 @@ class PostgresBackend(DatabaseBackend):
             "status": row["status"],
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
             "session_id": str(row["session_id"]) if row["session_id"] else None,
+            "trigger_source": row["trigger_source"],
+            "notifications": [
+                {
+                    "channel": n["channel"],
+                    "status": n["status"],
+                    "error": n["error"],
+                    "sent_at": n["sent_at"].isoformat() if n["sent_at"] else None,
+                }
+                for n in notif_rows
+            ],
         }
 
     async def get_app_config(self, key: str) -> dict | None:

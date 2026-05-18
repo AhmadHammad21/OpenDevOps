@@ -20,8 +20,9 @@ export default defineConfig({
       '/api/settings':    'http://localhost:8000',
       '/api/history':      'http://localhost:8000',
       '/debug':           'http://localhost:8000',
-      '/api/monitoring':  'http://localhost:8000',
-      '/api/init':        'http://localhost:8000',
+      '/api/monitoring':     'http://localhost:8000',
+      '/api/init':           'http://localhost:8000',
+      '/api/integrations':   'http://localhost:8000',
     },
   },
   build: {

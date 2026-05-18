@@ -164,10 +164,10 @@ async def _run_investigation(
 async def _persist_and_notify(
     result: dict[str, Any], tool_calls_log: list[dict[str, Any]], session_id: str, dedup_key: str
 ) -> None:
-    from agent.monitor_store import add_alert, update_service
+    from agent.monitor_store import add_alert, add_notification, update_service
     from agent.turns import notify_slack
 
-    await notify_slack(session_id, tool_calls_log)
+    slack_sent = await notify_slack(session_id, tool_calls_log)
 
     status = result.pop("_status", "completed")
     services_affected = result.get("services_affected", [])
@@ -177,7 +177,7 @@ async def _persist_and_notify(
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
     update_service(service, status, root_cause)
-    await add_alert(
+    alert_id = await add_alert(
         service=service,
         error=root_cause,
         resolution=resolution,
@@ -186,7 +186,12 @@ async def _persist_and_notify(
         dedup_key=dedup_key,
         status=status,
         session_id=session_id,
+        trigger_source="poller",
     )
+    if alert_id and settings.slack_webhook_url:
+        await add_notification(
+            alert_id, "slack", "delivered" if slack_sent else "failed"
+        )
 
 
 async def _check_alarms() -> None:

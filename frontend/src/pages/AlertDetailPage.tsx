@@ -1,9 +1,53 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Send, MessageSquare, Loader2 } from 'lucide-react';
+import { ArrowLeft, Clock, MessageSquare, Loader2, CheckCircle2, XCircle, Radio } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { fetchAlert } from '../lib/api';
-import type { Alert } from '../types';
+import type { Alert, AlertNotification } from '../types';
+
+const CHANNEL_LABELS: Record<string, string> = {
+  slack: 'Slack',
+  sns: 'SNS',
+  telegram: 'Telegram',
+  email: 'Email',
+  pagerduty: 'PagerDuty',
+};
+
+const CHANNEL_ICONS: Record<string, string> = {
+  slack: '💬',
+  sns: '📡',
+  telegram: '✈️',
+  email: '📧',
+  pagerduty: '📟',
+};
+
+function NotificationRow({ n }: { n: AlertNotification }) {
+  const label = CHANNEL_LABELS[n.channel] ?? n.channel;
+  const icon = CHANNEL_ICONS[n.channel] ?? '🔔';
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="text-sm">{icon}</span>
+      <span className="text-[13px] text-gray-700 dark:text-[#CBD5E1] font-medium w-20">{label}</span>
+      {n.status === 'delivered'
+        ? <CheckCircle2 size={13} className="text-emerald-500" />
+        : n.status === 'failed'
+          ? <XCircle size={13} className="text-red-500" />
+          : <Radio size={13} className="text-gray-400 dark:text-[#64748B]" />
+      }
+      <span className={cn(
+        'text-[12px] font-medium',
+        n.status === 'delivered' ? 'text-emerald-600 dark:text-emerald-400' :
+        n.status === 'failed'    ? 'text-red-500 dark:text-red-400' :
+                                   'text-gray-400 dark:text-[#64748B]'
+      )}>
+        {n.status}
+      </span>
+      {n.error && (
+        <span className="text-[11px] text-red-400 truncate max-w-[200px]" title={n.error}>{n.error}</span>
+      )}
+    </div>
+  );
+}
 
 export default function AlertDetailPage() {
   const { alertId } = useParams<{ alertId: string }>();
@@ -73,9 +117,9 @@ export default function AlertDetailPage() {
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#71717A]">
               <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.timestamp).toLocaleString()}</span>
-              {alert.sns_sent && (
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                  <Send size={12} /> SNS notified
+              {alert.trigger_source && (
+                <span className="flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#27272A] text-gray-600 dark:text-[#94A3B8]">
+                  {alert.trigger_source === 'poller' ? '⏱ Poller' : '⚡ Event consumer'}
                 </span>
               )}
             </div>
@@ -98,6 +142,17 @@ export default function AlertDetailPage() {
             <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-2">Resolution</h2>
             <div className="bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl p-4">
               <p className="text-sm text-gray-700 dark:text-[#A1A1AA] whitespace-pre-line leading-relaxed">{alert.resolution}</p>
+            </div>
+          </section>
+        )}
+
+        {alert.notifications && alert.notifications.length > 0 && (
+          <section className="mb-6">
+            <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-3">Notified via</h2>
+            <div className="bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3 space-y-2.5">
+              {alert.notifications.map((n, i) => (
+                <NotificationRow key={i} n={n} />
+              ))}
             </div>
           </section>
         )}

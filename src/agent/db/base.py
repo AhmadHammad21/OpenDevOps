@@ -140,8 +140,18 @@ class DatabaseBackend(ABC):
         dedup_key: str | None = None,
         status: str = "completed",
         session_id: str | None = None,
+        trigger_source: str | None = None,
     ) -> str:
         return ""
+
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        pass
 
     async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
         return False

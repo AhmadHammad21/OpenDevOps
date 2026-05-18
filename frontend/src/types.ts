@@ -98,6 +98,13 @@ export interface MessageRecord {
   created_at: string;
 }
 
+export interface AlertNotification {
+  channel: string;
+  status: 'delivered' | 'failed' | 'attempted';
+  error: string | null;
+  sent_at: string;
+}
+
 export interface Alert {
   id: string;
   service: string;
@@ -108,6 +115,8 @@ export interface Alert {
   sns_sent: boolean;
   timestamp: string;
   session_id?: string;
+  trigger_source?: 'poller' | 'event_consumer';
+  notifications?: AlertNotification[];
 }
 
 export interface ServiceStatus {
