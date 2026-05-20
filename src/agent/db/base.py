@@ -141,6 +141,7 @@ class DatabaseBackend(ABC):
         status: str = "completed",
         session_id: str | None = None,
         trigger_source: str | None = None,
+        evidence: list | None = None,
     ) -> str:
         return ""
 

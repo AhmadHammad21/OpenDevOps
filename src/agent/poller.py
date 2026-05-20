@@ -210,6 +210,7 @@ async def _persist_and_notify(
         status=status,
         session_id=session_id,
         trigger_source="poller",
+        evidence=result.get("evidence", []),
     )
     if alert_id:
         if settings.slack_webhook_url:

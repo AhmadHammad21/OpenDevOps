@@ -352,6 +352,7 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         status=status,
         session_id=session_id,
         trigger_source="event_consumer",
+        evidence=result.get("evidence", []),
     )
     if alert_id:
         if sns_attempted:

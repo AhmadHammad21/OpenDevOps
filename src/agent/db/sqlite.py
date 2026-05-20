@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     status      TEXT NOT NULL DEFAULT 'completed',
     session_id  TEXT,
     trigger_source TEXT,
+    evidence    TEXT NOT NULL DEFAULT '[]',
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
 );
 CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
@@ -211,6 +212,7 @@ class SQLiteBackend(DatabaseBackend):
             "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
             "ALTER TABLE alerts ADD COLUMN session_id TEXT",
             "ALTER TABLE alerts ADD COLUMN trigger_source TEXT",
+            "ALTER TABLE alerts ADD COLUMN evidence TEXT NOT NULL DEFAULT '[]'",
         ):
             try:
                 await self._conn.execute(col_sql)
@@ -831,15 +833,18 @@ class SQLiteBackend(DatabaseBackend):
         status: str = "completed",
         session_id: str | None = None,
         trigger_source: str | None = None,
+        evidence: list | None = None,
     ) -> str:
+        import json as _json
         alert_id = str(uuid.uuid4())
         await self._exec(
             "INSERT INTO alerts"
             " (id, service, error, resolution, confidence, sns_sent, dedup_key, status,"
-            "  session_id, trigger_source)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  session_id, trigger_source, evidence)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             alert_id, service, error, resolution, confidence,
             1 if sns_sent else 0, dedup_key, status, session_id, trigger_source,
+            _json.dumps(evidence or []),
         )
         return alert_id
 
@@ -930,9 +935,10 @@ class SQLiteBackend(DatabaseBackend):
         return row is not None
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
+        import json as _json
         rows = await self._fetchall(
             "SELECT id, service, error, resolution, confidence, sns_sent, status, "
-            "       created_at, session_id, trigger_source "
+            "       created_at, session_id, trigger_source, dedup_key, evidence "
             "FROM alerts ORDER BY created_at DESC LIMIT ?",
             min(limit, 200),
         )
@@ -948,14 +954,17 @@ class SQLiteBackend(DatabaseBackend):
                 "timestamp": r["created_at"],
                 "session_id": r.get("session_id"),
                 "trigger_source": r.get("trigger_source"),
+                "dedup_key": r.get("dedup_key"),
+                "evidence": _json.loads(r["evidence"]) if r.get("evidence") else [],
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
+        import json as _json
         row = await self._fetchone(
             "SELECT id, service, error, resolution, confidence, sns_sent, status, "
-            "       created_at, session_id, trigger_source "
+            "       created_at, session_id, trigger_source, dedup_key, evidence "
             "FROM alerts WHERE id = ?",
             alert_id,
         )
@@ -977,6 +986,8 @@ class SQLiteBackend(DatabaseBackend):
             "timestamp": row["created_at"],
             "session_id": row.get("session_id"),
             "trigger_source": row.get("trigger_source"),
+            "dedup_key": row.get("dedup_key"),
+            "evidence": _json.loads(row["evidence"]) if row.get("evidence") else [],
             "notifications": notifications,
         }
 

@@ -578,15 +578,18 @@ class PostgresBackend(DatabaseBackend):
         status: str = "completed",
         session_id: str | None = None,
         trigger_source: str | None = None,
+        evidence: list | None = None,
     ) -> str:
+        import json as _json
         row = await self._fetchrow(
             "INSERT INTO alerts"
             " (service, error, resolution, confidence, sns_sent, dedup_key, status,"
-            "  session_id, trigger_source)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "  session_id, trigger_source, evidence)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             service, error, resolution, confidence, sns_sent, dedup_key, status,
             uuid.UUID(session_id) if session_id else None,
             trigger_source,
+            _json.dumps(evidence or []),
         )
         return str(row["id"]) if row else ""
 
@@ -664,9 +667,10 @@ class PostgresBackend(DatabaseBackend):
         return row is not None
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
+        import json as _json
         rows = await self._fetchall(
             "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source"
+            "       created_at, session_id, trigger_source, dedup_key, evidence"
             " FROM alerts ORDER BY created_at DESC LIMIT %s",
             min(limit, 200),
         )
@@ -682,14 +686,17 @@ class PostgresBackend(DatabaseBackend):
                 "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
                 "session_id": str(r["session_id"]) if r["session_id"] else None,
                 "trigger_source": r["trigger_source"],
+                "dedup_key": r["dedup_key"],
+                "evidence": _json.loads(r["evidence"]) if r.get("evidence") else [],
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
+        import json as _json
         row = await self._fetchrow(
             "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source"
+            "       created_at, session_id, trigger_source, dedup_key, evidence"
             " FROM alerts WHERE id = %s",
             uuid.UUID(alert_id),
         )
@@ -711,6 +718,8 @@ class PostgresBackend(DatabaseBackend):
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
             "session_id": str(row["session_id"]) if row["session_id"] else None,
             "trigger_source": row["trigger_source"],
+            "dedup_key": row["dedup_key"],
+            "evidence": _json.loads(row["evidence"]) if row.get("evidence") else [],
             "notifications": [
                 {
                     "channel": n["channel"],

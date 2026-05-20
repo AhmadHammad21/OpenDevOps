@@ -129,11 +129,32 @@ export default function AlertDetailPage() {
           </div>
         </section>
 
+        {alert.evidence && alert.evidence.length > 0 && (
+          <section className="mb-6">
+            <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-2">Evidence</h2>
+            <div className="bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 space-y-1.5">
+              {alert.evidence.map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-amber-500 dark:text-amber-400 mt-0.5 shrink-0">•</span>
+                  <p className="text-sm text-gray-700 dark:text-[#CBD5E1] leading-relaxed">{item}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {alert.resolution && (
           <section className="mb-6">
-            <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-2">Resolution</h2>
-            <div className="bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl p-4">
-              <p className="text-sm text-gray-700 dark:text-[#A1A1AA] whitespace-pre-line leading-relaxed">{alert.resolution}</p>
+            <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-2">Mitigation Steps</h2>
+            <div className="bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 rounded-xl p-4 space-y-2">
+              {alert.resolution.split('\n').filter(Boolean).map((step, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold flex items-center justify-center mt-0.5">
+                    {i + 1}
+                  </span>
+                  <p className="text-sm text-gray-700 dark:text-[#CBD5E1] leading-relaxed">{step.replace(/^[-*]\s*/, '')}</p>
+                </div>
+              ))}
             </div>
           </section>
         )}
