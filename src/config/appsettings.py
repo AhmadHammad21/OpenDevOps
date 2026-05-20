@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # Set summarization_enabled=false or summarization_threshold_chars=0 to disable.
     summarization_enabled: bool = True
     summarization_threshold_chars: int = 60_000   # ~15 K tokens; trigger compaction above this
-    summarization_keep_chars: int = 20_000        # ~5 K tokens of recent messages to preserve intact
+    summarization_keep_chars: int = 20_000        # ~5 K tokens of recent messages to keep intact
 
     # Slack — leave unset to disable notifications
     slack_webhook_url: str | None = None
@@ -67,8 +67,7 @@ class Settings(BaseSettings):
     jwt_secret: str | None = None
     jwt_expire_minutes: int = 1440  # 24 hours
 
-    # SNS / event consumer — leave unset to disable
-    sns_topic_arn: str | None = None
+    # Event consumer — leave unset to disable
     event_consumer_enabled: bool = False
     sqs_queue_url: str | None = None
 

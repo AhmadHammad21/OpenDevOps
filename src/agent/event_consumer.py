@@ -13,7 +13,6 @@ from loguru import logger
 from agent.incident_keys import event_incident_key
 from agent.init_store import (
     get_runtime_aws_region,
-    get_runtime_sns_topic_arn,
     get_runtime_sqs_queue_url,
 )
 from agent.monitor_store import (
@@ -144,39 +143,6 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
     aws_error = _extract_aws_error(event)
 
-    sns_arn = get_runtime_sns_topic_arn()
-
-    sns_sent = False
-    sns_attempted = False
-    if sns_arn:
-        sns_attempted = True
-        try:
-            from tools.sns import publish_sns_alert
-
-            services_affected = result.get("services_affected", [])
-            evidence = result.get("evidence", [])
-            message = (
-                f"Service: {service}\n"
-                f"Root Cause: {root_cause}\n"
-                f"Evidence: {chr(10).join(evidence[:5]) if evidence else 'N/A'}\n"
-                f"Mitigation Steps:\n{resolution}\n"
-                "Services Affected: "
-                f"{', '.join(services_affected) if services_affected else service}\n"
-                f"Confidence: {confidence}\n"
-                f"Event Time: {event.get('time', '')}"
-            )
-            subject_prefix = "[FAILED]" if status == "failed" else f"[{confidence}]"
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                publish_sns_alert,
-                sns_arn,
-                f"{subject_prefix} {service} — {root_cause[:80]}",
-                message,
-            )
-            sns_sent = True
-        except Exception as e:
-            logger.error("SNS delivery failed: {}", e)
-
     slack_sent = False
     if settings.slack_webhook_url:
         try:
@@ -219,7 +185,7 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         error=root_cause,
         resolution=resolution,
         confidence=confidence,
-        sns_sent=sns_sent,
+        sns_sent=False,
         dedup_key=dedup_key,
         status=status,
         session_id=session_id,
@@ -227,13 +193,11 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         evidence=result.get("evidence", []),
     )
     if alert_id:
-        if sns_attempted:
-            await add_notification(alert_id, "sns", "delivered" if sns_sent else "failed")
         if settings.slack_webhook_url:
             await add_notification(alert_id, "slack", "delivered" if slack_sent else "failed")
         if settings.telegram_bot_token and settings.telegram_chat_id:
             await add_notification(alert_id, "telegram", "delivered" if telegram_sent else "failed")
-    logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
+    logger.info("Alert delivered: service={} confidence={}", service, confidence)
 
 
 def _is_real_failure(source: str, detail: dict) -> bool:

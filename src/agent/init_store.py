@@ -35,7 +35,6 @@ def _default() -> dict:
         "setup_complete": False,
         "event_infra_enabled": False,
         "event_infra_managed": False,
-        "sns_topic_arn": "",
         "aws_region": settings.aws_region,
         "sqs_queue_url": "",
         "sqs_queue_arn": "",
@@ -50,7 +49,6 @@ def _default() -> dict:
             "ec2": None,
             "rds": None,
             "iam": None,
-            "sns": None,
             "sqs": None,
             "events": None,
         },
@@ -164,5 +162,3 @@ def get_runtime_sqs_queue_url() -> str:
     return str(settings.sqs_queue_url or load_init().get("sqs_queue_url") or "")
 
 
-def get_runtime_sns_topic_arn() -> str:
-    return str(settings.sns_topic_arn or load_init().get("sns_topic_arn") or "")

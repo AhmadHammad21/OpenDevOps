@@ -1,4 +1,4 @@
-"""Init wizard API — first-run setup for SNS, SQS, and permission checks."""
+"""Init wizard API — first-run setup for SQS and permission checks."""
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ class CreateUserBody(BaseModel):
 
 
 class SetupBody(BaseModel):
-    sns_topic_arn: str = ""
     aws_region: str = "us-east-1"
     sqs_queue_url: str = ""
     org_name: str = ""
@@ -96,7 +95,6 @@ async def setup(
     import re
 
     data = await load_init_async()
-    data["sns_topic_arn"] = body.sns_topic_arn.strip()
     data["aws_region"] = body.aws_region.strip() or settings.aws_region
     data["sqs_queue_url"] = body.sqs_queue_url.strip()
     data["event_infra_enabled"] = bool(data["sqs_queue_url"])
@@ -130,7 +128,7 @@ async def check_permissions_endpoint(
 
     data = await load_init_async()
     results = await asyncio.get_event_loop().run_in_executor(
-        None, _check, data.get("sns_topic_arn", ""), data.get("aws_region")
+        None, _check, data.get("aws_region")
     )
     data["permissions"] = {svc: r["passed"] for svc, r in results.items()}
     await save_init_async(data)
