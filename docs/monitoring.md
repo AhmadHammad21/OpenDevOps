@@ -90,15 +90,14 @@ AWS service emits an event (ECS task stopped, Lambda errors, RDS failover…)
           → collect_context()  — deterministic boto3 pre-fetch (logs, metrics, config)
           → agent.ainvoke()    — full ReAct investigation
               → add_alert()    — persists to alerts table → /monitoring
-              → SNS publish    — fan-out to email, Lambda, etc.
-              → notify_slack() — posts to Slack
+              → notify_slack() — posts to Slack (+ Telegram if configured)
 ```
 
 ### When to use
 
 - You want broad coverage beyond Lambda (ECS, RDS, EC2, GuardDuty, AWS Health)
 - You already have CloudWatch alarms configured on your resources
-- You want SNS fan-out for email/PagerDuty/custom integrations
+- You want near-real-time detection instead of polling-interval latency
 
 ### Why 2–5 minutes for alarm-based events?
 
@@ -158,22 +157,6 @@ Before the LLM runs, `collect_context()` makes deterministic boto3 calls to pre-
 
 ---
 
-## SQS vs SNS — What Each Does
-
-These are often confused. They serve different roles:
-
-| | SQS | SNS |
-|---|---|---|
-| **Direction** | Input to agent | Output from agent |
-| **Role** | Receives EventBridge events for the agent to process | Fan-out investigated results to subscribers |
-| **Who writes to it** | AWS EventBridge rules | Agent, after investigation completes |
-| **Who reads from it** | `event_consumer_loop()` | Email, Lambda, Telegram, custom HTTP endpoints |
-| **Required** | Yes, for event-driven detection | No — optional output channel |
-
-SQS is the inbox. SNS is the outbox. You need SQS for event-driven detection; SNS is optional and only relevant if you want to route investigation results to external systems beyond Slack.
-
----
-
 ## Choosing Between the Two
 
 | Scenario | Recommendation |
@@ -183,7 +166,6 @@ SQS is the inbox. SNS is the outbox. You need SQS for event-driven detection; SN
 | ECS, RDS, EC2, GuardDuty coverage | Event-driven required |
 | Already have CloudWatch alarms | Event-driven — reuses your existing alarms |
 | Want fastest Lambda detection | Both — polling at 1 min catches errors before the alarm trips |
-| Want email/PagerDuty alerts | Event-driven + SNS |
 
 ---
 
@@ -215,7 +197,6 @@ Each alert card shows:
 - **Service** — the affected AWS service and resource name
 - **Error** — the root cause summary from the agent
 - **Time** — when the event was detected
-- **SNS badge** — shown if the finding was published to SNS
 
 Alerts are sorted by most recent first. Click any card to open the Alert Detail page.
 
@@ -225,7 +206,7 @@ Shows the full investigation result:
 
 - Root cause in a highlighted panel
 - Resolution steps produced by the agent
-- Timestamp and SNS notification status
+- Timestamp and detection source
 
 **Investigate / View investigation button** — behaviour depends on whether the investigation session was persisted:
 
@@ -240,7 +221,7 @@ If you open a "View investigation" chat and send at least one follow-up message,
 
 ### Service Health Panel
 
-The top of the page shows tracked services and their last-known status (`healthy`, `error`, `unknown`). Updated in-memory each time the event consumer processes an event for a service.
+The top of the page shows tracked services and their last-known status (`healthy`, `error`, `unknown`). Updated in-memory each time the event consumer processes an event for a service. On app restart, the panel is rebuilt from the most recent alert per service in the database — so status survives restarts without needing to reprocess events.
 
 ### Send Test Event (admin only)
 
@@ -254,7 +235,10 @@ The **Send test event** button in the Monitoring page header pushes a synthetic 
 GET  /api/monitoring/alerts?limit=50   → list recent alerts
 GET  /api/monitoring/alerts/{id}       → single alert detail
 GET  /api/monitoring/services          → service health summary
+GET  /api/monitoring/stream            → SSE stream of new alerts (real-time push)
 ```
+
+The SSE stream (`/api/monitoring/stream`) sends a `connected` event on open, an `alert` event for each new alert as it is added, and a `heartbeat` every 20 seconds to keep the connection alive. The frontend subscribes on page load and falls back to 30-second polling if the connection drops.
 
 ---
 
@@ -264,9 +248,10 @@ GET  /api/monitoring/services          → service health summary
 |---|---|
 | `frontend/src/pages/MonitoringPage.tsx` | Live incident feed UI |
 | `frontend/src/pages/AlertDetailPage.tsx` | Alert detail + investigate deeplink |
-| `src/api/routers/monitoring.py` | REST endpoints |
-| `src/agent/monitor_store.py` | In-process service status + DB-backed alert, notification, and incident claim persistence |
-| `src/agent/poller.py` | Proactive polling loop |
+| `src/api/routers/monitoring.py` | REST endpoints + SSE stream |
+| `src/agent/monitor_store.py` | In-process service status + DB-backed alert, notification, and incident claim persistence; SSE subscriber broadcast |
+| `src/agent/investigation_runner.py` | Shared investigation runner used by both poller and event consumer |
+| `src/agent/poller.py` | Proactive polling loop (bounded ThreadPoolExecutor, 4 workers) |
 | `src/agent/event_consumer.py` | SQS long-poll consumer |
 | `src/agent/event_infra.py` | Create/teardown SQS + EventBridge + alarm |
 | `src/agent/context_collectors.py` | Per-event-type boto3 context enrichment |

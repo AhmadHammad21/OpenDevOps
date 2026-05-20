@@ -21,34 +21,46 @@ For a typical self-hosted deployment, create an IAM user and paste the keys into
 1. Open **IAM → Users → Create user** in the AWS console
 2. Username: `opendevops-agent` (or any name you prefer)
 3. Select **"Attach policies directly"**
-4. Create and attach the inline policy below (see [Step 2](#step-2--iam-policy))
+4. Create and attach **both** customer-managed policies from [Step 2](#step-2--iam-policies) below
 5. Open the user → **Security credentials → Create access key**
 6. Choose **"Other"** as the use case
 7. Copy the **Access key ID** and **Secret access key** — you won't see the secret again
 
+If you only want the chat interface and manual investigations (no event-driven monitoring), attach only **Policy 1** and skip Policy 2.
+
 ---
 
-## Step 2 — IAM policy
+## Step 2 — IAM policies
 
-Create a **customer-managed policy** named `OpenDevOpsAgentPolicy` with this JSON:
+Two policies keep the least-privilege boundary clean:
+
+- **Policy 1 (Operational)** — read access across all resources, plus runtime SQS queue polling on the specific event queue. Required for all OpenDevOps features.
+- **Policy 2 (Setup)** — write actions scoped to `opendevops-*` resources only. Required only if you use the Settings → AWS Configuration setup wizard to create SQS/EventBridge/CloudWatch infrastructure.
+
+### Policy 1 — OpenDevOpsAgentOperational
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ReadOnlyInvestigation",
+      "Sid": "ReadAll",
       "Effect": "Allow",
       "Action": [
         "cloudwatch:DescribeAlarms",
         "cloudwatch:DescribeAlarmHistory",
         "cloudwatch:GetMetricStatistics",
         "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics",
         "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:FilterLogEvents",
+        "logs:GetLogEvents",
         "logs:StartQuery",
+        "logs:StopQuery",
         "logs:GetQueryResults",
         "cloudtrail:LookupEvents",
+        "cloudtrail:GetTrailStatus",
         "ecs:ListClusters",
         "ecs:DescribeClusters",
         "ecs:ListServices",
@@ -64,42 +76,66 @@ Create a **customer-managed policy** named `OpenDevOpsAgentPolicy` with this JSO
         "rds:DescribeEvents",
         "iam:ListAttachedRolePolicies",
         "iam:ListRolePolicies",
-        "sts:GetCallerIdentity"
+        "sts:GetCallerIdentity",
+        "sqs:ListQueues",
+        "sqs:GetQueueUrl",
+        "sqs:GetQueueAttributes",
+        "events:ListRules",
+        "events:DescribeRule",
+        "events:ListTargetsByRule"
       ],
       "Resource": "*"
     },
     {
-      "Sid": "EventMonitoringSetup",
+      "Sid": "SQSConsume",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:ChangeMessageVisibility"
+      ],
+      "Resource": "arn:aws:sqs:*:*:opendevops-agent-events"
+    }
+  ]
+}
+```
+
+### Policy 2 — OpenDevOpsAgentSetup
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SQSSetup",
       "Effect": "Allow",
       "Action": [
         "sqs:CreateQueue",
         "sqs:DeleteQueue",
-        "sqs:GetQueueUrl",
-        "sqs:GetQueueAttributes",
         "sqs:SetQueueAttributes",
-        "sqs:ListQueues",
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage",
-        "sqs:ChangeMessageVisibility",
-        "sqs:SendMessage",
+        "sqs:SendMessage"
+      ],
+      "Resource": "arn:aws:sqs:*:*:opendevops-*"
+    },
+    {
+      "Sid": "EventBridgeSetup",
+      "Effect": "Allow",
+      "Action": [
         "events:PutRule",
         "events:PutTargets",
-        "events:ListRules",
         "events:RemoveTargets",
-        "events:DeleteRule",
+        "events:DeleteRule"
+      ],
+      "Resource": "arn:aws:events:*:*:rule/opendevops-*"
+    },
+    {
+      "Sid": "CloudWatchAlarmSetup",
+      "Effect": "Allow",
+      "Action": [
         "cloudwatch:PutMetricAlarm",
         "cloudwatch:DeleteAlarms"
       ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "SNSNotifications",
-      "Effect": "Allow",
-      "Action": [
-        "sns:Publish",
-        "sns:GetTopicAttributes"
-      ],
-      "Resource": "*"
+      "Resource": "arn:aws:cloudwatch:*:*:alarm:opendevops-*"
     }
   ]
 }
@@ -107,15 +143,19 @@ Create a **customer-managed policy** named `OpenDevOpsAgentPolicy` with this JSO
 
 ### What each block does
 
-| Block | Purpose |
-|---|---|
-| `ReadOnlyInvestigation` | Read-only access to CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, IAM — used by the investigation agent tools |
-| `EventMonitoringSetup` | Create/manage the SQS queue and EventBridge rules during the setup wizard; poll SQS at runtime for incoming events |
-| `SNSNotifications` | Optional — publish alert summaries to an SNS topic after investigations; check topic attributes during permission check. Remove this block if you're not using SNS. |
+| Block | Policy | Purpose |
+|---|---|---|
+| `ReadAll` | Operational | Read access across CloudWatch, logs, CloudTrail, ECS, Lambda, EC2, RDS, IAM, STS, SQS, EventBridge — used by all investigation tools and bash-based AWS CLI calls |
+| `SQSConsume` | Operational | Polls `opendevops-agent-events` at runtime for incoming EventBridge events |
+| `SQSSetup` | Setup | Creates and tears down the SQS queue and DLQ; sends test events via the pipeline test script |
+| `EventBridgeSetup` | Setup | Creates and tears down the 9 EventBridge rules that forward AWS events to SQS |
+| `CloudWatchAlarmSetup` | Setup | Creates and tears down the aggregate `opendevops-lambda-errors-aggregate` CloudWatch alarm |
+
+**Why reads use `*`:** The agent can issue arbitrary AWS CLI commands via its bash tool. Scoping reads to specific resource ARNs would silently break any investigation that touches a resource not on the allowlist. Write actions are scoped to `opendevops-*` because the app only creates infrastructure under that prefix and nothing else.
 
 ### Minimal policy (investigation only, no event monitoring)
 
-If you only want the chat interface and manual investigations — no automatic event detection — you can attach just the `ReadOnlyInvestigation` statement and skip the rest.
+If you only want the chat interface and manual investigations — no automatic event detection — attach only **Policy 1** (`ReadAll` + `SQSConsume`). The `SQSConsume` statement is harmless if you never create the queue.
 
 ---
 
@@ -156,7 +196,6 @@ After starting the app, the setup wizard's **Step 3 (Permission Check)** calls e
 | RDS | No |
 | EC2 | No |
 | IAM / STS | No |
-| SNS | No |
 | CloudTrail | No |
 
 Required services must pass for event monitoring to work. Optional services are used when available — missing permissions will simply return empty results for that service.
@@ -165,4 +204,4 @@ Required services must pass for event monitoring to work. Optional services are 
 
 ## Using an IAM role instead of a user
 
-If running on EC2, ECS, or Lambda, attach the same policy to the instance/task role instead. Remove `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_PROFILE` from `.env` — the SDK picks up the role automatically via the instance metadata service.
+If running on EC2, ECS, or Lambda, attach the same policies to the instance/task role instead. Remove `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_PROFILE` from `.env` — the SDK picks up the role automatically via the instance metadata service.

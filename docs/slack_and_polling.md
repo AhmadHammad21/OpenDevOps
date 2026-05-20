@@ -78,6 +78,9 @@ Calls `list_lambda_functions` (capped at 20 functions) and checks each one's err
 ### Dedup
 The poller uses canonical incident keys and an atomic database claim before the agent runs. If the cooldown (`POLL_REINVESTIGATE_HOURS`) has not elapsed, the alarm or function is skipped. Autonomous polling requires SQLite or PostgreSQL; memory mode does not start the poller.
 
+### Thread isolation
+Boto3 calls in the poller run inside a bounded `ThreadPoolExecutor(max_workers=4)` named `poller`. This prevents poller threads from consuming the default executor used by the rest of the app, and caps concurrent boto3 calls to four threads even if multiple alarms fire simultaneously.
+
 ---
 
 ## When is `submit_investigation` called?
@@ -93,6 +96,8 @@ So the agent calls it exactly like any other tool — it decides when it has eno
 - **Triggers Slack** — `_maybe_notify_slack` scans `tool_calls_log` for a `submit_investigation` entry; no special signal needed
 
 The function itself just returns `"Investigation result recorded."` — the real value is in the structured args the LLM was forced to populate.
+
+If the LLM completes the ReAct loop without ever calling `submit_investigation` (a failure mode seen with some weaker models), the investigation runner synthesizes a `_status: failed` result so the alert is always persisted to the monitoring page instead of being silently dropped.
 
 ---
 
