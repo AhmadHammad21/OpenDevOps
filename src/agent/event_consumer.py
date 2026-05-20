@@ -404,6 +404,9 @@ async def _process_event(event: dict) -> ProcessResult:
         return "duplicate"
 
     logger.info("Processing event: {} / {} (incident_key={})", source, detail_type, incident_key)
+    aws_error = _extract_aws_error(event)
+    if aws_error:
+        logger.debug("Event consumer: error message for investigation: {}", aws_error)
 
     prompt = _build_investigation_prompt(event)
 

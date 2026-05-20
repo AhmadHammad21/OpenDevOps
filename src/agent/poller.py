@@ -246,6 +246,8 @@ async def _check_alarms() -> None:
             continue
 
         logger.info("Poller: new ALARM state detected — {}", name)
+        if alarm.get("state_reason"):
+            logger.debug("Poller: alarm {} state reason: {}", name, alarm["state_reason"])
 
         prompt = (
             f'CloudWatch alarm "{name}" is in ALARM state.\n'
@@ -319,6 +321,8 @@ async def _check_lambda_errors() -> None:
             continue
 
         logger.info("Poller: Lambda {} error rate {:.1f}% exceeds threshold", name, error_rate)
+        if metrics.get("error_message"):
+            logger.debug("Poller: Lambda {} error message: {}", name, metrics["error_message"])
 
         prompt = (
             f'Lambda function "{name}" has an error rate of {error_rate:.1f}% over the last hour, '
