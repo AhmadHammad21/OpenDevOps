@@ -29,7 +29,8 @@ export function fmtTok(n?: number): string {
 }
 
 export function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
+  const normalized = isoStr.includes('Z') || isoStr.includes('+') ? isoStr : isoStr + 'Z';
+  const diff = Date.now() - new Date(normalized).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1)  return 'just now';
   if (mins < 60) return `${mins}m ago`;
