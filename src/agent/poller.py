@@ -10,12 +10,19 @@ Every POLL_INTERVAL_SECONDS it:
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from loguru import logger
 
-from agent.incident_keys import alarm_incident_key, lambda_error_incident_key, lambda_metric_incident_key
+from agent.incident_keys import (
+    alarm_incident_key,
+    lambda_error_incident_key,
+)
 from config import settings
+
+# Dedicated pool so poller boto3 calls never compete with API request threads
+_POLLER_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="poller")
 
 
 def _claim_window_minutes() -> int:
@@ -25,135 +32,8 @@ def _claim_window_minutes() -> int:
 async def _run_investigation(
     prompt: str, session_id: str
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """Run a full agent investigation using the same streaming path as the chat endpoint."""
-    import json
-
-    from agent.core import get_agent
-    from agent.turns import save_turn
-
-    def _f(obj: Any, key: str, default: Any = None) -> Any:
-        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
-
-    config = {
-        "configurable": {"thread_id": session_id},
-        "recursion_limit": settings.max_tool_calls * 3 + 15,
-    }
-
-    tc_accum: dict[int, dict[str, Any]] = {}
-    pending_calls: dict[str, dict[str, Any]] = {}
-    tool_calls_log: list[dict[str, Any]] = []
-    investigation_result: dict[str, Any] | None = None
-    response_text = ""
-    usage_meta: Any = None
-
-    try:
-        async with asyncio.timeout(settings.investigation_timeout):
-            async for chunk, _meta in get_agent().astream(
-                {"messages": [{"role": "user", "content": prompt}]},
-                config=config,
-                stream_mode="messages",
-            ):
-                um = getattr(chunk, "usage_metadata", None)
-                if um:
-                    usage_meta = um
-
-                for tcc in getattr(chunk, "tool_call_chunks", []) or []:
-                    idx = _f(tcc, "index", 0)
-                    if idx not in tc_accum:
-                        tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
-                    if tc_id := _f(tcc, "id"):
-                        tc_accum[idx]["id"] = tc_id
-                    if name := (_f(tcc, "name") or ""):
-                        tc_accum[idx]["name"] += name
-                    if args := (_f(tcc, "args") or ""):
-                        tc_accum[idx]["args_str"] += args
-
-                for tc in getattr(chunk, "tool_calls", []) or []:
-                    tc_id = _f(tc, "id") or ""
-                    name = _f(tc, "name") or ""
-                    args = _f(tc, "args") or {}
-                    if tc_id and name:
-                        pending_calls[tc_id] = {
-                            "tool": name,
-                            "args": args if isinstance(args, dict) else {},
-                        }
-
-                content = getattr(chunk, "content", "")
-                tc_id = getattr(chunk, "tool_call_id", None)
-
-                if content and isinstance(content, str) and not tc_id:
-                    response_text += content
-
-                if tc_id:
-                    for entry in tc_accum.values():
-                        if eid := entry["id"]:
-                            try:
-                                eargs: Any = (
-                                    json.loads(entry["args_str"]) if entry["args_str"] else {}
-                                )
-                            except json.JSONDecodeError:
-                                eargs = {}
-                            pending_calls[eid] = {"tool": entry["name"], "args": eargs}
-                    tc_accum.clear()
-
-                    call_info = pending_calls.pop(
-                        tc_id,
-                        {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
-                    )
-                    try:
-                        result = json.loads(content)
-                    except (json.JSONDecodeError, TypeError):
-                        result = {"raw": str(content)[:500]}
-
-                    tool_calls_log.append({
-                        "tool": call_info["tool"],
-                        "args": call_info["args"],
-                        "result": result,
-                    })
-                    if call_info["tool"] == "submit_investigation":
-                        investigation_result = call_info["args"]
-
-    except Exception as e:
-        logger.error("Poller investigation failed: {}", e)
-        investigation_result = {
-            "_status": "failed",
-            "root_cause_summary": f"Investigation failed: {e}",
-            "confidence": "LOW",
-            "mitigation_steps": [
-                "Re-investigate manually via the chat — use a higher MAX_TOOL_CALLS if needed.",
-            ],
-        }
-
-    if (investigation_result and investigation_result.get("root_cause_summary")
-            and "_status" not in investigation_result):
-        steps = investigation_result.get("mitigation_steps", [])
-        steps_text = "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
-        confidence = investigation_result.get("confidence", "MEDIUM")
-        assistant_text = (
-            f"**Root Cause ({confidence} confidence):** "
-            f"{investigation_result['root_cause_summary']}\n\n"
-            f"**Mitigation Steps:**\n{steps_text}"
-        )
-    elif response_text.strip():
-        assistant_text = response_text.strip()
-    else:
-        assistant_text = "Investigation completed. See tool calls for details."
-
-    await save_turn(
-        session_id=session_id,
-        user_message=prompt,
-        assistant_text=assistant_text,
-        tool_calls_log=tool_calls_log,
-        usage={
-            "model": settings.llm_model,
-            "input_tokens": _f(usage_meta, "input_tokens", 0) or 0,
-            "output_tokens": _f(usage_meta, "output_tokens", 0) or 0,
-            "latency_ms": 0,
-        },
-        source="event",
-    )
-
-    return investigation_result, tool_calls_log
+    from agent.investigation_runner import run_investigation
+    return await run_investigation(prompt, session_id)
 
 
 async def _persist_and_notify(
@@ -231,7 +111,7 @@ async def _check_alarms() -> None:
     )
     from tools.cloudwatch import get_alarms
 
-    data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
+    data = await asyncio.get_event_loop().run_in_executor(_POLLER_POOL, get_alarms, "ALARM")
     alarms = data.get("alarms", [])
     logger.debug("Poller: {} alarm(s) in ALARM state", len(alarms))
     for alarm in alarms:
@@ -305,7 +185,7 @@ async def _check_lambda_errors() -> None:
     )
     from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
-    funcs = await asyncio.get_event_loop().run_in_executor(None, list_lambda_functions)
+    funcs = await asyncio.get_event_loop().run_in_executor(_POLLER_POOL, list_lambda_functions)
     fn_list = funcs.get("functions", [])[:20]
     logger.debug("Poller: checking error rates for {} Lambda function(s)", len(fn_list))
     for fn in fn_list:  # cap at 20 to avoid runaway API calls

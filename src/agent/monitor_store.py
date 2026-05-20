@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from loguru import logger
 
 # In-memory service status (ephemeral — just current state)
 _services: dict[str, dict] = {}
+
+# SSE subscribers — one Queue per connected /api/monitoring/stream client
+_alert_subscribers: set[asyncio.Queue[dict | None]] = set()
+
+
+def subscribe_alerts() -> asyncio.Queue[dict | None]:
+    q: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=50)
+    _alert_subscribers.add(q)
+    return q
+
+
+def unsubscribe_alerts(q: asyncio.Queue[dict | None]) -> None:
+    _alert_subscribers.discard(q)
+
+
+def _broadcast_alert(alert: dict) -> None:
+    for q in list(_alert_subscribers):
+        try:
+            q.put_nowait(alert)
+        except asyncio.QueueFull:
+            pass
 
 
 async def add_alert(
@@ -22,14 +44,30 @@ async def add_alert(
     trigger_source: str | None = None,
     evidence: list | None = None,
 ) -> str:
-    """Persist an alert to the DB backend."""
+    """Persist an alert to the DB backend and broadcast to SSE subscribers."""
     from agent.db import db
 
     try:
-        return await db.add_alert(
+        alert_id = await db.add_alert(
             service, error, resolution, confidence, sns_sent,
             dedup_key, status, session_id, trigger_source, evidence,
         )
+        if alert_id and _alert_subscribers:
+            _broadcast_alert({
+                "id": alert_id,
+                "service": service,
+                "error": error,
+                "resolution": resolution,
+                "confidence": confidence,
+                "sns_sent": sns_sent,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "dedup_key": dedup_key,
+                "status": status,
+                "trigger_source": trigger_source,
+                "session_id": session_id,
+                "evidence": evidence or [],
+            })
+        return alert_id
     except Exception as e:
         logger.error("Failed to persist alert: {}", e)
         return ""
@@ -109,7 +147,7 @@ async def is_incident_claimed(incident_key: str, within_minutes: int = 3) -> boo
 def update_service(name: str, status: str, error: str | None = None) -> None:
     _services[name] = {
         "name": name,
-        "status": status,
+        "status": "error" if status == "failed" else "healthy",
         "last_check": datetime.now(UTC).isoformat(),
         "last_error": error,
     }
@@ -127,5 +165,21 @@ async def get_alert_async(alert_id: str) -> dict | None:
     return await db.get_alert(alert_id)
 
 
-def get_services() -> list[dict]:
-    return list(_services.values())
+async def get_services() -> list[dict]:
+    """Return service health. Uses in-memory dict if populated; falls back to DB on restart."""
+    if _services:
+        return list(_services.values())
+    # After restart the dict is empty — derive last-known status per service from persisted alerts.
+    alerts = await get_alerts_async(limit=200)
+    seen: dict[str, dict] = {}
+    for a in alerts:
+        svc = a.get("service") or ""
+        if svc and svc not in seen:
+            alert_status = a.get("status", "completed")
+            seen[svc] = {
+                "name": svc,
+                "status": "error" if alert_status == "failed" else "healthy",
+                "last_check": a.get("timestamp") or "",
+                "last_error": a.get("error") if alert_status == "failed" else None,
+            }
+    return list(seen.values())
