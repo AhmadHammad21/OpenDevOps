@@ -7,8 +7,13 @@ import { fetchAlerts, fetchServices, apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import type { Alert, ServiceStatus } from '../types';
 
+function parseUTC(ts: string): Date {
+  // SQLite omits timezone suffix; append 'Z' so JS treats bare strings as UTC
+  return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts + 'Z');
+}
+
 function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseUTC(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

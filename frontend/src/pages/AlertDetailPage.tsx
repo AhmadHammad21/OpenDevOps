@@ -108,7 +108,7 @@ export default function AlertDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#71717A]">
-              <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.timestamp).toLocaleString()}</span>
+              <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.timestamp.includes('Z') || alert.timestamp.includes('+') ? alert.timestamp : alert.timestamp + 'Z').toLocaleString()}</span>
               {alert.trigger_source && (
                 <span className="flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#27272A] text-gray-600 dark:text-[#94A3B8]">
                   {alert.trigger_source === 'poller' ? '⏱ Poller' : '⚡ Event consumer'}
