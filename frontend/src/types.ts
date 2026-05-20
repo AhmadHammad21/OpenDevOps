@@ -110,12 +110,14 @@ export interface Alert {
   service: string;
   error: string;
   resolution: string;
+  evidence: string[];
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   status: 'completed' | 'failed';
   sns_sent: boolean;
   timestamp: string;
   session_id?: string;
   trigger_source?: 'poller' | 'event_consumer';
+  dedup_key?: string;
   notifications?: AlertNotification[];
 }
 

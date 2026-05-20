@@ -47,7 +47,7 @@ async def register(req: RegisterRequest) -> TokenResponse:
     if not user:
         raise HTTPException(
             status_code=501,
-            detail="User management requires CHECKPOINT_BACKEND=postgres",
+            detail="User management is not supported by the selected backend",
         )
     return TokenResponse(access_token=create_access_token(str(user["id"]), role))
 

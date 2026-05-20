@@ -101,10 +101,10 @@ Everything below is built and working in the codebase:
 ### Event-Driven Detection
 - `event_consumer_loop()` long-polls SQS (20s wait), processes EventBridge events (CloudWatch alarm, ECS task failure, Lambda async error, RDS event, EC2 state change, CodePipeline failure, AWS Health), runs a full agent investigation per event, delivers results to SNS + Slack, persists to `alerts` table.
 - `context_collectors.collect_context()` pre-fetches resource facts deterministically before the LLM runs to reduce tool call count.
-- Starts automatically on app startup if `event_consumer_enabled=True`, `sqs_queue_url` is set, or `init.json` marks the wizard as completed.
+- Starts automatically on app startup if `event_consumer_enabled=True`, `sqs_queue_url` is set, or database-backed app config marks event infrastructure as enabled. Autonomous monitoring requires SQLite or PostgreSQL; memory mode is disabled for poller/consumer runs.
 
 ### Proactive Polling
-- `polling_loop()` runs every `POLL_INTERVAL_SECONDS` seconds (disabled by default at 0); checks CloudWatch alarms in ALARM state and Lambda error rates above `POLL_ERROR_THRESHOLD`; auto-investigates new anomalies and posts to Slack. In-memory dedup via `_last_investigated` map.
+- `polling_loop()` runs every `POLL_INTERVAL_SECONDS` seconds (disabled by default at 0); checks CloudWatch alarms in ALARM state and Lambda error rates above `POLL_ERROR_THRESHOLD`; auto-investigates new anomalies and posts to Slack/Telegram. Dedup uses canonical incident keys and durable DB-backed claims.
 
 ### Frontend
 - React 18 + TypeScript + Vite + Tailwind CSS + `@tailwindcss/typography`
@@ -225,10 +225,10 @@ POLL_REINVESTIGATE_HOURS=1            # dedup window
 # Event-driven detection
 SNS_TOPIC_ARN=                         # SNS publish target after investigations
 SQS_QUEUE_URL=                         # SQS queue for EventBridge events
-EVENT_CONSUMER_ENABLED=false           # also auto-starts if SQS_QUEUE_URL is set or init.json exists
+EVENT_CONSUMER_ENABLED=false           # also auto-starts if SQS_QUEUE_URL is set or app config enables infra
 
 # Misc
-DATA_DIR=data                          # server-side state files (init.json)
+DATA_DIR=data                          # reserved for future file-based state
 ```
 
 ---
@@ -262,7 +262,7 @@ EventBridge rules (9 event types)
 ```
 db.init()  →  init_agent(checkpointer)
   optional: asyncio.create_task(polling_loop())       if POLL_INTERVAL_SECONDS > 0
-  optional: asyncio.create_task(event_consumer_loop()) if SQS configured or init.json present
+  optional: asyncio.create_task(event_consumer_loop()) if SQS configured or app config enables infra
 ```
 
 ### Session continuity

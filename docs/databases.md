@@ -9,7 +9,7 @@ OpenDevOps Agent supports three storage backends. Pick one per deployment — se
 
 | Backend    | Persistence | External service | Dashboard | Best for                          |
 |------------|-------------|-----------------|-----------|-----------------------------------|
-| `memory`   | None        | None            | Counts only | CI, quick demos, local testing  |
+| `memory`   | None        | None            | Counts only; no autonomous monitoring | CI, quick demos, local testing  |
 | `sqlite`   | Local file  | None            | Full      | Single-server, personal use       |
 | `postgres` | Database    | PostgreSQL 14+  | Full      | Production, teams, multi-instance |
 
@@ -23,6 +23,13 @@ CHECKPOINT_BACKEND=memory
 
 Everything lives in Python dicts for the life of the process. On restart, all
 sessions and history are gone. The LangGraph checkpointer uses `MemorySaver`.
+
+Autonomous monitoring is disabled in memory mode. The poller and SQS event
+consumer require durable incident claims, so use SQLite or PostgreSQL for those
+features.
+
+Auth/register/login work in memory mode when `JWT_SECRET` is set, but users are
+lost on restart with the rest of the in-memory state.
 
 **When to use:** CI pipelines, smoke-testing, one-off demos.
 
@@ -45,8 +52,7 @@ LangGraph checkpointer. Both share the same `.db` file via separate connections
 with WAL mode enabled.
 
 SQLite also stores app-level configuration such as init wizard completion and event
-monitoring infrastructure state in `app_config`. `data/init.json` is only a local
-cache/fallback.
+monitoring infrastructure state in `app_config`.
 
 The file and its parent directory are created automatically on first start.
 

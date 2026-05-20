@@ -39,6 +39,8 @@ def _default() -> dict:
         "aws_region": settings.aws_region,
         "sqs_queue_url": "",
         "sqs_queue_arn": "",
+        "sqs_dlq_url": "",
+        "sqs_dlq_arn": "",
         "eventbridge_rule_arns": {},
         "permissions": {
             "cloudwatch": None,

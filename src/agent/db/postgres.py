@@ -578,15 +578,18 @@ class PostgresBackend(DatabaseBackend):
         status: str = "completed",
         session_id: str | None = None,
         trigger_source: str | None = None,
+        evidence: list | None = None,
     ) -> str:
+        import json as _json
         row = await self._fetchrow(
             "INSERT INTO alerts"
             " (service, error, resolution, confidence, sns_sent, dedup_key, status,"
-            "  session_id, trigger_source)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "  session_id, trigger_source, evidence)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             service, error, resolution, confidence, sns_sent, dedup_key, status,
             uuid.UUID(session_id) if session_id else None,
             trigger_source,
+            _json.dumps(evidence or []),
         )
         return str(row["id"]) if row else ""
 
@@ -611,10 +614,63 @@ class PostgresBackend(DatabaseBackend):
         )
         return row is not None
 
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        row = await self._fetchrow(
+            "INSERT INTO incident_claims"
+            " (incident_key, trigger_source, status, claimed_at, completed_at, session_id)"
+            " VALUES (%s, %s, 'claimed', NOW(), NULL, NULL)"
+            " ON CONFLICT (incident_key) DO UPDATE SET"
+            " trigger_source = EXCLUDED.trigger_source, status = 'claimed',"
+            " claimed_at = NOW(), completed_at = NULL, session_id = NULL"
+            " WHERE COALESCE(incident_claims.completed_at, incident_claims.claimed_at)"
+            " < NOW() - (%s * INTERVAL '1 minute')"
+            " RETURNING incident_key",
+            incident_key, trigger_source, within_minutes,
+        )
+        return row is not None
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO incident_claims"
+            " (incident_key, trigger_source, status, session_id, claimed_at, completed_at)"
+            " VALUES (%s, 'unknown', %s, %s, NOW(), NOW())"
+            " ON CONFLICT (incident_key) DO UPDATE SET"
+            " status = EXCLUDED.status, session_id = EXCLUDED.session_id, completed_at = NOW()",
+            incident_key,
+            status,
+            uuid.UUID(session_id) if session_id else None,
+        )
+
+    async def release_incident(self, incident_key: str) -> None:
+        await self._exec(
+            "DELETE FROM incident_claims WHERE incident_key = %s AND status = 'claimed'",
+            incident_key,
+        )
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchrow(
+            "SELECT 1 FROM incident_claims WHERE incident_key = %s"
+            " AND COALESCE(completed_at, claimed_at) > NOW() - (%s * INTERVAL '1 minute')"
+            " LIMIT 1",
+            incident_key, within_minutes,
+        )
+        return row is not None
+
     async def get_alerts(self, limit: int = 50) -> list[dict]:
+        import json as _json
         rows = await self._fetchall(
             "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source"
+            "       created_at, session_id, trigger_source, dedup_key, evidence"
             " FROM alerts ORDER BY created_at DESC LIMIT %s",
             min(limit, 200),
         )
@@ -630,14 +686,17 @@ class PostgresBackend(DatabaseBackend):
                 "timestamp": r["created_at"].isoformat() if r["created_at"] else None,
                 "session_id": str(r["session_id"]) if r["session_id"] else None,
                 "trigger_source": r["trigger_source"],
+                "dedup_key": r["dedup_key"],
+                "evidence": _json.loads(r["evidence"]) if r.get("evidence") else [],
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
+        import json as _json
         row = await self._fetchrow(
             "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source"
+            "       created_at, session_id, trigger_source, dedup_key, evidence"
             " FROM alerts WHERE id = %s",
             uuid.UUID(alert_id),
         )
@@ -659,6 +718,8 @@ class PostgresBackend(DatabaseBackend):
             "timestamp": row["created_at"].isoformat() if row["created_at"] else None,
             "session_id": str(row["session_id"]) if row["session_id"] else None,
             "trigger_source": row["trigger_source"],
+            "dedup_key": row["dedup_key"],
+            "evidence": _json.loads(row["evidence"]) if row.get("evidence") else [],
             "notifications": [
                 {
                     "channel": n["channel"],

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -21,7 +21,10 @@ class MemoryBackend(DatabaseBackend):
         self._messages: dict[str, list[dict]] = defaultdict(list)
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
+        self._orgs: dict[str, dict] = {}
+        self._users: dict[str, dict] = {}
         self._alerts: list[dict] = []
+        self._incident_claims: dict[str, dict] = {}
         self._app_config: dict[str, dict] = {}
 
     async def init(self) -> Any:
@@ -210,7 +213,10 @@ class MemoryBackend(DatabaseBackend):
             sum(u["latency_ms"] for u in all_usage) // len(all_usage)
             if all_usage else 0
         )
-        summ_events  = [u for u in all_usage if isinstance(u.get("metadata"), dict) and u["metadata"].get("summarization")]
+        summ_events = [
+            u for u in all_usage
+            if isinstance(u.get("metadata"), dict) and u["metadata"].get("summarization")
+        ]
 
         return {
             "summary": {
@@ -223,7 +229,9 @@ class MemoryBackend(DatabaseBackend):
                 "total_cost_usd":    total_cost,
                 "avg_latency_ms":    avg_latency,
                 "total_summarizations":  len(summ_events),
-                "total_chars_compacted": sum(e["metadata"].get("chars_removed", 0) for e in summ_events),
+                "total_chars_compacted": sum(
+                    e["metadata"].get("chars_removed", 0) for e in summ_events
+                ),
             },
             "activity": [],
             "top_tools": [],
@@ -241,6 +249,84 @@ class MemoryBackend(DatabaseBackend):
             "trend": [],
         }
 
+    # ── User / auth ─────────────────────────────────────────────────────────
+
+    async def count_users(self) -> int:
+        return sum(1 for user in self._users.values() if user.get("password_hash"))
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        for user in self._users.values():
+            if user["email"] == email:
+                return dict(user)
+        return None
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        user = self._users.get(user_id)
+        return dict(user) if user else None
+
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        for org in self._orgs.values():
+            if org["slug"] == slug:
+                org["name"] = name
+                return dict(org)
+        org_id = str(uuid.uuid4())
+        org = {"id": org_id, "name": name, "slug": slug, "created_at": self._now()}
+        self._orgs[org_id] = org
+        return dict(org)
+
+    async def get_first_org(self) -> dict | None:
+        if not self._orgs:
+            return None
+        org = sorted(self._orgs.values(), key=lambda item: item["created_at"])[0]
+        return dict(org)
+
+    async def create_user(
+        self,
+        email: str,
+        name: str,
+        password_hash: str,
+        role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        if await self.get_user_by_email(email):
+            return None
+        user_id = str(uuid.uuid4())
+        user = {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "password_hash": password_hash,
+            "role": role,
+            "org_id": org_id,
+            "created_at": self._now(),
+        }
+        self._users[user_id] = user
+        return {k: v for k, v in user.items() if k != "password_hash"}
+
+    async def list_users(self) -> list[dict]:
+        users = sorted(self._users.values(), key=lambda item: item["created_at"])
+        return [
+            {k: v for k, v in user.items() if k != "password_hash"}
+            for user in users
+        ]
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        user = self._users.get(user_id)
+        if not user:
+            return None
+        for key in ("name", "role", "password_hash"):
+            if key in fields:
+                user[key] = fields[key]
+        return {k: v for k, v in user.items() if k != "password_hash"}
+
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        for user in self._users.values():
+            if not user.get("org_id"):
+                user["org_id"] = org_id
+
+    async def delete_user(self, user_id: str) -> None:
+        self._users.pop(user_id, None)
+
     # ── Alerts ────────────────────────────────────────────────────────────────
 
     async def add_alert(
@@ -253,6 +339,7 @@ class MemoryBackend(DatabaseBackend):
         dedup_key: str | None = None,
         status: str = "completed",
         session_id: str | None = None,
+        trigger_source: str | None = None,
     ) -> str:
         alert_id = str(uuid.uuid4())
         self._alerts.append({
@@ -266,8 +353,87 @@ class MemoryBackend(DatabaseBackend):
             "dedup_key": dedup_key,
             "status": status,
             "session_id": session_id,
+            "trigger_source": trigger_source,
+            "notifications": [],
         })
         return alert_id
+
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        for alert in self._alerts:
+            if alert["id"] == alert_id:
+                alert.setdefault("notifications", []).append({
+                    "channel": channel,
+                    "status": status,
+                    "error": error,
+                    "sent_at": self._now(),
+                })
+                return
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        cutoff = datetime.now(UTC) - timedelta(minutes=within_minutes)
+        for alert in self._alerts:
+            if alert.get("dedup_key") != dedup_key:
+                continue
+            try:
+                if datetime.fromisoformat(alert["timestamp"]) > cutoff:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        now = datetime.now(UTC)
+        existing = self._incident_claims.get(incident_key)
+        if existing:
+            last = existing.get("completed_at") or existing.get("claimed_at") or now
+            if now - last <= timedelta(minutes=within_minutes):
+                return False
+        self._incident_claims[incident_key] = {
+            "trigger_source": trigger_source,
+            "status": "claimed",
+            "session_id": None,
+            "claimed_at": now,
+            "completed_at": None,
+        }
+        return True
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        claim = self._incident_claims.setdefault(
+            incident_key,
+            {"trigger_source": "unknown", "claimed_at": datetime.now(UTC)},
+        )
+        claim.update({
+            "status": status,
+            "session_id": session_id,
+            "completed_at": datetime.now(UTC),
+        })
+
+    async def release_incident(self, incident_key: str) -> None:
+        if self._incident_claims.get(incident_key, {}).get("status") == "claimed":
+            self._incident_claims.pop(incident_key, None)
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        claim = self._incident_claims.get(incident_key)
+        if not claim:
+            return False
+        last = claim.get("completed_at") or claim.get("claimed_at")
+        return bool(last and datetime.now(UTC) - last <= timedelta(minutes=within_minutes))
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         return list(reversed(self._alerts))[:min(limit, 200)]

@@ -7,8 +7,13 @@ import { fetchAlerts, fetchServices, apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import type { Alert, ServiceStatus } from '../types';
 
+function parseUTC(ts: string): Date {
+  // SQLite omits timezone suffix; append 'Z' so JS treats bare strings as UTC
+  return new Date(ts.includes('Z') || ts.includes('+') ? ts : ts + 'Z');
+}
+
 function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseUTC(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -200,6 +205,11 @@ export default function MonitoringPage() {
                         )}
                       </div>
                       <p className="text-sm text-gray-600 dark:text-[#A1A1AA] truncate mt-0.5">{a.error}</p>
+                      {a.dedup_key && (
+                        <p className="text-[11px] text-gray-400 dark:text-[#52525B] font-mono truncate mt-0.5">
+                          {a.dedup_key.split(':').pop()}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-gray-400 dark:text-[#52525B]">{timeAgo(a.timestamp)}</span>

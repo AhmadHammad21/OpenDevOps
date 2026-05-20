@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     event_consumer_enabled: bool = False
     sqs_queue_url: str | None = None
 
-    # Directory for file-based state (init.json)
+    # Reserved for future file-based state; init config is stored in the DB backend.
     data_dir: str = "data"
 
 

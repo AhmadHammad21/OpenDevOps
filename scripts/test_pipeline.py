@@ -40,6 +40,7 @@ import argparse
 import datetime
 import json
 import os
+import sqlite3
 import sys
 
 import boto3
@@ -68,16 +69,21 @@ def die(msg: str) -> None:
 
 
 def get_queue_url() -> str:
-    init_path = os.path.join(os.path.dirname(__file__), "..", "data", "init.json")
-    if os.path.exists(init_path):
+    if queue_url := os.environ.get("SQS_QUEUE_URL", ""):
+        return queue_url
+
+    sqlite_path = os.environ.get("SQLITE_PATH", "./data/agent.db")
+    if os.path.exists(sqlite_path):
         try:
-            with open(init_path) as f:
-                url = json.load(f).get("sqs_queue_url", "")
-                if url:
-                    return url
+            with sqlite3.connect(sqlite_path) as conn:
+                row = conn.execute(
+                    "SELECT value FROM app_config WHERE key = 'init'"
+                ).fetchone()
+            if row:
+                return json.loads(row[0]).get("sqs_queue_url", "")
         except Exception:
             pass
-    return os.environ.get("SQS_QUEUE_URL", "")
+    return ""
 
 
 def list_functions(lam) -> list[str]:
@@ -95,6 +101,7 @@ def run(
     function_name: str | None,
     list_only: bool,
     lambda_only: bool = False,
+    error_message: str | None = None,
 ) -> None:
     try:
         session = boto3.Session()
@@ -250,6 +257,21 @@ def run(
         },
     }
 
+    if error_message:
+        event["source"] = "aws.lambda"
+        event["detail-type"] = "Lambda Function Invocation Result - Failure"
+        event["detail"] = {
+            "requestContext": {
+                "functionArn": f"arn:aws:lambda:{region}:000000000000:function:{function_name}",
+                "condition": "RetriesExhausted",
+            },
+            "responsePayload": {
+                "errorType": "TestError",
+                "errorMessage": error_message,
+            },
+        }
+        log(f"Using custom error message: {error_message}")
+
     log("Sending alarm event to SQS manually (bypasses EventBridge)...")
     try:
         msg_id = sqs.send_message(
@@ -289,8 +311,13 @@ def main() -> None:
         dest="lambda_only",
         help="Invoke Lambda and let the CloudWatch alarm fire automatically",
     )
+    parser.add_argument(
+        "--error-message",
+        dest="error_message",
+        help="Custom error message to embed in the SQS event (bypasses alarm format, uses lambda event format)",
+    )
     args = parser.parse_args()
-    run(args.region, args.invocations, args.function, args.list, args.lambda_only)
+    run(args.region, args.invocations, args.function, args.list, args.lambda_only, args.error_message)
 
 
 if __name__ == "__main__":

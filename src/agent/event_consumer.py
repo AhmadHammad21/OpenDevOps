@@ -3,26 +3,30 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 import boto3
 from loguru import logger
 
+from agent.incident_keys import event_incident_key
 from agent.init_store import (
     get_runtime_aws_region,
     get_runtime_sns_topic_arn,
     get_runtime_sqs_queue_url,
 )
-from agent.monitor_store import add_alert, add_notification, is_recent_alert, update_service
+from agent.monitor_store import (
+    add_alert,
+    add_notification,
+    claim_incident,
+    complete_incident,
+    release_incident,
+    update_service,
+)
 from config import settings
 
-# In-memory set of dedup keys currently being investigated.
-# Prevents a second identical event from starting a parallel agent run
-# before the first one finishes and writes its key to the DB.
-_in_progress: set[str] = set()
+ProcessResult = Literal["processed", "ignored", "duplicate"]
 
 
 def _build_investigation_prompt(event: dict) -> str:
@@ -127,61 +131,71 @@ async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | N
     usage_meta: Any = None
 
     try:
-        async for chunk, _meta in get_agent().astream(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config=config,
-            stream_mode="messages",
-        ):
-            um = getattr(chunk, "usage_metadata", None)
-            if um:
-                usage_meta = um
+        async with asyncio.timeout(settings.investigation_timeout):
+            async for chunk, _meta in get_agent().astream(
+                {"messages": [{"role": "user", "content": prompt}]},
+                config=config,
+                stream_mode="messages",
+            ):
+                um = getattr(chunk, "usage_metadata", None)
+                if um:
+                    usage_meta = um
 
-            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
-                idx = _f(tcc, "index", 0)
-                if idx not in tc_accum:
-                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
-                if tc_id := _f(tcc, "id"):
-                    tc_accum[idx]["id"] = tc_id
-                if name := (_f(tcc, "name") or ""):
-                    tc_accum[idx]["name"] += name
-                if args := (_f(tcc, "args") or ""):
-                    tc_accum[idx]["args_str"] += args
+                for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                    idx = _f(tcc, "index", 0)
+                    if idx not in tc_accum:
+                        tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                    if tc_id := _f(tcc, "id"):
+                        tc_accum[idx]["id"] = tc_id
+                    if name := (_f(tcc, "name") or ""):
+                        tc_accum[idx]["name"] += name
+                    if args := (_f(tcc, "args") or ""):
+                        tc_accum[idx]["args_str"] += args
 
-            for tc in getattr(chunk, "tool_calls", []) or []:
-                tc_id = _f(tc, "id") or ""
-                name = _f(tc, "name") or ""
-                args = _f(tc, "args") or {}
-                if tc_id and name:
-                    pending_calls[tc_id] = {"tool": name, "args": args if isinstance(args, dict) else {}}
+                for tc in getattr(chunk, "tool_calls", []) or []:
+                    tc_id = _f(tc, "id") or ""
+                    name = _f(tc, "name") or ""
+                    args = _f(tc, "args") or {}
+                    if tc_id and name:
+                        pending_calls[tc_id] = {
+                            "tool": name,
+                            "args": args if isinstance(args, dict) else {},
+                        }
 
-            content = getattr(chunk, "content", "")
-            tc_id = getattr(chunk, "tool_call_id", None)
+                content = getattr(chunk, "content", "")
+                tc_id = getattr(chunk, "tool_call_id", None)
 
-            if content and isinstance(content, str) and not tc_id:
-                response_text += content
+                if content and isinstance(content, str) and not tc_id:
+                    response_text += content
 
-            if tc_id:
-                for entry in tc_accum.values():
-                    if eid := entry["id"]:
-                        try:
-                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
-                        except json.JSONDecodeError:
-                            eargs = {}
-                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
-                tc_accum.clear()
+                if tc_id:
+                    for entry in tc_accum.values():
+                        if eid := entry["id"]:
+                            try:
+                                eargs: Any = (
+                                    json.loads(entry["args_str"]) if entry["args_str"] else {}
+                                )
+                            except json.JSONDecodeError:
+                                eargs = {}
+                            pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                    tc_accum.clear()
 
-                call_info = pending_calls.pop(
-                    tc_id,
-                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
-                )
-                try:
-                    result = json.loads(content)
-                except (json.JSONDecodeError, TypeError):
-                    result = {"raw": str(content)[:500]}
+                    call_info = pending_calls.pop(
+                        tc_id,
+                        {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                    )
+                    try:
+                        result = json.loads(content)
+                    except (json.JSONDecodeError, TypeError):
+                        result = {"raw": str(content)[:500]}
 
-                tool_calls_log.append({"tool": call_info["tool"], "args": call_info["args"], "result": result})
-                if call_info["tool"] == "submit_investigation":
-                    investigation_result = call_info["args"]
+                    tool_calls_log.append({
+                        "tool": call_info["tool"],
+                        "args": call_info["args"],
+                        "result": result,
+                    })
+                    if call_info["tool"] == "submit_investigation":
+                        investigation_result = call_info["args"]
 
     except Exception as e:
         logger.error("Agent investigation failed: {}", e)
@@ -195,7 +209,11 @@ async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | N
         }
 
     # Build readable assistant summary
-    if investigation_result and investigation_result.get("root_cause_summary") and "_status" not in investigation_result:
+    if (
+        investigation_result
+        and investigation_result.get("root_cause_summary")
+        and "_status" not in investigation_result
+    ):
         steps = investigation_result.get("mitigation_steps", [])
         steps_text = "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
         confidence = investigation_result.get("confidence", "MEDIUM")
@@ -224,35 +242,6 @@ async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | N
     )
 
     return investigation_result
-
-
-_VOLATILE_KEYS = {
-    "time", "timestamp", "eventTime", "requestId", "eventID",
-    "approximateInvokeCount", "startTime", "endTime", "updatedAt",
-    "stateTransitionedAt", "lastUpdatedTime",
-}
-
-
-def _strip_volatile(obj: Any) -> Any:
-    if isinstance(obj, dict):
-        return {k: _strip_volatile(v) for k, v in obj.items() if k not in _VOLATILE_KEYS}
-    if isinstance(obj, list):
-        return [_strip_volatile(i) for i in obj]
-    return obj
-
-
-def _event_dedup_key(event: dict) -> str:
-    """MD5 fingerprint of the event's stable fields — works for any AWS service."""
-    source = event.get("source", "unknown")
-    fingerprint = {
-        "source": source,
-        "detail-type": event.get("detail-type", ""),
-        "detail": _strip_volatile(event.get("detail", {})),
-    }
-    digest = hashlib.md5(
-        json.dumps(fingerprint, sort_keys=True, default=str).encode()
-    ).hexdigest()[:12]
-    return f"{source}:{digest}"
 
 
 def _extract_aws_error(event: dict) -> str:
@@ -363,6 +352,7 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         status=status,
         session_id=session_id,
         trigger_source="event_consumer",
+        evidence=result.get("evidence", []),
     )
     if alert_id:
         if sns_attempted:
@@ -392,7 +382,11 @@ def _is_real_failure(source: str, detail: dict) -> bool:
     return True
 
 
-async def _process_event(event: dict) -> None:
+def _claim_window_minutes() -> int:
+    return max(3, (settings.investigation_timeout // 60) + 2)
+
+
+async def _process_event(event: dict) -> ProcessResult:
     """Filter → dedup check → enrich prompt → investigate → deliver."""
     source = event.get("source", "unknown")
     detail_type = event.get("detail-type", "")
@@ -400,20 +394,20 @@ async def _process_event(event: dict) -> None:
 
     if not _is_real_failure(source, detail):
         logger.debug("Skipping non-failure event: {} / {}", source, detail_type)
-        return
+        return "ignored"
 
-    dedup_key = _event_dedup_key(event)
-    if dedup_key in _in_progress or await is_recent_alert(dedup_key):
+    incident_key = event_incident_key(event)
+    if not await claim_incident(incident_key, "event_consumer", _claim_window_minutes()):
         logger.info(
-            "Dedup: skipping {} / {} (key={}) — {}",
-            source, detail_type, dedup_key,
-            "investigation already in progress" if dedup_key in _in_progress
-            else "same event investigated within last 3 min",
+            "Dedup: skipping {} / {} (incident_key={}) — already claimed recently",
+            source, detail_type, incident_key,
         )
-        return
+        return "duplicate"
 
-    _in_progress.add(dedup_key)
-    logger.info("Processing event: {} / {}", source, detail_type)
+    logger.info("Processing event: {} / {} (incident_key={})", source, detail_type, incident_key)
+    aws_error = _extract_aws_error(event)
+    if aws_error:
+        logger.debug("Event consumer: error message for investigation: {}", aws_error)
 
     prompt = _build_investigation_prompt(event)
 
@@ -434,14 +428,22 @@ async def _process_event(event: dict) -> None:
 
     session_id = str(uuid.uuid4())
     try:
-        logger.debug("Event consumer: starting investigation for {} / {} (session {})", source, detail_type, session_id[:8])
+        logger.debug(
+            "Event consumer: starting investigation for {} / {} (session {})",
+            source, detail_type, session_id[:8],
+        )
         result = await _run_investigation(prompt, session_id)
         if not result:
             logger.warning("Investigation produced no result for {} / {}", source, detail_type)
-            return
-        await _deliver(result, event, dedup_key, session_id)
-    finally:
-        _in_progress.discard(dedup_key)
+            await release_incident(incident_key)
+            raise RuntimeError("Investigation produced no structured result")
+        status = result.get("_status", "completed")
+        await _deliver(result, event, incident_key, session_id)
+        await complete_incident(incident_key, status, session_id)
+        return "processed"
+    except Exception:
+        await release_incident(incident_key)
+        raise
 
 
 async def event_consumer_loop() -> None:
@@ -472,12 +474,16 @@ async def event_consumer_loop() -> None:
             )
 
             for msg in resp.get("Messages", []):
+                should_delete = False
                 try:
                     body = json.loads(msg["Body"])
                     await _process_event(body)
+                    should_delete = True
+                except json.JSONDecodeError as e:
+                    logger.error("Failed to decode SQS event body: {}", e)
                 except Exception as e:
                     logger.error("Failed to process event: {}", e)
-                finally:
+                if should_delete:
                     await asyncio.get_event_loop().run_in_executor(
                         None,
                         lambda m=msg: sqs.delete_message(
