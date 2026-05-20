@@ -21,6 +21,8 @@ class MemoryBackend(DatabaseBackend):
         self._messages: dict[str, list[dict]] = defaultdict(list)
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
+        self._orgs: dict[str, dict] = {}
+        self._users: dict[str, dict] = {}
         self._alerts: list[dict] = []
         self._incident_claims: dict[str, dict] = {}
         self._app_config: dict[str, dict] = {}
@@ -211,7 +213,10 @@ class MemoryBackend(DatabaseBackend):
             sum(u["latency_ms"] for u in all_usage) // len(all_usage)
             if all_usage else 0
         )
-        summ_events  = [u for u in all_usage if isinstance(u.get("metadata"), dict) and u["metadata"].get("summarization")]
+        summ_events = [
+            u for u in all_usage
+            if isinstance(u.get("metadata"), dict) and u["metadata"].get("summarization")
+        ]
 
         return {
             "summary": {
@@ -224,7 +229,9 @@ class MemoryBackend(DatabaseBackend):
                 "total_cost_usd":    total_cost,
                 "avg_latency_ms":    avg_latency,
                 "total_summarizations":  len(summ_events),
-                "total_chars_compacted": sum(e["metadata"].get("chars_removed", 0) for e in summ_events),
+                "total_chars_compacted": sum(
+                    e["metadata"].get("chars_removed", 0) for e in summ_events
+                ),
             },
             "activity": [],
             "top_tools": [],
@@ -241,6 +248,84 @@ class MemoryBackend(DatabaseBackend):
             "recurring_errors": [],
             "trend": [],
         }
+
+    # ── User / auth ─────────────────────────────────────────────────────────
+
+    async def count_users(self) -> int:
+        return sum(1 for user in self._users.values() if user.get("password_hash"))
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        for user in self._users.values():
+            if user["email"] == email:
+                return dict(user)
+        return None
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        user = self._users.get(user_id)
+        return dict(user) if user else None
+
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        for org in self._orgs.values():
+            if org["slug"] == slug:
+                org["name"] = name
+                return dict(org)
+        org_id = str(uuid.uuid4())
+        org = {"id": org_id, "name": name, "slug": slug, "created_at": self._now()}
+        self._orgs[org_id] = org
+        return dict(org)
+
+    async def get_first_org(self) -> dict | None:
+        if not self._orgs:
+            return None
+        org = sorted(self._orgs.values(), key=lambda item: item["created_at"])[0]
+        return dict(org)
+
+    async def create_user(
+        self,
+        email: str,
+        name: str,
+        password_hash: str,
+        role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        if await self.get_user_by_email(email):
+            return None
+        user_id = str(uuid.uuid4())
+        user = {
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "password_hash": password_hash,
+            "role": role,
+            "org_id": org_id,
+            "created_at": self._now(),
+        }
+        self._users[user_id] = user
+        return {k: v for k, v in user.items() if k != "password_hash"}
+
+    async def list_users(self) -> list[dict]:
+        users = sorted(self._users.values(), key=lambda item: item["created_at"])
+        return [
+            {k: v for k, v in user.items() if k != "password_hash"}
+            for user in users
+        ]
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        user = self._users.get(user_id)
+        if not user:
+            return None
+        for key in ("name", "role", "password_hash"):
+            if key in fields:
+                user[key] = fields[key]
+        return {k: v for k, v in user.items() if k != "password_hash"}
+
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        for user in self._users.values():
+            if not user.get("org_id"):
+                user["org_id"] = org_id
+
+    async def delete_user(self, user_id: str) -> None:
+        self._users.pop(user_id, None)
 
     # ── Alerts ────────────────────────────────────────────────────────────────
 
@@ -333,7 +418,11 @@ class MemoryBackend(DatabaseBackend):
             incident_key,
             {"trigger_source": "unknown", "claimed_at": datetime.now(UTC)},
         )
-        claim.update({"status": status, "session_id": session_id, "completed_at": datetime.now(UTC)})
+        claim.update({
+            "status": status,
+            "session_id": session_id,
+            "completed_at": datetime.now(UTC),
+        })
 
     async def release_incident(self, incident_key: str) -> None:
         if self._incident_claims.get(incident_key, {}).get("status") == "claimed":

@@ -28,6 +28,9 @@ Autonomous monitoring is disabled in memory mode. The poller and SQS event
 consumer require durable incident claims, so use SQLite or PostgreSQL for those
 features.
 
+Auth/register/login work in memory mode when `JWT_SECRET` is set, but users are
+lost on restart with the rest of the in-memory state.
+
 **When to use:** CI pipelines, smoke-testing, one-off demos.
 
 > **Dashboard limitation:** summary counts (sessions, queries, tool calls, cost) update

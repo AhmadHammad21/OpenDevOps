@@ -278,6 +278,44 @@ async def test_history_stats_has_required_keys(backend: DatabaseBackend):
     assert stats["days"] == 7
 
 
+# ── User / auth ──────────────────────────────────────────────────────────────
+
+
+async def test_user_auth_roundtrip(backend: DatabaseBackend):
+    org = await backend.create_org("OpenDevOps", "opendevops")
+    assert org is not None
+    assert org["slug"] == "opendevops"
+
+    user = await backend.create_user(
+        "admin@example.com",
+        "Admin User",
+        "hashed-password",
+        "admin",
+        org["id"],
+    )
+    assert user is not None
+    assert user["email"] == "admin@example.com"
+    assert user["role"] == "admin"
+    assert await backend.count_users() == 1
+
+    login_user = await backend.get_user_by_email("admin@example.com")
+    assert login_user is not None
+    assert login_user["password_hash"] == "hashed-password"
+
+    listed = await backend.list_users()
+    assert listed[0]["email"] == "admin@example.com"
+    assert "password_hash" not in listed[0]
+
+    updated = await backend.update_user(user["id"], name="Renamed", role="user")
+    assert updated is not None
+    assert updated["name"] == "Renamed"
+    assert updated["role"] == "user"
+
+    await backend.delete_user(user["id"])
+    assert await backend.count_users() == 0
+    assert await backend.get_user_by_email("admin@example.com") is None
+
+
 async def test_history_stats_empty_by_default(backend: DatabaseBackend):
     stats = await backend.get_history_stats()
     assert stats["top_alarms"] == []

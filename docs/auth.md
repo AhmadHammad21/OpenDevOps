@@ -17,6 +17,14 @@ Restart the server. The login page will appear on next browser load.
 
 **Without `JWT_SECRET`:** the app runs in dev/open mode — no login required, all users treated as admin. Suitable for local development or single-user installs on a trusted network.
 
+Auth works with all storage backends, but persistence follows the backend:
+
+| Backend | Auth behavior |
+|---|---|
+| `memory` | Users exist only until the server restarts; useful for quick local testing |
+| `sqlite` | Users persist in the local SQLite database |
+| `postgres` | Users persist in PostgreSQL and are suitable for production/team use |
+
 ---
 
 ## First-time setup

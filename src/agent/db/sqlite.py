@@ -61,6 +61,26 @@ CREATE TABLE IF NOT EXISTS usage_events (
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS organizations (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    slug       TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    org_id        TEXT REFERENCES organizations(id),
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    password_hash TEXT,
+    role          TEXT NOT NULL DEFAULT 'user',
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+
 CREATE TABLE IF NOT EXISTS alerts (
     id          TEXT PRIMARY KEY,
     service     TEXT NOT NULL,
@@ -397,15 +417,18 @@ class SQLiteBackend(DatabaseBackend):
             return []
 
         messages = await self._fetchall(
-            "SELECT id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at ASC",
+            "SELECT id, role, content, created_at FROM messages "
+            "WHERE session_id = ? ORDER BY created_at ASC",
             session_id,
         )
         tool_calls = await self._fetchall(
-            "SELECT message_id, tool_name, args, result, error FROM tool_calls WHERE session_id = ? ORDER BY created_at ASC",
+            "SELECT message_id, tool_name, args, result, error FROM tool_calls "
+            "WHERE session_id = ? ORDER BY created_at ASC",
             session_id,
         )
         usage_rows = await self._fetchall(
-            "SELECT message_id, model, input_tokens, output_tokens, cost_usd, latency_ms FROM usage_events WHERE session_id = ?",
+            "SELECT message_id, model, input_tokens, output_tokens, cost_usd, latency_ms "
+            "FROM usage_events WHERE session_id = ?",
             session_id,
         )
 
@@ -416,7 +439,11 @@ class SQLiteBackend(DatabaseBackend):
                 tc_by_msg.setdefault(mid, []).append({
                     "tool_name": tc["tool_name"],
                     "args": json.loads(tc["args"]) if isinstance(tc["args"], str) else tc["args"],
-                    "result": json.loads(tc["result"]) if isinstance(tc["result"], str) else tc["result"],
+                    "result": (
+                        json.loads(tc["result"])
+                        if isinstance(tc["result"], str)
+                        else tc["result"]
+                    ),
                     "error": tc["error"],
                 })
 
@@ -451,7 +478,8 @@ class SQLiteBackend(DatabaseBackend):
 
     async def delete_session(self, session_id: str) -> None:
         await self._exec(
-            "UPDATE sessions SET is_deleted = 1, deleted_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            "UPDATE sessions SET is_deleted = 1, "
+            "deleted_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
             session_id,
         )
 
@@ -492,7 +520,9 @@ class SQLiteBackend(DatabaseBackend):
                     JOIN sessions s ON s.id = ue.session_id
                     WHERE s.is_deleted = 0
                       AND json_extract(ue.metadata, '$.summarization') = 1) AS total_summarizations,
-                (SELECT COALESCE(SUM(CAST(json_extract(ue.metadata, '$.chars_removed') AS INTEGER)), 0)
+                (SELECT COALESCE(SUM(CAST(
+                    json_extract(ue.metadata, '$.chars_removed') AS INTEGER
+                )), 0)
                     FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
                     WHERE s.is_deleted = 0
                       AND json_extract(ue.metadata, '$.summarization') = 1) AS total_chars_compacted
@@ -698,6 +728,95 @@ class SQLiteBackend(DatabaseBackend):
                 for r in trend_rows
             ],
         }
+
+    # ── User / auth ─────────────────────────────────────────────────────────
+
+    async def count_users(self) -> int:
+        row = await self._fetchone(
+            "SELECT COUNT(*) AS n FROM users WHERE password_hash IS NOT NULL"
+        )
+        return int(row["n"]) if row else 0
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        return await self._fetchone("SELECT * FROM users WHERE email = ?", email)
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        return await self._fetchone("SELECT * FROM users WHERE id = ?", user_id)
+
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        org_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?) "
+            "ON CONFLICT(slug) DO UPDATE SET "
+            "name = excluded.name, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now')",
+            org_id,
+            name,
+            slug,
+        )
+        return await self._fetchone(
+            "SELECT id, name, slug FROM organizations WHERE slug = ?",
+            slug,
+        )
+
+    async def get_first_org(self) -> dict | None:
+        return await self._fetchone(
+            "SELECT id, name, slug FROM organizations ORDER BY created_at ASC LIMIT 1"
+        )
+
+    async def create_user(
+        self,
+        email: str,
+        name: str,
+        password_hash: str,
+        role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        user_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO users (id, email, name, password_hash, role, org_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            user_id,
+            email,
+            name,
+            password_hash,
+            role,
+            org_id,
+        )
+        return await self._fetchone(
+            "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+            user_id,
+        )
+
+    async def list_users(self) -> list[dict]:
+        return await self._fetchall(
+            "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
+        )
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        allowed = {"name", "role", "password_hash"}
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if not updates:
+            return await self._fetchone(
+                "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+                user_id,
+            )
+        sets = ", ".join(f"{key} = ?" for key in updates)
+        await self._exec(
+            f"UPDATE users SET {sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') "
+            "WHERE id = ?",
+            *updates.values(),
+            user_id,
+        )
+        return await self._fetchone(
+            "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+            user_id,
+        )
+
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        await self._exec("UPDATE users SET org_id = ? WHERE org_id IS NULL", org_id)
+
+    async def delete_user(self, user_id: str) -> None:
+        await self._exec("DELETE FROM users WHERE id = ?", user_id)
 
     # ── Alerts ────────────────────────────────────────────────────────────────
 
