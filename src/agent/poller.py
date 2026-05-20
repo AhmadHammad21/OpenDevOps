@@ -14,7 +14,7 @@ from typing import Any
 
 from loguru import logger
 
-from agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
+from agent.incident_keys import alarm_incident_key, lambda_error_incident_key, lambda_metric_incident_key
 from config import settings
 
 
@@ -249,11 +249,26 @@ async def _check_alarms() -> None:
         if alarm.get("state_reason"):
             logger.debug("Poller: alarm {} state reason: {}", name, alarm["state_reason"])
 
+        namespace = alarm.get("namespace", "")
+        dim_hint = (
+            "IMPORTANT: If this alarm has NO dimensions it monitors the AGGREGATE metric "
+            "across all resources. You MUST first identify which specific resource is causing "
+            "the errors. For Lambda errors: call list_lambda_functions, then use "
+            "get_lambda_error_rate on likely functions to find which one(s) have errors. "
+            "Then pull that function's CloudWatch logs to find the actual error message."
+            if namespace == "AWS/Lambda"
+            else f"Namespace: {namespace}"
+        )
         prompt = (
             f'CloudWatch alarm "{name}" is in ALARM state.\n'
             f"Metric: {metric}\n"
-            f"Reason: {reason}\n"
-            "Please investigate the root cause and provide mitigation steps."
+            f"{dim_hint}\n"
+            f"Reason: {reason}\n\n"
+            "Investigate step by step:\n"
+            "1. Identify the SPECIFIC resource causing the issue\n"
+            "2. Pull its recent CloudWatch logs\n"
+            "3. Find the actual error message or stack trace\n"
+            "4. Provide actionable fix steps based on the real error"
         )
         session_id = str(uuid.uuid4())
         logger.debug(
@@ -316,18 +331,24 @@ async def _check_lambda_errors() -> None:
             logger.debug("Poller: skipping Lambda {} — aggregate alarm already handled", name)
             continue
 
-        key = lambda_metric_incident_key(name)
+        error_message = metrics.get("error_message")
+        error_signature = {"errorMessage": error_message} if error_message else None
+        key = lambda_error_incident_key(name, error_signature)
         if not await claim_incident(key, "poller", _claim_window_minutes()):
             continue
 
         logger.info("Poller: Lambda {} error rate {:.1f}% exceeds threshold", name, error_rate)
-        if metrics.get("error_message"):
-            logger.debug("Poller: Lambda {} error message: {}", name, metrics["error_message"])
+        if error_message:
+            logger.debug("Poller: Lambda {} error message: {}", name, error_message)
 
         prompt = (
             f'Lambda function "{name}" has an error rate of {error_rate:.1f}% over the last hour, '
-            f"which exceeds the {settings.poll_error_threshold}% threshold.\n"
-            "Please investigate the root cause and suggest a fix."
+            f"which exceeds the {settings.poll_error_threshold}% threshold.\n\n"
+            "Investigate step by step:\n"
+            "1. Pull the recent CloudWatch logs for this function\n"
+            "2. Find the actual error message or stack trace\n"
+            "3. Identify the root cause (code bug, missing dependency, config issue, etc.)\n"
+            "4. Provide specific, actionable fix steps based on the real error"
         )
         session_id = str(uuid.uuid4())
         logger.debug(
