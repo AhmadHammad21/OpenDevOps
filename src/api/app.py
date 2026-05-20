@@ -53,6 +53,15 @@ def start_event_consumer(app_instance: "FastAPI | None" = None) -> None:
     """Start the SQS event consumer as a background task (idempotent)."""
     import asyncio
 
+    from config import settings as _cfg
+
+    if _cfg.checkpoint_backend == "memory":
+        logger.warning(
+            "Event consumer not started: monitoring requires CHECKPOINT_BACKEND=sqlite "
+            "or postgres for durable incident claims"
+        )
+        return
+
     target = app_instance or app
     existing: asyncio.Task | None = getattr(target, "_consumer_task", None)
     if existing and not existing.done():
@@ -94,13 +103,31 @@ async def lifespan(_app: FastAPI):
 
     poller_task = None
     if _cfg.poll_interval_seconds > 0:
-        from agent.poller import polling_loop
+        if _cfg.checkpoint_backend == "memory":
+            logger.warning(
+                "Proactive poller not started: monitoring requires CHECKPOINT_BACKEND=sqlite "
+                "or postgres for durable incident claims"
+            )
+        else:
+            from agent.poller import polling_loop
 
-        poller_task = asyncio.create_task(polling_loop())
-        logger.info("Proactive poller started (interval={}s)", _cfg.poll_interval_seconds)
+            poller_task = asyncio.create_task(polling_loop())
+            logger.info("Proactive poller started (interval={}s)", _cfg.poll_interval_seconds)
 
     # Event consumer — started if explicitly enabled, SQS URL is set, or init wizard completed
-    if _cfg.event_consumer_enabled or _cfg.sqs_queue_url:
+    if _cfg.checkpoint_backend == "memory":
+        try:
+            from agent.init_store import is_event_infra_enabled
+
+            init_enabled = is_event_infra_enabled()
+        except Exception:
+            init_enabled = False
+        if _cfg.event_consumer_enabled or _cfg.sqs_queue_url or init_enabled:
+            logger.warning(
+                "Event consumer disabled: monitoring requires CHECKPOINT_BACKEND=sqlite "
+                "or postgres"
+            )
+    elif _cfg.event_consumer_enabled or _cfg.sqs_queue_url:
         start_event_consumer(_app)
     else:
         try:

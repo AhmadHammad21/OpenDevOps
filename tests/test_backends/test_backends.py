@@ -7,6 +7,8 @@ postgres:        skipped unless DATABASE_URL env var is set.
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
+
 import pytest
 import pytest_asyncio
 
@@ -16,7 +18,7 @@ from agent.db.base import DatabaseBackend
 
 
 @pytest_asyncio.fixture(params=["memory", "sqlite"])
-async def backend(request, tmp_path) -> DatabaseBackend:
+async def backend(request, tmp_path) -> AsyncGenerator[DatabaseBackend, None]:
     """Parametrised fixture: runs every test twice — once per local backend."""
     if request.param == "memory":
         from agent.db.memory import MemoryBackend
@@ -32,7 +34,7 @@ async def backend(request, tmp_path) -> DatabaseBackend:
 
 
 @pytest_asyncio.fixture
-async def pg_backend() -> DatabaseBackend:
+async def pg_backend() -> AsyncGenerator[DatabaseBackend, None]:
     """PostgreSQL backend — skipped unless DATABASE_URL is set."""
     url = os.environ.get("DATABASE_URL")
     if not url:
@@ -188,12 +190,62 @@ async def test_save_usage_event_does_not_raise(backend: DatabaseBackend):
     )
 
 
+# ── Monitoring alerts / claims ───────────────────────────────────────────────
+
+
+async def test_alert_roundtrip_includes_monitoring_fields(backend: DatabaseBackend):
+    await _seed_session(backend)
+    alert_id = await backend.add_alert(
+        service="Lambda / payment-processor",
+        error="timeout spike",
+        resolution="increase timeout",
+        confidence="HIGH",
+        sns_sent=True,
+        dedup_key="lambda_errors:us-east-1:payment-processor",
+        status="completed",
+        session_id=SESSION_ID,
+        trigger_source="poller",
+    )
+    await backend.add_notification(alert_id, "slack", "delivered")
+
+    assert await backend.is_recent_alert("lambda_errors:us-east-1:payment-processor") is True
+
+    alerts = await backend.get_alerts()
+    assert alerts[0]["id"] == alert_id
+    assert alerts[0]["status"] == "completed"
+    assert alerts[0]["session_id"] == SESSION_ID
+    assert alerts[0]["trigger_source"] == "poller"
+
+    detail = await backend.get_alert(alert_id)
+    assert detail is not None
+    assert detail["notifications"][0]["channel"] == "slack"
+    assert detail["notifications"][0]["status"] == "delivered"
+
+
+async def test_incident_claim_blocks_recent_duplicate(backend: DatabaseBackend):
+    key = "cloudwatch_alarm:us-east-1:high-error-rate"
+
+    assert await backend.claim_incident(key, "poller", within_minutes=60) is True
+    assert await backend.claim_incident(key, "event_consumer", within_minutes=60) is False
+    assert await backend.is_incident_claimed(key, within_minutes=60) is True
+
+    await backend.release_incident(key)
+    assert await backend.claim_incident(key, "event_consumer", within_minutes=60) is True
+
+    await backend.complete_incident(key, "completed", SESSION_ID)
+    assert await backend.claim_incident(key, "poller", within_minutes=60) is False
+
+
 # ── Dashboard stats ───────────────────────────────────────────────────────────
 
-_DASHBOARD_KEYS = {"summary", "activity", "top_tools", "service_breakdown", "recent_sessions", "root_causes"}
-_SUMMARY_KEYS   = {"total_sessions", "total_queries", "total_tool_calls", "total_tool_errors",
-                   "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms",
-                   "total_summarizations", "total_chars_compacted"}
+_DASHBOARD_KEYS = {
+    "summary", "activity", "top_tools", "service_breakdown", "recent_sessions", "root_causes",
+}
+_SUMMARY_KEYS = {
+    "total_sessions", "total_queries", "total_tool_calls", "total_tool_errors",
+    "total_input_tokens", "total_output_tokens", "total_cost_usd", "avg_latency_ms",
+    "total_summarizations", "total_chars_compacted",
+}
 
 
 async def test_dashboard_stats_has_required_keys(backend: DatabaseBackend):

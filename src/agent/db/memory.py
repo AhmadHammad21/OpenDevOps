@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -22,6 +22,7 @@ class MemoryBackend(DatabaseBackend):
         self._tool_calls: dict[str, list[dict]] = defaultdict(list)
         self._usage: dict[str, list[dict]] = defaultdict(list)
         self._alerts: list[dict] = []
+        self._incident_claims: dict[str, dict] = {}
         self._app_config: dict[str, dict] = {}
 
     async def init(self) -> Any:
@@ -253,6 +254,7 @@ class MemoryBackend(DatabaseBackend):
         dedup_key: str | None = None,
         status: str = "completed",
         session_id: str | None = None,
+        trigger_source: str | None = None,
     ) -> str:
         alert_id = str(uuid.uuid4())
         self._alerts.append({
@@ -266,8 +268,83 @@ class MemoryBackend(DatabaseBackend):
             "dedup_key": dedup_key,
             "status": status,
             "session_id": session_id,
+            "trigger_source": trigger_source,
+            "notifications": [],
         })
         return alert_id
+
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        for alert in self._alerts:
+            if alert["id"] == alert_id:
+                alert.setdefault("notifications", []).append({
+                    "channel": channel,
+                    "status": status,
+                    "error": error,
+                    "sent_at": self._now(),
+                })
+                return
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        cutoff = datetime.now(UTC) - timedelta(minutes=within_minutes)
+        for alert in self._alerts:
+            if alert.get("dedup_key") != dedup_key:
+                continue
+            try:
+                if datetime.fromisoformat(alert["timestamp"]) > cutoff:
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        now = datetime.now(UTC)
+        existing = self._incident_claims.get(incident_key)
+        if existing:
+            last = existing.get("completed_at") or existing.get("claimed_at") or now
+            if now - last <= timedelta(minutes=within_minutes):
+                return False
+        self._incident_claims[incident_key] = {
+            "trigger_source": trigger_source,
+            "status": "claimed",
+            "session_id": None,
+            "claimed_at": now,
+            "completed_at": None,
+        }
+        return True
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        claim = self._incident_claims.setdefault(
+            incident_key,
+            {"trigger_source": "unknown", "claimed_at": datetime.now(UTC)},
+        )
+        claim.update({"status": status, "session_id": session_id, "completed_at": datetime.now(UTC)})
+
+    async def release_incident(self, incident_key: str) -> None:
+        if self._incident_claims.get(incident_key, {}).get("status") == "claimed":
+            self._incident_claims.pop(incident_key, None)
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        claim = self._incident_claims.get(incident_key)
+        if not claim:
+            return False
+        last = claim.get("completed_at") or claim.get("claimed_at")
+        return bool(last and datetime.now(UTC) - last <= timedelta(minutes=within_minutes))
 
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         return list(reversed(self._alerts))[:min(limit, 200)]

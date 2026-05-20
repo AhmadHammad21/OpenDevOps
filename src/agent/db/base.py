@@ -156,6 +156,28 @@ class DatabaseBackend(ABC):
     async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
         return False
 
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        return False
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        pass
+
+    async def release_incident(self, incident_key: str) -> None:
+        pass
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        return False
+
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         return []
 

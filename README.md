@@ -10,11 +10,11 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
-- **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
+- **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; uses a DLQ plus database-backed incident claims to avoid duplicate investigations; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
 - **Context enrichment** — before the LLM runs, deterministic boto3 calls fetch facts about the affected resource (alarm details, recent logs, function config, etc.) to reduce tool call count and speed up investigations
 - **SNS alert delivery** — after each event-driven investigation, findings are published to a configured SNS topic as structured JSON; fires alongside Slack and Telegram so all channels receive results simultaneously
 - **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level (or FAILED badge), affected service, root cause summary, SNS status; each alert links back to its original investigation session via **View investigation** so you can follow up without losing context — see [docs/monitoring.md](docs/monitoring.md)
-- **AWS Configuration settings tab** — admin-only editable tab in Settings for SNS Topic ARN, SQS Queue URL, and AWS Region; shared org-wide (server-side `init.json`); includes an inline IAM permission checker per service
+- **AWS Configuration settings tab** — admin-only editable tab in Settings for SNS Topic ARN, SQS Queue URL, and AWS Region; shared org-wide via database-backed app config; includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
   - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button; supports `?prompt=` deeplink for pre-seeded investigations from the Monitoring dashboard
   - **Session history sidebar** — lists all past conversations; click any to resume with full tool call inspector and cost card restored; new chat and delete (soft) buttons
@@ -25,7 +25,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - **Team page** — admin-only user management: add, remove, and change roles
 - **Auth & RBAC** — optional password-based auth with `admin` and `user` roles; JWT tokens; first registered user auto-becomes admin; disabled by default (set `JWT_SECRET` to enable) — see [docs/auth.md](docs/auth.md)
 - **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`docs/databases.md`](docs/databases.md)
-  - `memory` — zero config, no persistence; great for CI and quick testing
+  - `memory` — zero config, no persistence; great for CI and quick testing; autonomous polling/event monitoring is disabled in this mode
   - `sqlite` — local file, no external services; recommended for single-server and personal use
   - `postgres` — full production persistence via psycopg3 + `AsyncPostgresSaver`
   - Schema: `users`, `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
@@ -210,7 +210,7 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 | `SLACK_WEBHOOK_URL` | none | Slack incoming webhook URL; leave unset to disable notifications |
 | `TELEGRAM_BOT_TOKEN` | none | Telegram bot token from @BotFather; leave unset to disable |
 | `TELEGRAM_CHAT_ID` | none | Target chat/group/channel ID (negative number for groups) |
-| `POLL_INTERVAL_MINUTES` | `0` | Proactive polling interval in minutes; `0` disables the poller |
+| `POLL_INTERVAL_SECONDS` | `0` | Proactive polling interval in seconds; `0` disables the poller |
 | `POLL_ERROR_THRESHOLD` | `5.0` | Lambda error rate % that triggers an automatic investigation |
 | `POLL_REINVESTIGATE_HOURS` | `1` | Cooldown period — skip re-investigating the same alarm within N hours |
 | `SUMMARIZATION_ENABLED` | `true` | Auto-compact sessions when they exceed the threshold |
@@ -221,7 +221,7 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 | `SNS_TOPIC_ARN` | none | SNS topic to publish investigation findings to after each event-driven run |
 | `SQS_QUEUE_URL` | none | SQS queue URL for the event consumer to poll; also set via Settings → AWS Configuration |
 | `EVENT_CONSUMER_ENABLED` | `false` | Explicitly enable the SQS event consumer (also auto-starts if `SQS_QUEUE_URL` is set) |
-| `DATA_DIR` | `data` | Directory for server-side state files (`init.json`) |
+| `DATA_DIR` | `data` | Reserved data directory setting; init state is stored in the selected database backend |
 
 ## TODO / Roadmap
 
@@ -254,7 +254,7 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [x] **SNS alert delivery** — findings published to SNS after each event-driven investigation; fires alongside Slack; structured JSON payload for easy downstream processing
 - [x] **Context enrichment** — deterministic boto3 calls per event type before LLM runs; reduces tool call count by front-loading relevant resource facts
 - [x] **Monitoring dashboard** — live incident feed, per-service health summary, alert detail page; "View investigation" opens the original agent session for follow-up; failed investigations flagged separately; see [docs/monitoring.md](docs/monitoring.md)
-- [x] **AWS Configuration settings tab** — admin-only editable tab for SNS/SQS/region config; shared org-wide via server-side `init.json`; inline IAM permission checker
+- [x] **AWS Configuration settings tab** — admin-only editable tab for SNS/SQS/region config; shared org-wide via database-backed app config; inline IAM permission checker
 
 ### Later
 - [ ] **Observability** — OpenTelemetry traces for agent steps, tool call latency, LLM token usage

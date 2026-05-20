@@ -17,6 +17,8 @@ psql $DATABASE_URL -f migrations/003_usage_events_metadata.sql
 psql $DATABASE_URL -f migrations/004_users_rbac.sql
 psql $DATABASE_URL -f migrations/005_alerts.sql
 psql $DATABASE_URL -f migrations/006_app_config.sql
+# Continue through the remaining numbered migrations, including:
+psql $DATABASE_URL -f migrations/012_incident_claims.sql
 ```
 
 All migrations are idempotent (`IF NOT EXISTS`, `IF column does not already exist`).
@@ -147,10 +149,26 @@ Persisted event-driven and proactive polling investigation results shown on `/mo
 | `resolution` | TEXT | Mitigation steps joined as text |
 | `confidence` | TEXT | `HIGH`, `MEDIUM`, or `LOW` |
 | `sns_sent` | BOOLEAN | Whether SNS publish succeeded |
+| `dedup_key` | TEXT | Canonical incident key used by the poller/event consumer |
+| `status` | TEXT | `completed` or `failed` |
+| `session_id` | UUID FK → sessions | Investigation session that produced the alert |
+| `trigger_source` | TEXT | `poller` or `event_consumer` |
 | `created_at` | TIMESTAMPTZ | |
 
+### `incident_claims`
+Durable pre-investigation claims used to prevent duplicate autonomous agent runs.
+
+| Column | Type | Notes |
+|---|---|---|
+| `incident_key` | TEXT PK | Canonical key such as `cloudwatch_alarm:us-east-1:high-error-rate` |
+| `trigger_source` | TEXT | `poller` or `event_consumer` |
+| `status` | TEXT | `claimed`, `completed`, or `failed` |
+| `session_id` | UUID FK → sessions | Set when an investigation completes |
+| `claimed_at` | TIMESTAMPTZ | Last time the incident was claimed |
+| `completed_at` | TIMESTAMPTZ | Set after a completed or failed investigation |
+
 ### `app_config`
-Application-level key/value configuration shared by all server instances. The init wizard stores its setup and event-infrastructure state under key `init`. `data/init.json` is kept as a local cache/fallback for memory mode and bootstrap recovery.
+Application-level key/value configuration shared by all server instances. The init wizard stores its setup and event-infrastructure state under key `init`.
 
 | Column | Type | Notes |
 |---|---|---|

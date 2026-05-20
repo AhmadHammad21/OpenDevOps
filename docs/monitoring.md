@@ -11,7 +11,7 @@ OpenDevOps Agent has two complementary detection modes. Both write to the same `
 | | Proactive Polling | Event-Driven (EventBridge → SQS) |
 |---|---|---|
 | **How it works** | Agent polls CloudWatch alarms + Lambda error rates on a timer | AWS fires EventBridge rules → SQS → consumer → agent |
-| **Setup** | Set `POLL_INTERVAL_MINUTES` in `.env` | Create infrastructure via Settings → AWS Configuration |
+| **Setup** | Set `POLL_INTERVAL_SECONDS` in `.env` | Create infrastructure via Settings → AWS Configuration |
 | **Detection latency** | Up to N minutes (your poll interval) | 2–5 min for alarm-based events; near-instant for direct events (ECS, RDS, GuardDuty) |
 | **CloudWatch alarm required** | No — reads Lambda error rate directly via API | Only for metric/alarm detections; direct AWS service events do not need a CloudWatch alarm |
 | **Works without AWS setup** | Yes — no SQS/EventBridge needed | No — requires SQS queue + EventBridge rules |
@@ -28,7 +28,7 @@ OpenDevOps Agent has two complementary detection modes. Both write to the same `
 
 ### What it does
 
-Every `POLL_INTERVAL_MINUTES` minutes, the background poller runs two checks:
+Every `POLL_INTERVAL_SECONDS` seconds, the background poller runs two checks:
 
 1. **CloudWatch alarms** — fetches every alarm currently in `ALARM` state; runs a full agent investigation for each new one
 2. **Lambda error rates** — checks the last-hour error rate for up to 20 Lambda functions; runs an investigation for any function above `POLL_ERROR_THRESHOLD`%
@@ -36,7 +36,7 @@ Every `POLL_INTERVAL_MINUTES` minutes, the background poller runs two checks:
 ### Flow
 
 ```
-Background timer fires every N minutes
+Background timer fires every N seconds
   → get_alarms("ALARM")        — any alarm in ALARM state?
   → list_lambda_functions()    — check each function's error rate
       → error_rate > threshold?
@@ -54,16 +54,18 @@ Background timer fires every N minutes
 ### Configuration
 
 ```bash
-POLL_INTERVAL_MINUTES=5       # 0 = disabled (default)
+POLL_INTERVAL_SECONDS=300     # 0 = disabled (default)
 POLL_ERROR_THRESHOLD=5.0      # Lambda error rate % to trigger investigation
 POLL_REINVESTIGATE_HOURS=1    # cooldown — skip re-investigating the same alarm within N hours
 ```
 
-Set `POLL_INTERVAL_MINUTES=0` to disable entirely. The poller only starts when this value is greater than zero.
+Set `POLL_INTERVAL_SECONDS=0` to disable entirely. The poller only starts when this value is greater than zero.
 
 ### Deduplication
 
-An in-memory map (`_last_investigated`) tracks when each alarm or Lambda was last investigated. If the cooldown (`POLL_REINVESTIGATE_HOURS`) hasn't elapsed, the trigger is skipped. This resets on process restart — intentionally, so startup re-checks everything.
+The poller builds canonical incident keys and atomically claims them in the database before running the agent. `POLL_REINVESTIGATE_HOURS` controls how long a completed claim blocks another investigation for the same alarm or Lambda metric incident.
+
+Because claims are durable, autonomous monitoring requires `CHECKPOINT_BACKEND=sqlite` or `postgres`. Memory mode is still useful for chat and quick demos, but the poller and event consumer are disabled there.
 
 ### Source
 
@@ -138,10 +140,11 @@ This means you get event-driven Lambda coverage without creating per-function al
 
 Go to **Settings → AWS Configuration → Create Infrastructure**. This creates:
 - SQS queue: `opendevops-agent-events`
+- SQS DLQ: `opendevops-agent-events-dlq`
 - 9 EventBridge rules (all prefixed `opendevops-`)
 - Aggregate CloudWatch alarm: `opendevops-lambda-errors-aggregate`
 
-Wizard and infrastructure state is stored in the database for SQLite/PostgreSQL deployments (`app_config`) and mirrored to `data/init.json` as a local cache/fallback. Memory mode keeps only local process/file state. Teardown deletes only infrastructure created by the wizard; queues supplied through `.env` or pasted manually are disconnected from the app but not deleted.
+Wizard and infrastructure state is stored in the database for SQLite/PostgreSQL deployments (`app_config`). Memory mode does not support autonomous monitoring. Teardown deletes only infrastructure created by the wizard; queues supplied through `.env` or pasted manually are disconnected from the app but not deleted.
 
 To remove it, click **Teardown**. See [event_detection.md](event_detection.md) for full setup details and IAM permission requirements.
 
@@ -175,7 +178,7 @@ SQS is the inbox. SNS is the outbox. You need SQS for event-driven detection; SN
 
 | Scenario | Recommendation |
 |---|---|
-| Getting started, no AWS setup | Polling only (`POLL_INTERVAL_MINUTES=5`) |
+| Getting started, no AWS setup | Polling only (`POLL_INTERVAL_SECONDS=300`) |
 | Lambda error monitoring only | Polling — faster and simpler |
 | ECS, RDS, EC2, GuardDuty coverage | Event-driven required |
 | Already have CloudWatch alarms | Event-driven — reuses your existing alarms |
@@ -186,7 +189,7 @@ SQS is the inbox. SNS is the outbox. You need SQS for event-driven detection; SN
 
 ## Testing the Pipeline
 
-**Test polling** — set `POLL_INTERVAL_MINUTES=1`, trigger Lambda errors, wait ~1–2 minutes.
+**Test polling** — set `POLL_INTERVAL_SECONDS=60`, trigger Lambda errors, wait ~1–2 minutes.
 
 **Test event-driven (fast — bypasses CloudWatch):**
 ```bash
@@ -262,7 +265,7 @@ GET  /api/monitoring/services          → service health summary
 | `frontend/src/pages/MonitoringPage.tsx` | Live incident feed UI |
 | `frontend/src/pages/AlertDetailPage.tsx` | Alert detail + investigate deeplink |
 | `src/api/routers/monitoring.py` | REST endpoints |
-| `src/agent/monitor_store.py` | In-memory service status + alert persistence |
+| `src/agent/monitor_store.py` | In-process service status + DB-backed alert, notification, and incident claim persistence |
 | `src/agent/poller.py` | Proactive polling loop |
 | `src/agent/event_consumer.py` | SQS long-poll consumer |
 | `src/agent/event_infra.py` | Create/teardown SQS + EventBridge + alarm |

@@ -11,6 +11,8 @@ from loguru import logger
 from config import settings
 
 QUEUE_NAME = "opendevops-agent-events"
+DLQ_QUEUE_NAME = "opendevops-agent-events-dlq"
+MAX_RECEIVE_COUNT = "5"
 
 # EventBridge rule definitions: name → event pattern
 RULES: dict[str, dict] = {
@@ -107,16 +109,31 @@ def setup_event_infra(region: str | None = None) -> dict:
     sts = s.client("sts", region_name=region)
 
     account_id = sts.get_caller_identity()["Account"]
+    dlq_url = ""
+    dlq_arn = ""
     queue_url = ""
     rule_arns: dict[str, str] = {}
 
     try:
+        dlq_resp = sqs.create_queue(
+            QueueName=DLQ_QUEUE_NAME,
+            Attributes={"MessageRetentionPeriod": "1209600"},
+        )
+        dlq_url = dlq_resp["QueueUrl"]
+        dlq_attrs = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])
+        dlq_arn = dlq_attrs["Attributes"]["QueueArn"]
+
+        visibility_timeout = str(max(120, settings.investigation_timeout + 60))
         resp = sqs.create_queue(
             QueueName=QUEUE_NAME,
             Attributes={
                 "MessageRetentionPeriod": "86400",
-                "VisibilityTimeout": "120",
+                "VisibilityTimeout": visibility_timeout,
                 "ReceiveMessageWaitTimeSeconds": "20",
+                "RedrivePolicy": json.dumps({
+                    "deadLetterTargetArn": dlq_arn,
+                    "maxReceiveCount": MAX_RECEIVE_COUNT,
+                }),
             },
         )
         queue_url = resp["QueueUrl"]
@@ -172,20 +189,28 @@ def setup_event_infra(region: str | None = None) -> dict:
             TreatMissingData="notBreaching",
         )
     except Exception:
-        if queue_url or rule_arns:
-            teardown_event_infra(queue_url, rule_arns, region)
+        if queue_url or rule_arns or dlq_url:
+            teardown_event_infra(queue_url, rule_arns, region, dlq_url=dlq_url)
         raise
 
     logger.info(
-        "Event infra created: queue={} rules={} alarm={}", queue_url, len(rule_arns), ALARM_NAME
+        "Event infra created: queue={} dlq={} rules={} alarm={}",
+        queue_url, dlq_url, len(rule_arns), ALARM_NAME,
     )
-    return {"queue_url": queue_url, "queue_arn": queue_arn, "rule_arns": rule_arns}
+    return {
+        "queue_url": queue_url,
+        "queue_arn": queue_arn,
+        "dlq_url": dlq_url,
+        "dlq_arn": dlq_arn,
+        "rule_arns": rule_arns,
+    }
 
 
 def teardown_event_infra(
     queue_url: str | None,
     rule_arns: dict[str, str] | None,
     region: str | None = None,
+    dlq_url: str | None = None,
 ) -> dict:
     """Remove EventBridge rules, aggregate CloudWatch alarm, and SQS queue."""
     s = _session()
@@ -233,6 +258,17 @@ def teardown_event_infra(
                 errors.append(message)
     else:
         warnings.append("No queue URL was configured")
+
+    if dlq_url:
+        try:
+            sqs.delete_queue(QueueUrl=dlq_url)
+        except Exception as e:
+            message = f"Failed to delete DLQ: {e}"
+            logger.warning(message)
+            if _missing_resource(e):
+                warnings.append(message)
+            else:
+                errors.append(message)
 
     logger.info("Event infra torn down")
     return {"warnings": warnings, "errors": errors}

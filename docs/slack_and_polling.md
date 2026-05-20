@@ -13,7 +13,7 @@ OpenDevOps Agent can send investigation results to a Slack channel in two modes:
 
 | | Proactive Polling | Event-Driven (EventBridge → SQS) |
 |---|---|---|
-| **Setup required** | Just set `POLL_INTERVAL_MINUTES` in `.env` | Create AWS infra via Settings → AWS Configuration |
+| **Setup required** | Just set `POLL_INTERVAL_SECONDS` in `.env` | Create AWS infra via Settings → AWS Configuration |
 | **Detection latency** | Up to N minutes (your poll interval) | Near real-time (~seconds after event fires) |
 | **CloudWatch alarm required** | No — checks Lambda error rates directly | Yes — EventBridge only fires when an alarm trips |
 | **Works out of the box** | Yes | Requires CloudWatch alarms on your resources |
@@ -33,7 +33,7 @@ Add these to your `.env`:
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
 
 # Proactive polling (leave at 0 to disable)
-POLL_INTERVAL_MINUTES=5       # how often to check; 0 = reactive only
+POLL_INTERVAL_SECONDS=300     # how often to check; 0 = reactive only
 POLL_ERROR_THRESHOLD=5.0      # Lambda error rate % that triggers an investigation
 POLL_REINVESTIGATE_HOURS=1    # cooldown — don't re-investigate the same alarm within N hours
 ```
@@ -60,7 +60,7 @@ One investigation = one Slack message. If the agent does not reach a conclusion 
 
 ## Proactive Mode
 
-When `POLL_INTERVAL_MINUTES > 0`, the app starts a background `asyncio` task (`polling_loop` in `src/agent/poller.py`) on startup. Every N minutes it runs two checks:
+When `POLL_INTERVAL_SECONDS > 0`, the app starts a background `asyncio` task (`polling_loop` in `src/agent/poller.py`) on startup. Every N seconds it runs two checks:
 
 ### 1. CloudWatch Alarms
 Calls `get_alarms("ALARM")` and iterates over every alarm currently in ALARM state. For each one:
@@ -76,7 +76,7 @@ Calls `list_lambda_functions` (capped at 20 functions) and checks each one's err
 - Saves the result to the `alerts` table — visible in the `/monitoring` page
 
 ### Dedup
-An in-memory dict (`_last_investigated`) maps each trigger key (`alarm:<name>` or `lambda_errors:<name>`) to the last time it was investigated. If the cooldown (`POLL_REINVESTIGATE_HOURS`) hasn't elapsed, the alarm or function is skipped. This resets on process restart (intentional — re-checking on startup is fine).
+The poller uses canonical incident keys and an atomic database claim before the agent runs. If the cooldown (`POLL_REINVESTIGATE_HOURS`) has not elapsed, the alarm or function is skipped. Autonomous polling requires SQLite or PostgreSQL; memory mode does not start the poller.
 
 ---
 

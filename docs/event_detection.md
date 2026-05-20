@@ -4,7 +4,7 @@ OpenDevOps Agent supports two complementary detection modes that run simultaneou
 
 | Mode | Source | Trigger |
 |---|---|---|
-| **Proactive polling** | CloudWatch Alarms + Lambda metrics | Checked every N minutes by a background loop |
+| **Proactive polling** | CloudWatch Alarms + Lambda metrics | Checked every N seconds by a background loop |
 | **Event-driven consumer** | EventBridge → SQS | Real AWS infrastructure events delivered in near-real time |
 
 This page covers the event-driven consumer. For the polling loop see [slack_and_polling.md](slack_and_polling.md).
@@ -16,7 +16,7 @@ This page covers the event-driven consumer. For the polling loop see [slack_and_
 ```
 AWS Service (ECS, Lambda, RDS, EC2…)
   → CloudWatch → EventBridge rule
-      → SQS queue (OpenDevOps)
+      → SQS queue (OpenDevOps, with DLQ)
           → SQS long-poll consumer (event_consumer_loop)
               → context_collectors (deterministic boto3 enrichment)
               → agent.ainvoke (LLM investigation)
@@ -84,14 +84,18 @@ Context is appended to the investigation prompt, capped at 3 000 chars to stay w
 
 1. Receives up to 5 messages per poll with a 20-second long-poll wait
 2. Filters noise: only processes events where `_is_real_failure()` returns true (e.g. skips EC2 `running` state changes, healthy RDS events)
-3. Deduplicates: checks an in-memory set (`_in_progress`) and the database to skip events already being investigated or investigated within the last 3 minutes
+3. Deduplicates: builds a canonical incident key and atomically claims it in the database before the agent runs
 4. Calls `collect_context(event)` to enrich the prompt
 5. Generates a `session_id` and runs a full agent investigation via `agent.ainvoke`, persisting the session and messages to the database (`source = 'event'`)
 6. Persists the result to the `alerts` table (linked to the session via `session_id`) via `monitor_store.add_alert()`
 7. Delivers findings via SNS and Slack (if configured); failed investigations are flagged with status `'failed'` but are still persisted and notified
-8. Deletes the SQS message
+8. Deletes the SQS message only after successful processing, an intentional ignore, or a duplicate claim. Processing failures are left on the queue for retry and eventual DLQ redrive.
 
 The consumer is started as an `asyncio.Task` in the FastAPI lifespan and shut down cleanly on server stop.
+
+The setup wizard creates both `opendevops-agent-events` and `opendevops-agent-events-dlq`. The main queue has a redrive policy with `maxReceiveCount=5`; poison messages remain available in the DLQ for inspection instead of being dropped by the consumer.
+
+Deduplication uses canonical incident keys rather than hashes of whole event payloads. Examples: `cloudwatch_alarm:us-east-1:high-error-rate`, `lambda_errors:us-east-1:payment-processor`, and `lambda_error:us-east-1:payment-processor:<signature>`. Lambda EventBridge failures with different error signatures are separate incidents. Metric polling only sees function-level error rates, so those incidents are deduped at the function level during the cooldown window.
 
 ---
 
@@ -137,9 +141,9 @@ Each event-driven investigation creates a full session (messages, tool calls, us
 
 Sessions created by the event consumer carry `source = 'event'` and are hidden from the sidebar by default. They become visible after the user sends a follow-up message in the chat (`user_interacted` is then set to `true`).
 
-The `alerts` table records `status` (`'completed'` or `'failed'`), `dedup_key` (MD5 fingerprint of stable event fields for cross-run deduplication), and `session_id` (FK to the session that produced it).
+The `alerts` table records `status` (`'completed'` or `'failed'`), `dedup_key` (the canonical incident key), `session_id` (FK to the session that produced it), and `trigger_source` (`'poller'` or `'event_consumer'`). The `incident_claims` table stores the atomic pre-investigation claim used to prevent duplicate agent runs across workers and restarts.
 
-All three storage backends (memory, SQLite, PostgreSQL) support alerts. For PostgreSQL, run migrations before starting the server:
+Autonomous polling and event-driven monitoring require SQLite or PostgreSQL because incident claims must be durable. The memory backend remains available for chat, CI, and quick demos, but the poller, event consumer, and setup wizard are disabled in memory mode. For PostgreSQL, run migrations before starting the server:
 
 ```bash
 uv run python scripts/setup_db.py
@@ -156,9 +160,10 @@ For SQLite, schema migrations are applied automatically on first start.
 | `src/agent/event_consumer.py` | SQS long-poll loop, filtering, prompt building, delivery |
 | `src/agent/event_infra.py` | Create/teardown SQS queue + EventBridge rules |
 | `src/agent/context_collectors.py` | Per-event-type boto3 context enrichment |
-| `src/agent/monitor_store.py` | In-memory service status + DB-backed alert persistence |
-| `src/agent/init_store.py` | Persist init config to DB-backed `app_config` with `data/init.json` fallback/cache |
+| `src/agent/monitor_store.py` | In-process service status + DB-backed alerts, notifications, and incident claims |
+| `src/agent/init_store.py` | Persist init config to DB-backed `app_config` |
 | `src/agent/permission_checker.py` | IAM permission validation |
 | `src/tools/sns.py` | SNS publish wrapper |
 | `src/api/routers/init.py` | Setup wizard API endpoints |
 | `migrations/005_alerts.sql` | PostgreSQL alerts table + indexes |
+| `migrations/012_incident_claims.sql` | PostgreSQL incident claim table for atomic deduplication |

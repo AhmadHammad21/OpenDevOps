@@ -10,27 +10,16 @@ Every POLL_INTERVAL_SECONDS it:
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
 
+from agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
 from config import settings
 
-# In-memory dedup: maps a trigger key → datetime last investigated.
-# Resets on process restart (intentional — re-check on startup is fine).
-_last_investigated: dict[str, datetime] = {}
 
-
-def _should_investigate(key: str) -> bool:
-    last = _last_investigated.get(key)
-    if last is None:
-        return True
-    return datetime.now(UTC) - last > timedelta(hours=settings.poll_reinvestigate_hours)
-
-
-def _mark_investigated(key: str) -> None:
-    _last_investigated[key] = datetime.now(UTC)
+def _claim_window_minutes() -> int:
+    return max(1, settings.poll_reinvestigate_hours * 60)
 
 
 async def _run_investigation(
@@ -58,65 +47,71 @@ async def _run_investigation(
     usage_meta: Any = None
 
     try:
-        async for chunk, _meta in get_agent().astream(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config=config,
-            stream_mode="messages",
-        ):
-            um = getattr(chunk, "usage_metadata", None)
-            if um:
-                usage_meta = um
+        async with asyncio.timeout(settings.investigation_timeout):
+            async for chunk, _meta in get_agent().astream(
+                {"messages": [{"role": "user", "content": prompt}]},
+                config=config,
+                stream_mode="messages",
+            ):
+                um = getattr(chunk, "usage_metadata", None)
+                if um:
+                    usage_meta = um
 
-            for tcc in getattr(chunk, "tool_call_chunks", []) or []:
-                idx = _f(tcc, "index", 0)
-                if idx not in tc_accum:
-                    tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
-                if tc_id := _f(tcc, "id"):
-                    tc_accum[idx]["id"] = tc_id
-                if name := (_f(tcc, "name") or ""):
-                    tc_accum[idx]["name"] += name
-                if args := (_f(tcc, "args") or ""):
-                    tc_accum[idx]["args_str"] += args
+                for tcc in getattr(chunk, "tool_call_chunks", []) or []:
+                    idx = _f(tcc, "index", 0)
+                    if idx not in tc_accum:
+                        tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
+                    if tc_id := _f(tcc, "id"):
+                        tc_accum[idx]["id"] = tc_id
+                    if name := (_f(tcc, "name") or ""):
+                        tc_accum[idx]["name"] += name
+                    if args := (_f(tcc, "args") or ""):
+                        tc_accum[idx]["args_str"] += args
 
-            for tc in getattr(chunk, "tool_calls", []) or []:
-                tc_id = _f(tc, "id") or ""
-                name = _f(tc, "name") or ""
-                args = _f(tc, "args") or {}
-                if tc_id and name:
-                    pending_calls[tc_id] = {
-                        "tool": name, "args": args if isinstance(args, dict) else {}
-                    }
+                for tc in getattr(chunk, "tool_calls", []) or []:
+                    tc_id = _f(tc, "id") or ""
+                    name = _f(tc, "name") or ""
+                    args = _f(tc, "args") or {}
+                    if tc_id and name:
+                        pending_calls[tc_id] = {
+                            "tool": name,
+                            "args": args if isinstance(args, dict) else {},
+                        }
 
-            content = getattr(chunk, "content", "")
-            tc_id = getattr(chunk, "tool_call_id", None)
+                content = getattr(chunk, "content", "")
+                tc_id = getattr(chunk, "tool_call_id", None)
 
-            if content and isinstance(content, str) and not tc_id:
-                response_text += content
+                if content and isinstance(content, str) and not tc_id:
+                    response_text += content
 
-            if tc_id:
-                for entry in tc_accum.values():
-                    if eid := entry["id"]:
-                        try:
-                            eargs: Any = json.loads(entry["args_str"]) if entry["args_str"] else {}
-                        except json.JSONDecodeError:
-                            eargs = {}
-                        pending_calls[eid] = {"tool": entry["name"], "args": eargs}
-                tc_accum.clear()
+                if tc_id:
+                    for entry in tc_accum.values():
+                        if eid := entry["id"]:
+                            try:
+                                eargs: Any = (
+                                    json.loads(entry["args_str"]) if entry["args_str"] else {}
+                                )
+                            except json.JSONDecodeError:
+                                eargs = {}
+                            pending_calls[eid] = {"tool": entry["name"], "args": eargs}
+                    tc_accum.clear()
 
-                call_info = pending_calls.pop(
-                    tc_id,
-                    {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
-                )
-                try:
-                    result = json.loads(content)
-                except (json.JSONDecodeError, TypeError):
-                    result = {"raw": str(content)[:500]}
+                    call_info = pending_calls.pop(
+                        tc_id,
+                        {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
+                    )
+                    try:
+                        result = json.loads(content)
+                    except (json.JSONDecodeError, TypeError):
+                        result = {"raw": str(content)[:500]}
 
-                tool_calls_log.append({
-                    "tool": call_info["tool"], "args": call_info["args"], "result": result
-                })
-                if call_info["tool"] == "submit_investigation":
-                    investigation_result = call_info["args"]
+                    tool_calls_log.append({
+                        "tool": call_info["tool"],
+                        "args": call_info["args"],
+                        "result": result,
+                    })
+                    if call_info["tool"] == "submit_investigation":
+                        investigation_result = call_info["args"]
 
     except Exception as e:
         logger.error("Poller investigation failed: {}", e)
@@ -227,7 +222,12 @@ async def _check_alarms() -> None:
     """Check CloudWatch alarms — each new ALARM state triggers an investigation."""
     import uuid
 
-    from agent.monitor_store import is_recent_alert
+    from agent.monitor_store import (
+        claim_incident,
+        complete_incident,
+        is_recent_alert,
+        release_incident,
+    )
     from tools.cloudwatch import get_alarms
 
     data = await asyncio.get_event_loop().run_in_executor(None, get_alarms, "ALARM")
@@ -237,17 +237,15 @@ async def _check_alarms() -> None:
         name = alarm.get("name", "unknown")
         reason = alarm.get("reason", "")
         metric = alarm.get("metric", "")
-        key = f"alarm:{name}"
+        key = alarm_incident_key(name)
 
-        if not _should_investigate(key):
-            continue
         if await is_recent_alert(key):
             logger.debug("Poller: skipping alarm {} — already investigated recently", name)
-            _mark_investigated(key)
+            continue
+        if not await claim_incident(key, "poller", _claim_window_minutes()):
             continue
 
         logger.info("Poller: new ALARM state detected — {}", name)
-        _mark_investigated(key)
 
         prompt = (
             f'CloudWatch alarm "{name}" is in ALARM state.\n'
@@ -256,18 +254,37 @@ async def _check_alarms() -> None:
             "Please investigate the root cause and provide mitigation steps."
         )
         session_id = str(uuid.uuid4())
-        logger.debug("Poller: starting investigation for alarm {} (session {})", name, session_id[:8])
-        result, tool_calls_log = await _run_investigation(prompt, session_id)
-        if result:
-            logger.info("Poller: investigation complete for alarm {} — {}", name, result.get("confidence", "?"))
-            await _persist_and_notify(result, tool_calls_log, session_id, key)
+        logger.debug(
+            "Poller: starting investigation for alarm {} (session {})",
+            name, session_id[:8],
+        )
+        try:
+            result, tool_calls_log = await _run_investigation(prompt, session_id)
+            if result:
+                logger.info(
+                    "Poller: investigation complete for alarm {} — {}",
+                    name, result.get("confidence", "?"),
+                )
+                status = result.get("_status", "completed")
+                await _persist_and_notify(result, tool_calls_log, session_id, key)
+                await complete_incident(key, status, session_id)
+            else:
+                await release_incident(key)
+        except Exception:
+            await release_incident(key)
+            raise
 
 
 async def _check_lambda_errors() -> None:
     """Check Lambda functions for error rates above the configured threshold."""
     import uuid
 
-    from agent.monitor_store import is_recent_alert
+    from agent.monitor_store import (
+        claim_incident,
+        complete_incident,
+        is_incident_claimed,
+        release_incident,
+    )
     from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
     funcs = await asyncio.get_event_loop().run_in_executor(None, list_lambda_functions)
@@ -289,22 +306,19 @@ async def _check_lambda_errors() -> None:
         if error_rate < settings.poll_error_threshold:
             continue
 
-        key = f"lambda_errors:{name}"
-        if not _should_investigate(key):
-            continue
-        if await is_recent_alert(key):
-            logger.debug("Poller: skipping Lambda {} — already investigated recently", name)
-            _mark_investigated(key)
-            continue
         # The aggregate alarm covers all Lambda errors — if it fired recently, skip.
         from agent.event_infra import ALARM_NAME
-        if await is_recent_alert(f"alarm:{ALARM_NAME}"):
+        aggregate_key = alarm_incident_key(ALARM_NAME)
+        aggregate_window = max(3, (settings.investigation_timeout // 60) + 2)
+        if await is_incident_claimed(aggregate_key, aggregate_window):
             logger.debug("Poller: skipping Lambda {} — aggregate alarm already handled", name)
-            _mark_investigated(key)
+            continue
+
+        key = lambda_metric_incident_key(name)
+        if not await claim_incident(key, "poller", _claim_window_minutes()):
             continue
 
         logger.info("Poller: Lambda {} error rate {:.1f}% exceeds threshold", name, error_rate)
-        _mark_investigated(key)
 
         prompt = (
             f'Lambda function "{name}" has an error rate of {error_rate:.1f}% over the last hour, '
@@ -312,13 +326,25 @@ async def _check_lambda_errors() -> None:
             "Please investigate the root cause and suggest a fix."
         )
         session_id = str(uuid.uuid4())
-        logger.debug("Poller: starting investigation for Lambda {} (session {})", name, session_id[:8])
-        result, tool_calls_log = await _run_investigation(prompt, session_id)
-        if result:
-            logger.info(
-                "Poller: investigation complete for Lambda {} — {}", name, result.get("confidence", "?")
-            )
-            await _persist_and_notify(result, tool_calls_log, session_id, key)
+        logger.debug(
+            "Poller: starting investigation for Lambda {} (session {})",
+            name, session_id[:8],
+        )
+        try:
+            result, tool_calls_log = await _run_investigation(prompt, session_id)
+            if result:
+                logger.info(
+                    "Poller: investigation complete for Lambda {} — {}",
+                    name, result.get("confidence", "?"),
+                )
+                status = result.get("_status", "completed")
+                await _persist_and_notify(result, tool_calls_log, session_id, key)
+                await complete_incident(key, status, session_id)
+            else:
+                await release_incident(key)
+        except Exception:
+            await release_incident(key)
+            raise
 
 
 async def polling_loop() -> None:

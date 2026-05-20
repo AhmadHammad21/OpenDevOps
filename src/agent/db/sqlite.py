@@ -68,10 +68,36 @@ CREATE TABLE IF NOT EXISTS alerts (
     resolution  TEXT NOT NULL DEFAULT '',
     confidence  TEXT NOT NULL DEFAULT 'LOW',
     sns_sent    INTEGER NOT NULL DEFAULT 0,
+    dedup_key   TEXT,
+    status      TEXT NOT NULL DEFAULT 'completed',
+    session_id  TEXT,
+    trigger_source TEXT,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
 );
 CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS alerts_service_idx ON alerts(service);
+CREATE INDEX IF NOT EXISTS idx_alerts_dedup_key_created ON alerts(dedup_key, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS alert_notifications (
+    id       TEXT PRIMARY KEY,
+    alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+    channel  TEXT NOT NULL,
+    status   TEXT NOT NULL DEFAULT 'attempted',
+    error    TEXT,
+    sent_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_alert_notifications_alert_id ON alert_notifications(alert_id);
+
+CREATE TABLE IF NOT EXISTS incident_claims (
+    incident_key   TEXT PRIMARY KEY,
+    trigger_source TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'claimed',
+    session_id     TEXT,
+    claimed_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    completed_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_incident_claims_claimed_at ON incident_claims(claimed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_incident_claims_status ON incident_claims(status);
 
 CREATE TABLE IF NOT EXISTS app_config (
     key        TEXT PRIMARY KEY,
@@ -164,12 +190,37 @@ class SQLiteBackend(DatabaseBackend):
             "ALTER TABLE alerts ADD COLUMN dedup_key TEXT",
             "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
             "ALTER TABLE alerts ADD COLUMN session_id TEXT",
+            "ALTER TABLE alerts ADD COLUMN trigger_source TEXT",
         ):
             try:
                 await self._conn.execute(col_sql)
                 await self._conn.commit()
             except Exception:
                 pass  # column already exists
+
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS idx_alerts_dedup_key_created "
+            "ON alerts(dedup_key, created_at DESC)",
+            "CREATE TABLE IF NOT EXISTS alert_notifications ("
+            "id TEXT PRIMARY KEY, alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE, "
+            "channel TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'attempted', error TEXT, "
+            "sent_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))",
+            "CREATE INDEX IF NOT EXISTS idx_alert_notifications_alert_id "
+            "ON alert_notifications(alert_id)",
+            "CREATE TABLE IF NOT EXISTS incident_claims ("
+            "incident_key TEXT PRIMARY KEY, trigger_source TEXT NOT NULL, "
+            "status TEXT NOT NULL DEFAULT 'claimed', session_id TEXT, "
+            "claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')), "
+            "completed_at TEXT)",
+            "CREATE INDEX IF NOT EXISTS idx_incident_claims_claimed_at "
+            "ON incident_claims(claimed_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_incident_claims_status ON incident_claims(status)",
+        ):
+            try:
+                await self._conn.execute(stmt)
+                await self._conn.commit()
+            except Exception:
+                pass
 
         try:
             await self._conn.execute(
@@ -660,20 +711,109 @@ class SQLiteBackend(DatabaseBackend):
         dedup_key: str | None = None,
         status: str = "completed",
         session_id: str | None = None,
+        trigger_source: str | None = None,
     ) -> str:
         alert_id = str(uuid.uuid4())
         await self._exec(
             "INSERT INTO alerts"
-            " (id, service, error, resolution, confidence, sns_sent, dedup_key, status, session_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " (id, service, error, resolution, confidence, sns_sent, dedup_key, status,"
+            "  session_id, trigger_source)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             alert_id, service, error, resolution, confidence,
-            1 if sns_sent else 0, dedup_key, status, session_id,
+            1 if sns_sent else 0, dedup_key, status, session_id, trigger_source,
         )
         return alert_id
 
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO alert_notifications (id, alert_id, channel, status, error)"
+            " VALUES (?, ?, ?, ?, ?)",
+            str(uuid.uuid4()), alert_id, channel, status, error,
+        )
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchone(
+            "SELECT 1 FROM alerts WHERE dedup_key = ? "
+            "AND julianday(created_at) > julianday('now', ?) LIMIT 1",
+            dedup_key,
+            f"-{within_minutes} minutes",
+        )
+        return row is not None
+
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        if self._conn is None:
+            return False
+        try:
+            cur = await self._conn.execute(
+                "INSERT OR IGNORE INTO incident_claims "
+                "(incident_key, trigger_source, status, claimed_at, completed_at, session_id) "
+                "VALUES (?, ?, 'claimed', strftime('%Y-%m-%dT%H:%M:%S', 'now'), NULL, NULL)",
+                (incident_key, trigger_source),
+            )
+            await self._conn.commit()
+            if cur.rowcount == 1:
+                return True
+
+            cur = await self._conn.execute(
+                "UPDATE incident_claims SET trigger_source = ?, status = 'claimed', "
+                "claimed_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'), completed_at = NULL, "
+                "session_id = NULL WHERE incident_key = ? "
+                "AND julianday(COALESCE(completed_at, claimed_at)) < julianday('now', ?)",
+                (trigger_source, incident_key, f"-{within_minutes} minutes"),
+            )
+            await self._conn.commit()
+            return cur.rowcount > 0
+        except Exception as e:
+            logger.error("SQLite incident claim failed: {}", e)
+            return False
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO incident_claims "
+            "(incident_key, trigger_source, status, session_id, claimed_at, completed_at) "
+            "VALUES (?, 'unknown', ?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now'), "
+            "strftime('%Y-%m-%dT%H:%M:%S', 'now')) "
+            "ON CONFLICT(incident_key) DO UPDATE SET "
+            "status = excluded.status, session_id = excluded.session_id, "
+            "completed_at = excluded.completed_at",
+            incident_key, status, session_id,
+        )
+
+    async def release_incident(self, incident_key: str) -> None:
+        await self._exec(
+            "DELETE FROM incident_claims WHERE incident_key = ? AND status = 'claimed'",
+            incident_key,
+        )
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchone(
+            "SELECT 1 FROM incident_claims WHERE incident_key = ? "
+            "AND julianday(COALESCE(completed_at, claimed_at)) > julianday('now', ?) LIMIT 1",
+            incident_key,
+            f"-{within_minutes} minutes",
+        )
+        return row is not None
+
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, "
+            "       created_at, session_id, trigger_source "
             "FROM alerts ORDER BY created_at DESC LIMIT ?",
             min(limit, 200),
         )
@@ -685,19 +825,28 @@ class SQLiteBackend(DatabaseBackend):
                 "resolution": r["resolution"],
                 "confidence": r["confidence"],
                 "sns_sent": bool(r["sns_sent"]),
+                "status": r.get("status", "completed"),
                 "timestamp": r["created_at"],
+                "session_id": r.get("session_id"),
+                "trigger_source": r.get("trigger_source"),
             }
             for r in rows
         ]
 
     async def get_alert(self, alert_id: str) -> dict | None:
         row = await self._fetchone(
-            "SELECT id, service, error, resolution, confidence, sns_sent, created_at "
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, "
+            "       created_at, session_id, trigger_source "
             "FROM alerts WHERE id = ?",
             alert_id,
         )
         if not row:
             return None
+        notifications = await self._fetchall(
+            "SELECT channel, status, error, sent_at FROM alert_notifications "
+            "WHERE alert_id = ? ORDER BY sent_at ASC",
+            alert_id,
+        )
         return {
             "id": row["id"],
             "service": row["service"],
@@ -705,7 +854,11 @@ class SQLiteBackend(DatabaseBackend):
             "resolution": row["resolution"],
             "confidence": row["confidence"],
             "sns_sent": bool(row["sns_sent"]),
+            "status": row.get("status", "completed"),
             "timestamp": row["created_at"],
+            "session_id": row.get("session_id"),
+            "trigger_source": row.get("trigger_source"),
+            "notifications": notifications,
         }
 
     async def get_app_config(self, key: str) -> dict | None:

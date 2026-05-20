@@ -611,6 +611,58 @@ class PostgresBackend(DatabaseBackend):
         )
         return row is not None
 
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        row = await self._fetchrow(
+            "INSERT INTO incident_claims"
+            " (incident_key, trigger_source, status, claimed_at, completed_at, session_id)"
+            " VALUES (%s, %s, 'claimed', NOW(), NULL, NULL)"
+            " ON CONFLICT (incident_key) DO UPDATE SET"
+            " trigger_source = EXCLUDED.trigger_source, status = 'claimed',"
+            " claimed_at = NOW(), completed_at = NULL, session_id = NULL"
+            " WHERE COALESCE(incident_claims.completed_at, incident_claims.claimed_at)"
+            " < NOW() - (%s * INTERVAL '1 minute')"
+            " RETURNING incident_key",
+            incident_key, trigger_source, within_minutes,
+        )
+        return row is not None
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO incident_claims"
+            " (incident_key, trigger_source, status, session_id, claimed_at, completed_at)"
+            " VALUES (%s, 'unknown', %s, %s, NOW(), NOW())"
+            " ON CONFLICT (incident_key) DO UPDATE SET"
+            " status = EXCLUDED.status, session_id = EXCLUDED.session_id, completed_at = NOW()",
+            incident_key,
+            status,
+            uuid.UUID(session_id) if session_id else None,
+        )
+
+    async def release_incident(self, incident_key: str) -> None:
+        await self._exec(
+            "DELETE FROM incident_claims WHERE incident_key = %s AND status = 'claimed'",
+            incident_key,
+        )
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchrow(
+            "SELECT 1 FROM incident_claims WHERE incident_key = %s"
+            " AND COALESCE(completed_at, claimed_at) > NOW() - (%s * INTERVAL '1 minute')"
+            " LIMIT 1",
+            incident_key, within_minutes,
+        )
+        return row is not None
+
     async def get_alerts(self, limit: int = 50) -> list[dict]:
         rows = await self._fetchall(
             "SELECT id, service, error, resolution, confidence, sns_sent, status,"

@@ -103,6 +103,8 @@ async def setup(
     data["event_infra_managed"] = False
     if data["sqs_queue_url"]:
         data["sqs_queue_arn"] = ""
+        data["sqs_dlq_url"] = ""
+        data["sqs_dlq_arn"] = ""
         data["eventbridge_rule_arns"] = {}
 
     # Create org if name provided and none exists yet
@@ -152,6 +154,12 @@ async def skip_services(
 async def complete(
     _: Annotated[dict | None, Depends(require_admin)],
 ):
+    if settings.checkpoint_backend == "memory":
+        raise HTTPException(
+            status_code=400,
+            detail="Event monitoring requires CHECKPOINT_BACKEND=sqlite or postgres.",
+        )
+
     data = await load_init_async()
     region = data.get("aws_region") or settings.aws_region
 
@@ -161,6 +169,8 @@ async def complete(
         result = await asyncio.get_event_loop().run_in_executor(None, setup_event_infra, region)
         data["sqs_queue_url"] = result["queue_url"]
         data["sqs_queue_arn"] = result["queue_arn"]
+        data["sqs_dlq_url"] = result.get("dlq_url", "")
+        data["sqs_dlq_arn"] = result.get("dlq_arn", "")
         data["eventbridge_rule_arns"] = result["rule_arns"]
         data["event_infra_enabled"] = True
         data["event_infra_managed"] = True
@@ -193,6 +203,7 @@ async def teardown_infra(
     """Remove SQS queue and EventBridge rules created by /complete."""
     data = await load_init_async()
     queue_url = data.get("sqs_queue_url") or ""
+    dlq_url = data.get("sqs_dlq_url") or ""
     rule_arns = data.get("eventbridge_rule_arns") or {}
     region = data.get("aws_region") or settings.aws_region
     managed = bool(data.get("event_infra_managed"))
@@ -231,7 +242,8 @@ async def teardown_infra(
         from agent.event_infra import teardown_event_infra
 
         result = await asyncio.get_event_loop().run_in_executor(
-            None, teardown_event_infra, queue_url, rule_arns, region
+            None,
+            lambda: teardown_event_infra(queue_url, rule_arns, region, dlq_url=dlq_url),
         )
     except Exception as e:
         logger.error("Teardown failed: {}", e)
@@ -243,6 +255,8 @@ async def teardown_infra(
     data["event_infra_enabled"] = False
     data["sqs_queue_url"] = ""
     data["sqs_queue_arn"] = ""
+    data["sqs_dlq_url"] = ""
+    data["sqs_dlq_arn"] = ""
     data["eventbridge_rule_arns"] = {}
     data["event_infra_managed"] = False
     await save_init_async(data)

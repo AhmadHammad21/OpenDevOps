@@ -40,6 +40,7 @@ import argparse
 import datetime
 import json
 import os
+import sqlite3
 import sys
 
 import boto3
@@ -68,16 +69,21 @@ def die(msg: str) -> None:
 
 
 def get_queue_url() -> str:
-    init_path = os.path.join(os.path.dirname(__file__), "..", "data", "init.json")
-    if os.path.exists(init_path):
+    if queue_url := os.environ.get("SQS_QUEUE_URL", ""):
+        return queue_url
+
+    sqlite_path = os.environ.get("SQLITE_PATH", "./data/agent.db")
+    if os.path.exists(sqlite_path):
         try:
-            with open(init_path) as f:
-                url = json.load(f).get("sqs_queue_url", "")
-                if url:
-                    return url
+            with sqlite3.connect(sqlite_path) as conn:
+                row = conn.execute(
+                    "SELECT value FROM app_config WHERE key = 'init'"
+                ).fetchone()
+            if row:
+                return json.loads(row[0]).get("sqs_queue_url", "")
         except Exception:
             pass
-    return os.environ.get("SQS_QUEUE_URL", "")
+    return ""
 
 
 def list_functions(lam) -> list[str]:

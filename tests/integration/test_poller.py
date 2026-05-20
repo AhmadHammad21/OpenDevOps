@@ -5,20 +5,17 @@ from __future__ import annotations
 import asyncio
 
 from agent import poller
+from agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
 
 
-def test_should_investigate_respects_cooldown():
-    poller._last_investigated.clear()
-    key = "alarm:HighErrorRate"
-
-    assert poller._should_investigate(key) is True
-    poller._mark_investigated(key)
-    assert poller._should_investigate(key) is False
+def test_claim_window_uses_reinvestigate_hours(monkeypatch):
+    monkeypatch.setattr(poller.settings, "poll_reinvestigate_hours", 2, raising=False)
+    assert poller._claim_window_minutes() == 120
 
 
 def test_check_alarms_dispatches_once(monkeypatch):
-    poller._last_investigated.clear()
-    calls = {"run": 0, "persist": 0}
+    calls = {"run": 0, "persist": 0, "complete": 0}
+    claimed: set[str] = set()
 
     def fake_get_alarms(_state):
         return {
@@ -48,10 +45,30 @@ def test_check_alarms_dispatches_once(monkeypatch):
             [],
         )
 
-    async def fake_persist(_result, _tool_calls_log, _session_id, _dedup_key):
+    async def fake_persist(_result, _tool_calls_log, _session_id, dedup_key):
+        assert dedup_key == alarm_incident_key("HighErrorRate-payment-processor")
         calls["persist"] += 1
 
+    async def fake_recent(_dedup_key, _within_minutes=3):
+        return False
+
+    async def fake_claim(key, _trigger_source, _within_minutes=3):
+        if key in claimed:
+            return False
+        claimed.add(key)
+        return True
+
+    async def fake_complete(_key, _status="completed", _session_id=None):
+        calls["complete"] += 1
+
+    async def fake_release(_key):
+        raise AssertionError("successful poller investigation should not release the claim")
+
     monkeypatch.setattr("tools.cloudwatch.get_alarms", fake_get_alarms)
+    monkeypatch.setattr("agent.monitor_store.is_recent_alert", fake_recent)
+    monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
+    monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
+    monkeypatch.setattr("agent.monitor_store.release_incident", fake_release)
     monkeypatch.setattr(poller, "_run_investigation", fake_run)
     monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
 
@@ -60,11 +77,11 @@ def test_check_alarms_dispatches_once(monkeypatch):
 
     assert calls["run"] == 1
     assert calls["persist"] == 1
+    assert calls["complete"] == 1
 
 
 def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
-    poller._last_investigated.clear()
-    calls = {"run": 0, "persist": 0}
+    calls = {"run": 0, "persist": 0, "complete": 0}
 
     def fake_list_lambda_functions():
         return {"functions": [{"name": "payment-processor"}]}
@@ -89,11 +106,29 @@ def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
             [],
         )
 
-    async def fake_persist(_result, _tool_calls_log, _session_id, _dedup_key):
+    async def fake_persist(_result, _tool_calls_log, _session_id, dedup_key):
+        assert dedup_key == lambda_metric_incident_key("payment-processor")
         calls["persist"] += 1
+
+    async def fake_claim(key, _trigger_source, _within_minutes=3):
+        assert key == lambda_metric_incident_key("payment-processor")
+        return True
+
+    async def fake_complete(_key, _status="completed", _session_id=None):
+        calls["complete"] += 1
+
+    async def fake_release(_key):
+        raise AssertionError("successful poller investigation should not release the claim")
+
+    async def fake_is_claimed(_key, _within_minutes=3):
+        return False
 
     monkeypatch.setattr("tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
     monkeypatch.setattr("tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
+    monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
+    monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
+    monkeypatch.setattr("agent.monitor_store.release_incident", fake_release)
+    monkeypatch.setattr("agent.monitor_store.is_incident_claimed", fake_is_claimed)
     monkeypatch.setattr(poller, "_run_investigation", fake_run)
     monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
     monkeypatch.setattr(poller.settings, "poll_error_threshold", 5.0, raising=False)
@@ -102,3 +137,4 @@ def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
 
     assert calls["run"] == 1
     assert calls["persist"] == 1
+    assert calls["complete"] == 1

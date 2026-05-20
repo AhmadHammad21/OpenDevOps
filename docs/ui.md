@@ -90,7 +90,7 @@ Accessible from the sidebar for all authenticated users. Each card shows the aff
 
 Shows active configuration. Four tabs (admins see all four; regular users see the last three):
 
-**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are stored in database-backed app config for SQLite/PostgreSQL deployments and mirrored to `data/init.json` as a local cache/fallback. Includes:
+**AWS Configuration** *(admin only, default tab for admins)* — editable fields for SNS Topic ARN, SQS Queue URL, and AWS Region. Values are stored in database-backed app config for SQLite/PostgreSQL deployments. Includes:
 - **Event Monitoring** section — shows Enabled / Disabled status; **Create Infrastructure** button provisions the SQS queue and 9 EventBridge rules; **Teardown** button removes them (with confirmation).
 - **Run checks** button that validates IAM permissions for every AWS service the agent uses.
 
