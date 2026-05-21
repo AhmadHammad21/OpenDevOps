@@ -77,12 +77,41 @@ Two policies keep the least-privilege boundary clean:
         "iam:ListAttachedRolePolicies",
         "iam:ListRolePolicies",
         "sts:GetCallerIdentity",
+        "ce:GetCostAndUsage",
+        "ce:GetAnomalies",
         "sqs:ListQueues",
         "sqs:GetQueueUrl",
         "sqs:GetQueueAttributes",
         "events:ListRules",
         "events:DescribeRule",
-        "events:ListTargetsByRule"
+        "events:ListTargetsByRule",
+        "dynamodb:Describe*",
+        "dynamodb:List*",
+        "dynamodb:Get*",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchGet*",
+        "s3:Get*",
+        "s3:List*",
+        "sns:Get*",
+        "sns:List*",
+        "apigateway:GET",
+        "elasticloadbalancing:Describe*",
+        "autoscaling:Describe*",
+        "route53:Get*",
+        "route53:List*",
+        "acm:Describe*",
+        "acm:List*",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecrets",
+        "ssm:Describe*",
+        "ssm:List*",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "kms:Describe*",
+        "kms:List*",
+        "kms:GetKeyPolicy"
       ],
       "Resource": "*"
     },
@@ -145,13 +174,15 @@ Two policies keep the least-privilege boundary clean:
 
 | Block | Policy | Purpose |
 |---|---|---|
-| `ReadAll` | Operational | Read access across CloudWatch, logs, CloudTrail, ECS, Lambda, EC2, RDS, IAM, STS, SQS, EventBridge — used by all investigation tools and bash-based AWS CLI calls |
+| `ReadAll` | Operational | Read access across CloudWatch, logs, CloudTrail, ECS, Lambda, EC2, RDS, IAM, STS, SQS, EventBridge, DynamoDB, S3, SNS, API Gateway, ELB, Auto Scaling, Route 53, ACM, Secrets Manager (metadata only), SSM Parameter Store, KMS (metadata only), and Cost Explorer — used by all investigation tools and bash-based AWS CLI calls |
 | `SQSConsume` | Operational | Polls `opendevops-agent-events` at runtime for incoming EventBridge events |
 | `SQSSetup` | Setup | Creates and tears down the SQS queue and DLQ; sends test events via the pipeline test script |
 | `EventBridgeSetup` | Setup | Creates and tears down the 9 EventBridge rules that forward AWS events to SQS |
 | `CloudWatchAlarmSetup` | Setup | Creates and tears down the aggregate `opendevops-lambda-errors-aggregate` CloudWatch alarm |
 
-**Why reads use `*`:** The agent can issue arbitrary AWS CLI commands via its bash tool. Scoping reads to specific resource ARNs would silently break any investigation that touches a resource not on the allowlist. Write actions are scoped to `opendevops-*` because the app only creates infrastructure under that prefix and nothing else.
+**Why reads use `*` and broad action families:** The agent can issue arbitrary read-only AWS CLI commands via its bash tool (S3, DynamoDB, SNS, SSM, Route 53, ACM, etc.), so the read actions are kept broad — scoping them to specific actions or resource ARNs would silently break any investigation that touches a service or resource not on the allowlist. Write actions are scoped to `opendevops-*` because the app only creates infrastructure under that prefix and nothing else.
+
+**Deliberately excluded:** `secretsmanager:GetSecretValue` and `kms:Decrypt` are **not** granted. Secrets Manager and KMS reads are limited to metadata (`DescribeSecret`, `ListSecrets`, `GetKeyPolicy`) so secret material is never exposed to the agent or the LLM, even though it would technically be a "read". Add these back only if you have a specific need and accept that secret values may appear in investigation context.
 
 ### Minimal policy (investigation only, no event monitoring)
 

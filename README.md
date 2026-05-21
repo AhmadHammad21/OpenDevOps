@@ -145,14 +145,10 @@ uv run devops-agent report
 
 ## AWS IAM Setup
 
-Attach `iam-policy.json` to the IAM user or role your agent uses. It grants read-only access
-to CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM.
-
-```bash
-aws iam create-policy \
-  --policy-name OpenDevOpsAgentReadOnly \
-  --policy-document file://iam-policy.json
-```
+The agent needs read access across your AWS account, plus optional write access scoped to
+`opendevops-*` resources if you use the event-driven monitoring setup wizard. Two
+least-privilege policies (Operational + Setup) and full step-by-step instructions are in
+**[docs/iam_setup.md](docs/iam_setup.md)**.
 
 ## Project Structure
 
