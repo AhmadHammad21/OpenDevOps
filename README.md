@@ -3,6 +3,14 @@
 Open-source AWS DevOps Agent powered by OpenRouter LLMs. Investigates incidents, finds root causes,
 and gives actionable mitigation plans — without the AWS DevOps Agent price tag.
 
+## Demo
+
+**Autonomous incident detection — Lambda error spike.** A crashing Lambda is detected automatically, the agent reads the traceback from CloudWatch Logs, identifies the root cause, surfaces it on the Monitoring dashboard, and delivers the mitigation steps to Slack — no human in the loop.
+
+<video src="https://github.com/AhmadHammad21/OpenDevOps/raw/main/assets/demos/e2-final.mp4" controls muted width="800"></video>
+
+> If the player doesn't load, [watch the clip directly](assets/demos/e2-final.mp4).
+
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
