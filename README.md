@@ -5,11 +5,13 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 
 ## Demo
 
-**Autonomous incident detection — Lambda error spike.** A crashing Lambda is detected automatically, the agent reads the traceback from CloudWatch Logs, identifies the root cause, surfaces it on the Monitoring dashboard, and delivers the mitigation steps to Slack — no human in the loop.
+<p align="center">
+  <img src="assets/demos/e2-final.gif" alt="Autonomous Lambda error-spike investigation" width="820">
+</p>
 
-![Demo: autonomous Lambda error-spike investigation](assets/demos/e2-final.gif)
-
-> Prefer video? [Watch the MP4](assets/demos/e2-final.mp4).
+<p align="center">
+  <em>Autonomous incident detection — a crashing Lambda is caught automatically, the agent reads the traceback from CloudWatch Logs, finds the root cause, surfaces it on the Monitoring dashboard, and posts the mitigation to Slack. No human in the loop.</em>
+</p>
 
 ## What's inside
 
