@@ -60,7 +60,7 @@ export default function MonitoringPage() {
         toast.error(d.detail || 'Failed to send test event');
         return;
       }
-      toast.success('Test Lambda alarm sent — investigation will appear here in ~30s');
+      toast.success('Test Lambda alarm sent — investigation will appear here automatically');
     } catch {
       toast.error('Failed to send test event');
     } finally {
@@ -76,7 +76,47 @@ export default function MonitoringPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    load();
+
+    // Subscribe to real-time alert push via SSE
+    let es: EventSource | null = null;
+    let fallbackId: ReturnType<typeof setInterval> | null = null;
+
+    const connectSSE = () => {
+      es = new EventSource('/api/monitoring/stream');
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'alert') {
+            setAlerts(prev =>
+              prev.some(a => a.id === data.alert.id) ? prev : [data.alert, ...prev]
+            );
+          }
+        } catch { /* ignore parse errors */ }
+      };
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        // Fall back to polling if SSE fails
+        if (!fallbackId) fallbackId = setInterval(load, 30000);
+      };
+    };
+
+    connectSSE();
+
+    // Always poll services (not SSE-pushed yet)
+    const serviceId = setInterval(
+      () => fetchServices().then(setServices).catch(() => {}),
+      30000,
+    );
+
+    return () => {
+      es?.close();
+      if (fallbackId) clearInterval(fallbackId);
+      clearInterval(serviceId);
+    };
+  }, []);
 
   const healthy = services.filter(s => s.status === 'healthy').length;
   const errored = services.filter(s => s.status === 'error').length;

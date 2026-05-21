@@ -49,7 +49,6 @@ export default function SettingsPage() {
   const [telegramTesting,    setTelegramTesting]    = useState(false);
 
   // AWS tab state
-  const [snsArn,        setSnsArn]        = useState('');
   const [sqsUrl,        setSqsUrl]        = useState('');
   const [awsRegion,     setAwsRegion]     = useState('');
   const [awsSaving,     setAwsSaving]     = useState(false);
@@ -91,7 +90,6 @@ export default function SettingsPage() {
     apiFetch('/api/init/status')
       .then(r => r.json())
       .then(d => {
-        setSnsArn(d.sns_topic_arn || '');
         setSqsUrl(d.sqs_queue_url || '');
         setAwsRegion(d.aws_region || '');
         setInfraEnabled(!!d.event_infra_enabled);
@@ -108,7 +106,7 @@ export default function SettingsPage() {
       const r = await apiFetch('/api/init/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sns_topic_arn: snsArn, sqs_queue_url: sqsUrl, aws_region: awsRegion }),
+        body: JSON.stringify({ sqs_queue_url: sqsUrl, aws_region: awsRegion }),
       });
       if (!r.ok) throw new Error('save failed');
       toast.success('AWS configuration saved');
@@ -412,9 +410,8 @@ export default function SettingsPage() {
 
               <div className="divide-y divide-gray-100 dark:divide-[#27272F]">
                 {[
-                  { label: 'SNS Topic ARN', hint: 'Alerts are published here after each investigation', value: snsArn, set: setSnsArn, placeholder: 'arn:aws:sns:us-east-1:123456789012:alerts' },
                   { label: 'SQS Queue URL', hint: 'Event consumer polls this queue for CloudWatch alarms', value: sqsUrl, set: setSqsUrl, placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789012/opendevops' },
-                  { label: 'AWS Region',    hint: 'Region for SNS, SQS, and EventBridge resources', value: awsRegion, set: setAwsRegion, placeholder: 'us-east-1' },
+                  { label: 'AWS Region',    hint: 'Region for SQS and EventBridge resources', value: awsRegion, set: setAwsRegion, placeholder: 'us-east-1' },
                 ].map(({ label, hint, value, set, placeholder }) => (
                   <div key={label} className="flex items-start gap-4 px-4 py-[11px]">
                     <div className="flex-[0_0_200px] pt-0.5">

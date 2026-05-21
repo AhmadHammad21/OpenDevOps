@@ -13,7 +13,6 @@ from loguru import logger
 from agent.incident_keys import event_incident_key
 from agent.init_store import (
     get_runtime_aws_region,
-    get_runtime_sns_topic_arn,
     get_runtime_sqs_queue_url,
 )
 from agent.monitor_store import (
@@ -111,137 +110,9 @@ def _build_investigation_prompt(event: dict) -> str:
 
 
 async def _run_investigation(prompt: str, session_id: str) -> dict[str, Any] | None:
-    """Run a full agent investigation using the same streaming path as the chat endpoint."""
-    from agent.core import get_agent
-    from agent.turns import save_turn
-
-    def _f(obj: Any, key: str, default: Any = None) -> Any:
-        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
-
-    config = {
-        "configurable": {"thread_id": session_id},
-        "recursion_limit": settings.max_tool_calls * 3 + 15,
-    }
-
-    tc_accum: dict[int, dict[str, Any]] = {}
-    pending_calls: dict[str, dict[str, Any]] = {}
-    tool_calls_log: list[dict[str, Any]] = []
-    investigation_result: dict[str, Any] | None = None
-    response_text = ""
-    usage_meta: Any = None
-
-    try:
-        async with asyncio.timeout(settings.investigation_timeout):
-            async for chunk, _meta in get_agent().astream(
-                {"messages": [{"role": "user", "content": prompt}]},
-                config=config,
-                stream_mode="messages",
-            ):
-                um = getattr(chunk, "usage_metadata", None)
-                if um:
-                    usage_meta = um
-
-                for tcc in getattr(chunk, "tool_call_chunks", []) or []:
-                    idx = _f(tcc, "index", 0)
-                    if idx not in tc_accum:
-                        tc_accum[idx] = {"id": "", "name": "", "args_str": ""}
-                    if tc_id := _f(tcc, "id"):
-                        tc_accum[idx]["id"] = tc_id
-                    if name := (_f(tcc, "name") or ""):
-                        tc_accum[idx]["name"] += name
-                    if args := (_f(tcc, "args") or ""):
-                        tc_accum[idx]["args_str"] += args
-
-                for tc in getattr(chunk, "tool_calls", []) or []:
-                    tc_id = _f(tc, "id") or ""
-                    name = _f(tc, "name") or ""
-                    args = _f(tc, "args") or {}
-                    if tc_id and name:
-                        pending_calls[tc_id] = {
-                            "tool": name,
-                            "args": args if isinstance(args, dict) else {},
-                        }
-
-                content = getattr(chunk, "content", "")
-                tc_id = getattr(chunk, "tool_call_id", None)
-
-                if content and isinstance(content, str) and not tc_id:
-                    response_text += content
-
-                if tc_id:
-                    for entry in tc_accum.values():
-                        if eid := entry["id"]:
-                            try:
-                                eargs: Any = (
-                                    json.loads(entry["args_str"]) if entry["args_str"] else {}
-                                )
-                            except json.JSONDecodeError:
-                                eargs = {}
-                            pending_calls[eid] = {"tool": entry["name"], "args": eargs}
-                    tc_accum.clear()
-
-                    call_info = pending_calls.pop(
-                        tc_id,
-                        {"tool": getattr(chunk, "name", None) or "unknown", "args": {}},
-                    )
-                    try:
-                        result = json.loads(content)
-                    except (json.JSONDecodeError, TypeError):
-                        result = {"raw": str(content)[:500]}
-
-                    tool_calls_log.append({
-                        "tool": call_info["tool"],
-                        "args": call_info["args"],
-                        "result": result,
-                    })
-                    if call_info["tool"] == "submit_investigation":
-                        investigation_result = call_info["args"]
-
-    except Exception as e:
-        logger.error("Agent investigation failed: {}", e)
-        investigation_result = {
-            "_status": "failed",
-            "root_cause_summary": f"Investigation failed: {e}",
-            "confidence": "LOW",
-            "mitigation_steps": [
-                "Re-investigate manually via the chat — use a higher MAX_TOOL_CALLS if needed.",
-            ],
-        }
-
-    # Build readable assistant summary
-    if (
-        investigation_result
-        and investigation_result.get("root_cause_summary")
-        and "_status" not in investigation_result
-    ):
-        steps = investigation_result.get("mitigation_steps", [])
-        steps_text = "\n".join(f"- {s}" for s in steps) if steps else "_No steps provided._"
-        confidence = investigation_result.get("confidence", "MEDIUM")
-        assistant_text = (
-            f"**Root Cause ({confidence} confidence):** "
-            f"{investigation_result['root_cause_summary']}\n\n"
-            f"**Mitigation Steps:**\n{steps_text}"
-        )
-    elif response_text.strip():
-        assistant_text = response_text.strip()
-    else:
-        assistant_text = "Investigation completed. See tool calls for details."
-
-    await save_turn(
-        session_id=session_id,
-        user_message=prompt,
-        assistant_text=assistant_text,
-        tool_calls_log=tool_calls_log,
-        usage={
-            "model": settings.llm_model,
-            "input_tokens": _f(usage_meta, "input_tokens", 0) or 0,
-            "output_tokens": _f(usage_meta, "output_tokens", 0) or 0,
-            "latency_ms": 0,
-        },
-        source="event",
-    )
-
-    return investigation_result
+    from agent.investigation_runner import run_investigation
+    result, _tool_calls_log = await run_investigation(prompt, session_id)
+    return result
 
 
 def _extract_aws_error(event: dict) -> str:
@@ -271,39 +142,6 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
     confidence = result.get("confidence", "MEDIUM")
     resolution = "\n".join(mitigation) if isinstance(mitigation, list) else str(mitigation)
     aws_error = _extract_aws_error(event)
-
-    sns_arn = get_runtime_sns_topic_arn()
-
-    sns_sent = False
-    sns_attempted = False
-    if sns_arn:
-        sns_attempted = True
-        try:
-            from tools.sns import publish_sns_alert
-
-            services_affected = result.get("services_affected", [])
-            evidence = result.get("evidence", [])
-            message = (
-                f"Service: {service}\n"
-                f"Root Cause: {root_cause}\n"
-                f"Evidence: {chr(10).join(evidence[:5]) if evidence else 'N/A'}\n"
-                f"Mitigation Steps:\n{resolution}\n"
-                "Services Affected: "
-                f"{', '.join(services_affected) if services_affected else service}\n"
-                f"Confidence: {confidence}\n"
-                f"Event Time: {event.get('time', '')}"
-            )
-            subject_prefix = "[FAILED]" if status == "failed" else f"[{confidence}]"
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                publish_sns_alert,
-                sns_arn,
-                f"{subject_prefix} {service} — {root_cause[:80]}",
-                message,
-            )
-            sns_sent = True
-        except Exception as e:
-            logger.error("SNS delivery failed: {}", e)
 
     slack_sent = False
     if settings.slack_webhook_url:
@@ -347,7 +185,7 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         error=root_cause,
         resolution=resolution,
         confidence=confidence,
-        sns_sent=sns_sent,
+        sns_sent=False,
         dedup_key=dedup_key,
         status=status,
         session_id=session_id,
@@ -355,13 +193,11 @@ async def _deliver(result: dict[str, Any], event: dict, dedup_key: str, session_
         evidence=result.get("evidence", []),
     )
     if alert_id:
-        if sns_attempted:
-            await add_notification(alert_id, "sns", "delivered" if sns_sent else "failed")
         if settings.slack_webhook_url:
             await add_notification(alert_id, "slack", "delivered" if slack_sent else "failed")
         if settings.telegram_bot_token and settings.telegram_chat_id:
             await add_notification(alert_id, "telegram", "delivered" if telegram_sent else "failed")
-    logger.info("Alert delivered: service={} confidence={} sns={}", service, confidence, sns_sent)
+    logger.info("Alert delivered: service={} confidence={}", service, confidence)
 
 
 def _is_real_failure(source: str, detail: dict) -> bool:

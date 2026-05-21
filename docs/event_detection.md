@@ -19,9 +19,9 @@ AWS Service (ECS, Lambda, RDS, EC2…)
       → SQS queue (OpenDevOps, with DLQ)
           → SQS long-poll consumer (event_consumer_loop)
               → context_collectors (deterministic boto3 enrichment)
-              → agent.ainvoke (LLM investigation)
-              → monitor_store.add_alert (persist result)
-              → SNS publish + Slack notify
+              → investigation_runner.run_investigation (LLM investigation)
+              → monitor_store.add_alert (persist result + SSE push)
+              → Slack / Telegram notify
 ```
 
 ---
@@ -30,14 +30,13 @@ AWS Service (ECS, Lambda, RDS, EC2…)
 
 ### Option A — Init wizard (recommended)
 
-Go to **Settings → AWS Configuration** after first login. Enter your AWS Region and optional SNS Topic ARN, save, then click **Run checks** to verify IAM permissions. Click **Create Infrastructure** to create the SQS queue, EventBridge rules, and aggregate Lambda CloudWatch alarm.
+Go to **Settings → AWS Configuration** after first login. Enter your AWS Region, save, then click **Run checks** to verify IAM permissions. Click **Create Infrastructure** to create the SQS queue, EventBridge rules, and aggregate Lambda CloudWatch alarm.
 
 ### Option B — Manual `.env`
 
 ```bash
-SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123456789012/opendevops-events
+SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/123456789012/opendevops-agent-events
 EVENT_CONSUMER_ENABLED=true        # or leave unset — consumer also starts if SQS_QUEUE_URL is set
-SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:opendevops-alerts
 ```
 
 The consumer starts automatically on server startup if either `EVENT_CONSUMER_ENABLED=true`, `SQS_QUEUE_URL` is set, or the init wizard has enabled event infrastructure in persistent app config.
@@ -86,9 +85,9 @@ Context is appended to the investigation prompt, capped at 3 000 chars to stay w
 2. Filters noise: only processes events where `_is_real_failure()` returns true (e.g. skips EC2 `running` state changes, healthy RDS events)
 3. Deduplicates: builds a canonical incident key and atomically claims it in the database before the agent runs
 4. Calls `collect_context(event)` to enrich the prompt
-5. Generates a `session_id` and runs a full agent investigation via `agent.ainvoke`, persisting the session and messages to the database (`source = 'event'`)
-6. Persists the result to the `alerts` table (linked to the session via `session_id`) via `monitor_store.add_alert()`
-7. Delivers findings via SNS and Slack (if configured); failed investigations are flagged with status `'failed'` but are still persisted and notified
+5. Generates a `session_id` and runs a full agent investigation via `investigation_runner.run_investigation`, persisting the session and messages to the database (`source = 'event'`)
+6. Persists the result to the `alerts` table (linked to the session via `session_id`) via `monitor_store.add_alert()`, which also pushes the alert to all active SSE subscribers
+7. Delivers findings via Slack and Telegram (if configured); failed investigations are flagged with status `'failed'` but are still persisted and notified. If the LLM completes the loop without calling `submit_investigation` (e.g. a weak model), a synthetic `_status: failed` result is produced so the alert is always persisted.
 8. Deletes the SQS message only after successful processing, an intentional ignore, or a duplicate claim. Processing failures are left on the queue for retry and eventual DLQ redrive.
 
 The consumer is started as an `asyncio.Task` in the FastAPI lifespan and shut down cleanly on server stop.
@@ -99,37 +98,12 @@ Deduplication uses canonical incident keys rather than hashes of whole event pay
 
 ---
 
-## SNS Alert Delivery
-
-After each event-driven investigation, the result is published to the configured SNS topic (`SNS_TOPIC_ARN`). The message is a JSON payload:
-
-```json
-{
-  "service": "ECS / my-api",
-  "confidence": "HIGH",
-  "error": "Container exited with code 137 (OOM killed)",
-  "resolution": "Increase task memory from 512 MB to 1024 MB..."
-}
-```
-
-SNS subscribers (email, Lambda, SQS fan-out, etc.) receive this payload. Configure subscribers in your AWS console.
-
-Slack notifications fire alongside SNS when `SLACK_WEBHOOK_URL` is set — both channels always receive the same result.
-
----
-
 ## Permission Requirements
 
-The IAM role/user used by the agent needs these additional permissions for event-driven detection:
+The IAM role/user needs the permissions described in [iam_setup.md](iam_setup.md). For event-driven detection specifically:
 
-```
-sns:Publish, sns:GetTopicAttributes
-sqs:CreateQueue, sqs:SetQueueAttributes, sqs:GetQueueAttributes
-sqs:ReceiveMessage, sqs:DeleteMessage, sqs:DeleteQueue, sqs:ListQueues
-events:PutRule, events:PutTargets, events:ListRules
-events:RemoveTargets, events:DeleteRule
-cloudwatch:PutMetricAlarm, cloudwatch:DeleteAlarms, cloudwatch:DescribeAlarms
-```
+- **Policy 1 (Operational)** — `SQSConsume` statement provides `ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility` on `opendevops-agent-events`
+- **Policy 2 (Setup)** — `SQSSetup`, `EventBridgeSetup`, and `CloudWatchAlarmSetup` statements with write actions scoped to `opendevops-*` resources
 
 Use **Settings → AWS Configuration → Run checks** to validate all permissions before going live.
 
@@ -158,12 +132,12 @@ For SQLite, schema migrations are applied automatically on first start.
 | File | Purpose |
 |---|---|
 | `src/agent/event_consumer.py` | SQS long-poll loop, filtering, prompt building, delivery |
+| `src/agent/investigation_runner.py` | Shared investigation runner (streaming loop, failed-result fallback) |
 | `src/agent/event_infra.py` | Create/teardown SQS queue + EventBridge rules |
 | `src/agent/context_collectors.py` | Per-event-type boto3 context enrichment |
-| `src/agent/monitor_store.py` | In-process service status + DB-backed alerts, notifications, and incident claims |
+| `src/agent/monitor_store.py` | In-process service status + DB-backed alerts, notifications, and incident claims; SSE subscriber broadcast |
 | `src/agent/init_store.py` | Persist init config to DB-backed `app_config` |
 | `src/agent/permission_checker.py` | IAM permission validation |
-| `src/tools/sns.py` | SNS publish wrapper |
 | `src/api/routers/init.py` | Setup wizard API endpoints |
 | `migrations/005_alerts.sql` | PostgreSQL alerts table + indexes |
 | `migrations/012_incident_claims.sql` | PostgreSQL incident claim table for atomic deduplication |

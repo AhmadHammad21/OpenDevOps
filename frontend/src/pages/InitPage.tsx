@@ -57,7 +57,6 @@ export default function InitPage() {
 
   // Step 2
   const [region,   setRegion]   = useState('us-east-1');
-  const [snsArn,   setSnsArn]   = useState('');
 
   // Step 3
   const [perms,    setPerms]    = useState<Record<string, PermResult>>({});
@@ -78,7 +77,6 @@ export default function InitPage() {
       .then(r => r.json())
       .then(d => {
         setRegion(d.aws_region || 'us-east-1');
-        setSnsArn(d.sns_topic_arn || '');
         if (d.initialized && (d.has_user || !d.auth_enabled)) {
           navigate('/', { replace: true });
           return;
@@ -114,7 +112,7 @@ export default function InitPage() {
       const r = await apiFetch('/api/init/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aws_region: region, sns_topic_arn: snsArn, sqs_queue_url: '', org_name: orgName.trim() }),
+        body: JSON.stringify({ aws_region: region, sqs_queue_url: '', org_name: orgName.trim() }),
       });
       if (!r.ok) { setError('Failed to save configuration'); return; }
       setStep(3);
@@ -278,20 +276,6 @@ export default function InitPage() {
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">
-                    SNS Topic ARN <span className="text-gray-400 dark:text-[#52525B] font-normal">(optional)</span>
-                  </label>
-                  <input
-                    value={snsArn}
-                    onChange={e => setSnsArn(e.target.value)}
-                    placeholder="arn:aws:sns:us-east-1:123456789012:alerts"
-                    className={inp}
-                  />
-                  <p className="mt-1.5 text-xs text-gray-400 dark:text-[#52525B]">
-                    Leave empty to skip SNS notifications — alerts will still appear in the monitoring page.
-                  </p>
                 </div>
               </div>
               {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
