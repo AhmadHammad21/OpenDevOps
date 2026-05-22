@@ -22,21 +22,29 @@ LiteLLM routes to Anthropic API  →  same agent graph, same tools
 
 ## Supported providers (examples)
 
-### Claude Code (zero-config, auto-detected)
+### Claude Code (zero-config, uses your subscription)
 
-If you have [Claude Code](https://claude.ai/code) installed and authenticated, OpenDevOps detects it automatically — no `.env` changes required.
+If you have [Claude Code](https://claude.ai/code) installed and logged in, OpenDevOps can use your **existing Claude subscription** as the LLM — no API key, no `.env` changes.
+
+> **Important — leave these unset.** Auto-detection only activates when you have **not** explicitly configured another provider. To use Claude Code, make sure your `.env` does **not** set any of:
+> - `LLM_MODEL`
+> - `OPENROUTER_API_KEY`
+> - `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`
+> - `LLM_API_BASE`
+>
+> If any of those are present, that provider wins and Claude Code is skipped. The simplest setup is an empty (or absent) `.env` — Claude Code is picked up automatically.
 
 **How it works:**
-1. On startup, the app checks if the `claude` CLI is in your PATH
-2. It reads `~/.claude/settings.json` for your configured model slot
-3. It picks up your auth from `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or Claude Code's OAuth credential file
+1. On startup the app checks whether the `claude` CLI is in your `PATH`.
+2. It reads `~/.claude/settings.json` for your selected model (e.g. `sonnet` → `anthropic/claude-sonnet-4-6`).
+3. It reuses Claude Code's subscription login — the OAuth token in `~/.claude/.credentials.json` (`sk-ant-oat…`). LiteLLM sends it as a Bearer token with the OAuth beta header automatically.
 
-The active LLM backend is shown in **Settings → Environment** and in the **setup wizard**.
+The active backend is shown in **Settings → Environment** and in the **setup wizard**.
 
-To disable auto-detection:
-```bash
-CLAUDE_CODE_AUTODETECT=false
-```
+**Notes:**
+- Rate limits are shared with your interactive Claude Code usage — both draw from the same subscription quota.
+- The OAuth token expires periodically; running any `claude` command refreshes it.
+- To force a different provider even when Claude Code is installed, set `LLM_MODEL` + the matching key, or disable detection entirely with `CLAUDE_CODE_AUTODETECT=false`.
 
 ---
 
