@@ -3,6 +3,16 @@
 Open-source AWS DevOps Agent powered by OpenRouter LLMs. Investigates incidents, finds root causes,
 and gives actionable mitigation plans — without the AWS DevOps Agent price tag.
 
+## Demo
+
+<p align="center">
+  <img src="assets/demos/e2-final.gif" alt="Autonomous Lambda error-spike investigation" width="820">
+</p>
+
+<p align="center">
+  <em>Autonomous incident detection — a crashing Lambda is caught automatically, the agent reads the traceback from CloudWatch Logs, finds the root cause, surfaces it on the Monitoring dashboard, and posts the mitigation to Slack. No human in the loop.</em>
+</p>
+
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
@@ -145,14 +155,10 @@ uv run devops-agent report
 
 ## AWS IAM Setup
 
-Attach `iam-policy.json` to the IAM user or role your agent uses. It grants read-only access
-to CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, and IAM.
-
-```bash
-aws iam create-policy \
-  --policy-name OpenDevOpsAgentReadOnly \
-  --policy-document file://iam-policy.json
-```
+The agent needs read access across your AWS account, plus optional write access scoped to
+`opendevops-*` resources if you use the event-driven monitoring setup wizard. Two
+least-privilege policies (Operational + Setup) and full step-by-step instructions are in
+**[docs/iam_setup.md](docs/iam_setup.md)**.
 
 ## Project Structure
 

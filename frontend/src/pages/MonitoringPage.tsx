@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, CheckCircle, XCircle, AlertTriangle, RefreshCw, Radio, MessageSquare, ChevronRight, FlaskConical } from 'lucide-react';
+import { Activity, RefreshCw, Radio, MessageSquare, ChevronRight, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
-import { fetchAlerts, fetchServices, apiFetch } from '../lib/api';
+import { fetchAlerts, apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import type { Alert, ServiceStatus } from '../types';
+import type { Alert } from '../types';
 
 function parseUTC(ts: string): Date {
   // SQLite omits timezone suffix; append 'Z' so JS treats bare strings as UTC
@@ -29,7 +29,6 @@ function buildPrompt(a: Alert): string {
 export default function MonitoringPage() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [services,       setServices]       = useState<ServiceStatus[]>([]);
   const [alerts,         setAlerts]         = useState<Alert[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [testSending,    setTestSending]    = useState(false);
@@ -70,8 +69,8 @@ export default function MonitoringPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([fetchServices(), fetchAlerts()])
-      .then(([s, a]) => { setServices(s); setAlerts(a); })
+    fetchAlerts()
+      .then(setAlerts)
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -105,21 +104,12 @@ export default function MonitoringPage() {
 
     connectSSE();
 
-    // Always poll services (not SSE-pushed yet)
-    const serviceId = setInterval(
-      () => fetchServices().then(setServices).catch(() => {}),
-      30000,
-    );
-
     return () => {
       es?.close();
       if (fallbackId) clearInterval(fallbackId);
-      clearInterval(serviceId);
     };
   }, []);
 
-  const healthy = services.filter(s => s.status === 'healthy').length;
-  const errored = services.filter(s => s.status === 'error').length;
   const emptyTitle = infraEnabled === false ? 'Event monitoring is not enabled' : 'No activity yet';
   const emptyCopy = infraEnabled === false
     ? 'Enable event monitoring in Settings, or turn on proactive polling, to populate this feed.'
@@ -167,36 +157,8 @@ export default function MonitoringPage() {
           </div>
         </div>
 
-        {/* Service Health */}
-        {services.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center gap-4 mb-3">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Services</h2>
-              {healthy > 0 && <span className="text-xs text-emerald-600 dark:text-emerald-400">{healthy} healthy</span>}
-              {errored > 0 && <span className="text-xs text-red-500">{errored} failing</span>}
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-              {services.map(s => (
-                <div key={s.name} className={cn(
-                  'rounded-lg border px-3 py-2.5',
-                  s.status === 'healthy' ? 'border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5' :
-                  s.status === 'error' ? 'border-red-200 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/5' :
-                  'border-amber-200 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/5'
-                )}>
-                  <div className="flex items-center gap-1.5">
-                    {s.status === 'healthy' ? <CheckCircle size={12} className="text-emerald-500" /> :
-                     s.status === 'error' ? <XCircle size={12} className="text-red-500" /> :
-                     <AlertTriangle size={12} className="text-amber-500" />}
-                    <span className="text-xs font-semibold text-gray-900 dark:text-white truncate">{s.name}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* Empty state */}
-        {services.length === 0 && alerts.length === 0 && !loading && (
+        {alerts.length === 0 && !loading && (
           <div className="text-center py-20">
             <div className="w-14 h-14 bg-gray-100 dark:bg-[#18181B] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Activity size={24} className="text-gray-400 dark:text-[#52525B]" />

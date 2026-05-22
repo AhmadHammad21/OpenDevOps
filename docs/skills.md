@@ -25,6 +25,9 @@ for a specific incident type.
 | Name | Description |
 |---|---|
 | `lambda-throttling` | Investigate Lambda function throttling — concurrency limits, burst limits, reserved concurrency misconfiguration |
+| `ecs-deployment-failure` | Investigate an ECS service that won't stabilize — failed deployments, image pull errors, crashing or unhealthy tasks |
+| `dynamodb-throttling` | Investigate DynamoDB throttling — provisioned capacity exceeded, hot partitions, GSI limits surfacing as upstream errors |
+| `iam-permission-denied` | Investigate AccessDenied / not-authorized errors — recently changed role policies, missing permissions, trust policy issues |
 
 ---
 
@@ -100,4 +103,3 @@ prompt) and only falls back to `list_skills()` if it needs to confirm what is av
 - `api-gateway-5xx` — API Gateway 5XX spike investigation
 - `ec2-cpu-spike` — EC2 CPU utilisation runaway
 - `lambda-cold-start` — Lambda cold start latency spikes
-- `ecs-deployment-failure` — ECS service failing to stabilise after deploy
