@@ -12,6 +12,15 @@ export interface Usage {
   cost_usd?: number;
 }
 
+export interface LlmBackendInfo {
+  source: string;       // claude_code | anthropic | openrouter | openai | groq | custom | default
+  model: string;
+  display_name: string;
+  provider: string;
+  configured: boolean;
+  detail: string;
+}
+
 export interface UserMessage {
   id: string;
   role: 'user';

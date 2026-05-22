@@ -249,7 +249,7 @@ async def _process_event(event: dict) -> ProcessResult:
 
     # Enrich prompt with deterministic boto3 context (no LLM cost)
     try:
-        from agent.context_collectors import collect_context
+        from providers.aws.context import collect_context
 
         context = collect_context(event)
         if context and not context.get("error"):

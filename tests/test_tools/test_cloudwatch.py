@@ -1,7 +1,7 @@
 import boto3
 from moto import mock_aws
 
-from tools.cloudwatch import (
+from providers.aws.tools.cloudwatch import (
     describe_log_groups,
     get_alarm_history,
     get_alarms,

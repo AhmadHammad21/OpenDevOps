@@ -8,6 +8,7 @@ import os
 
 from fastapi import APIRouter, Depends
 
+from agent.llm import get_backend_info
 from agent.init_store import get_runtime_aws_region
 from api.auth import get_current_user
 from config import settings
@@ -56,4 +57,4 @@ async def get_settings(
         {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 
-    return {"env": env, "agent": agent}
+    return {"env": env, "agent": agent, "llm_backend": get_backend_info()}

@@ -6,10 +6,12 @@ import { apiFetch } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
+import LlmBackendCard from '../components/LlmBackendCard';
+import type { LlmBackendInfo } from '../types';
 
 interface EnvVar   { key: string; value: string; secret: boolean }
 interface AgentVar { key: string; label: string; value: string; hint: string }
-interface SettingsData { env: EnvVar[]; agent: AgentVar[] }
+interface SettingsData { env: EnvVar[]; agent: AgentVar[]; llm_backend?: LlmBackendInfo }
 interface PermResult   { passed: boolean | null; error: string | null }
 
 type Tab = 'env' | 'agent' | 'integrations' | 'aws' | 'preferences';
@@ -225,6 +227,13 @@ export default function SettingsPage() {
 
         {/* Environment tab */}
         {tab === 'env' && (
+          <>
+          {data?.llm_backend && (
+            <div className="mb-5">
+              <p className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] mb-2">LLM Backend</p>
+              <LlmBackendCard backend={data.llm_backend} />
+            </div>
+          )}
           <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
               <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Environment Variables</span>
@@ -252,6 +261,7 @@ export default function SettingsPage() {
               <div className="px-4 py-6 text-[13px] text-gray-400 dark:text-[#64748B] text-center">Loading…</div>
             )}
           </div>
+          </>
         )}
 
         {/* Agent config tab */}

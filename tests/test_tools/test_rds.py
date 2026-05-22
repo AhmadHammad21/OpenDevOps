@@ -1,7 +1,7 @@
 import boto3
 from moto import mock_aws
 
-from tools.rds import describe_rds_instances, get_rds_events
+from providers.aws.tools.rds import describe_rds_instances, get_rds_events
 
 
 @mock_aws

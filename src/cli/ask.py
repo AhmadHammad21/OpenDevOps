@@ -17,16 +17,19 @@ def ask_cmd(
     question: Annotated[str, typer.Argument(help="Freeform question about your AWS environment.")],
 ) -> None:
     """Ask a freeform question about your AWS environment."""
+    from agent.llm import resolve_model_and_key, shape_system_content
+    model_name, api_key = resolve_model_and_key()
     model = ChatLiteLLM(
-        model=settings.llm_model,
+        model=model_name,
         api_base=settings.llm_api_base or None,
-        api_key=settings.llm_api_key or None,
+        api_key=api_key,
     )
 
     messages = [
-        SystemMessage(content=(
+        SystemMessage(content=shape_system_content(
             "You are an expert AWS SRE. Answer concisely. If you need specific AWS data to answer "
-            "accurately, say so — don't make up metrics or resource names."
+            "accurately, say so — don't make up metrics or resource names.",
+            api_key,
         )),
         HumanMessage(content=question),
     ]

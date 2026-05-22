@@ -66,9 +66,9 @@ def start_event_consumer(app_instance: "FastAPI | None" = None) -> None:
     existing: asyncio.Task | None = getattr(target, "_consumer_task", None)
     if existing and not existing.done():
         return
-    from agent.event_consumer import event_consumer_loop
+    from providers import get_active_provider
 
-    target._consumer_task = asyncio.create_task(event_consumer_loop())  # type: ignore[attr-defined]
+    target._consumer_task = asyncio.create_task(get_active_provider().event_consumer_loop())  # type: ignore[attr-defined]
     logger.info("Event consumer task started")
 
 
@@ -109,9 +109,9 @@ async def lifespan(_app: FastAPI):
                 "or postgres for durable incident claims"
             )
         else:
-            from agent.poller import polling_loop
+            from providers import get_active_provider
 
-            poller_task = asyncio.create_task(polling_loop())
+            poller_task = asyncio.create_task(get_active_provider().polling_loop())
             logger.info("Proactive poller started (interval={}s)", _cfg.poll_interval_seconds)
 
     # Event consumer — started if explicitly enabled, SQS URL is set, or init wizard completed

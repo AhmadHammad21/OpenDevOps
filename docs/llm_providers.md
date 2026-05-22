@@ -22,6 +22,24 @@ LiteLLM routes to Anthropic API  →  same agent graph, same tools
 
 ## Supported providers (examples)
 
+### Claude Code (zero-config, auto-detected)
+
+If you have [Claude Code](https://claude.ai/code) installed and authenticated, OpenDevOps detects it automatically — no `.env` changes required.
+
+**How it works:**
+1. On startup, the app checks if the `claude` CLI is in your PATH
+2. It reads `~/.claude/settings.json` for your configured model slot
+3. It picks up your auth from `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or Claude Code's OAuth credential file
+
+The active LLM backend is shown in **Settings → Environment** and in the **setup wizard**.
+
+To disable auto-detection:
+```bash
+CLAUDE_CODE_AUTODETECT=false
+```
+
+---
+
 ### OpenRouter (default — 200+ models via one key)
 ```bash
 LLM_MODEL=openrouter/openai/gpt-4o

@@ -4,6 +4,8 @@ import { ArrowRight, ArrowLeft, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCi
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
+import LlmBackendCard from '../components/LlmBackendCard';
+import type { LlmBackendInfo } from '../types';
 
 const inp = 'w-full text-base text-gray-900 dark:text-white bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-[#52525B]';
 
@@ -56,7 +58,8 @@ export default function InitPage() {
   const [showPw,   setShowPw]   = useState(false);
 
   // Step 2
-  const [region,   setRegion]   = useState('us-east-1');
+  const [region,      setRegion]      = useState('us-east-1');
+  const [llmBackend,  setLlmBackend]  = useState<LlmBackendInfo | null>(null);
 
   // Step 3
   const [perms,    setPerms]    = useState<Record<string, PermResult>>({});
@@ -77,6 +80,7 @@ export default function InitPage() {
       .then(r => r.json())
       .then(d => {
         setRegion(d.aws_region || 'us-east-1');
+        if (d.llm_backend) setLlmBackend(d.llm_backend as LlmBackendInfo);
         if (d.initialized && (d.has_user || !d.auth_enabled)) {
           navigate('/', { replace: true });
           return;
@@ -252,9 +256,25 @@ export default function InitPage() {
           {step === 2 && (
             <>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-3">AWS Configuration</h1>
-              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-10 leading-relaxed">
+              <p className="text-lg text-gray-500 dark:text-[#A1A1AA] mb-6 leading-relaxed">
                 Configure the AWS region and optional SNS topic for alert delivery.
               </p>
+
+              {/* LLM Backend status */}
+              {llmBackend && (
+                <div className="mb-8">
+                  <p className="text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">LLM Backend</p>
+                  <LlmBackendCard backend={llmBackend} />
+                  {!llmBackend.configured && (
+                    <p className="mt-2 text-xs text-gray-400 dark:text-[#52525B]">
+                      You can set <code className="bg-gray-100 dark:bg-[#27272A] px-1 rounded">LLM_MODEL</code> and an API key in <code className="bg-gray-100 dark:bg-[#27272A] px-1 rounded">.env</code>, or install{' '}
+                      <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#818CF8] hover:underline">Claude Code</a>{' '}
+                      for zero-config setup. See <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/llm_providers.md" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#818CF8] hover:underline">docs/llm_providers.md</a>.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-5">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-[#D4D4D8] mb-2">

@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from config import settings
-from agent.core import get_agent
+from agent.core import get_agent, get_active_model
 from agent.summarizer import maybe_summarize
 from agent.turns import calc_cost, save_turn, notify_slack
 from models.chat import ChatRequest
@@ -223,9 +223,10 @@ async def _stream_chat(session_id: str, user_message: str):
 
     _flush_text_buf()
 
+    active_model = get_active_model()
     usage: dict[str, Any] = {
         "latency_ms": int((time.time() - start) * 1000),
-        "model": settings.llm_model,
+        "model": active_model,
         "timed_out": timed_out,
     }
     if usage_meta:

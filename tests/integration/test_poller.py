@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from agent import poller
+from providers.aws import poller
 from agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
 
 
@@ -64,7 +64,7 @@ def test_check_alarms_dispatches_once(monkeypatch):
     async def fake_release(_key):
         raise AssertionError("successful poller investigation should not release the claim")
 
-    monkeypatch.setattr("tools.cloudwatch.get_alarms", fake_get_alarms)
+    monkeypatch.setattr("providers.aws.tools.cloudwatch.get_alarms", fake_get_alarms)
     monkeypatch.setattr("agent.monitor_store.is_recent_alert", fake_recent)
     monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
     monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
@@ -123,8 +123,8 @@ def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
     async def fake_is_claimed(_key, _within_minutes=3):
         return False
 
-    monkeypatch.setattr("tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
-    monkeypatch.setattr("tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
+    monkeypatch.setattr("providers.aws.tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
+    monkeypatch.setattr("providers.aws.tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
     monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
     monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
     monkeypatch.setattr("agent.monitor_store.release_incident", fake_release)

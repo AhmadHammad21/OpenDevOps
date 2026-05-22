@@ -109,7 +109,7 @@ async def _check_alarms() -> None:
         is_recent_alert,
         release_incident,
     )
-    from tools.cloudwatch import get_alarms
+    from providers.aws.tools.cloudwatch import get_alarms
 
     data = await asyncio.get_event_loop().run_in_executor(_POLLER_POOL, get_alarms, "ALARM")
     alarms = data.get("alarms", [])
@@ -183,7 +183,7 @@ async def _check_lambda_errors() -> None:
         is_incident_claimed,
         release_incident,
     )
-    from tools.lambda_ import get_lambda_error_rate, list_lambda_functions
+    from providers.aws.tools.lambda_ import get_lambda_error_rate, list_lambda_functions
 
     funcs = await asyncio.get_event_loop().run_in_executor(_POLLER_POOL, list_lambda_functions)
     fn_list = funcs.get("functions", [])[:20]
@@ -205,7 +205,7 @@ async def _check_lambda_errors() -> None:
             continue
 
         # The aggregate alarm covers all Lambda errors — if it fired recently, skip.
-        from agent.event_infra import ALARM_NAME
+        from providers.aws.event_infra import ALARM_NAME
         aggregate_key = alarm_incident_key(ALARM_NAME)
         aggregate_window = max(3, (settings.investigation_timeout // 60) + 2)
         if await is_incident_claimed(aggregate_key, aggregate_window):
