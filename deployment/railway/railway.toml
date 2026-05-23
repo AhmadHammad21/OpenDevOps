@@ -1,5 +1,5 @@
 [build]
-dockerfile = "Dockerfile.railway"
+dockerfile = "deployment/railway/Dockerfile.railway"
 
 [deploy]
 healthcheckPath = "/openapi.json"

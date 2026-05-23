@@ -175,7 +175,10 @@ app.include_router(integrations.router)
 app.include_router(init_router.router)
 app.include_router(monitoring.router)
 
-_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+if not _DIST.is_dir():
+    # Docker layout: src/ at /app/src, frontend/dist at /app/frontend/dist
+    _DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 # Mount compiled JS/CSS assets from the Vite build
 if _DIST.is_dir():
