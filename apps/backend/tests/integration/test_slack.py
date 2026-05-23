@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from integrations.slack_webhook import _build_payload, post_investigation
+from opendevops_core.integrations.slack_webhook import _build_payload, post_investigation
 
 SAMPLE_RESULT = {
     "root_cause_category": "RESOURCE_LIMIT",

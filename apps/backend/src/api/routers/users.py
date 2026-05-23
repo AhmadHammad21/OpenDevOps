@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from opendevops_core.agent.db import db
+from opendevops_core.models.users import UserCreate, UserOut, UserUpdate
 
-from agent.db import db
 from api.auth import hash_password, require_admin
-from models.users import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from providers.aws import poller
-from agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
+from opendevops_core.agent.incident_keys import alarm_incident_key, lambda_metric_incident_key
+from opendevops_core.providers.aws import poller
 
 
 def test_claim_window_uses_reinvestigate_hours(monkeypatch):
@@ -64,11 +64,11 @@ def test_check_alarms_dispatches_once(monkeypatch):
     async def fake_release(_key):
         raise AssertionError("successful poller investigation should not release the claim")
 
-    monkeypatch.setattr("providers.aws.tools.cloudwatch.get_alarms", fake_get_alarms)
-    monkeypatch.setattr("agent.monitor_store.is_recent_alert", fake_recent)
-    monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
-    monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
-    monkeypatch.setattr("agent.monitor_store.release_incident", fake_release)
+    monkeypatch.setattr("opendevops_core.providers.aws.tools.cloudwatch.get_alarms", fake_get_alarms)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.is_recent_alert", fake_recent)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.claim_incident", fake_claim)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.complete_incident", fake_complete)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.release_incident", fake_release)
     monkeypatch.setattr(poller, "_run_investigation", fake_run)
     monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
 
@@ -123,12 +123,12 @@ def test_check_lambda_errors_dispatches_for_threshold_breach(monkeypatch):
     async def fake_is_claimed(_key, _within_minutes=3):
         return False
 
-    monkeypatch.setattr("providers.aws.tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
-    monkeypatch.setattr("providers.aws.tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
-    monkeypatch.setattr("agent.monitor_store.claim_incident", fake_claim)
-    monkeypatch.setattr("agent.monitor_store.complete_incident", fake_complete)
-    monkeypatch.setattr("agent.monitor_store.release_incident", fake_release)
-    monkeypatch.setattr("agent.monitor_store.is_incident_claimed", fake_is_claimed)
+    monkeypatch.setattr("opendevops_core.providers.aws.tools.lambda_.list_lambda_functions", fake_list_lambda_functions)
+    monkeypatch.setattr("opendevops_core.providers.aws.tools.lambda_.get_lambda_error_rate", fake_get_lambda_error_rate)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.claim_incident", fake_claim)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.complete_incident", fake_complete)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.release_incident", fake_release)
+    monkeypatch.setattr("opendevops_core.agent.monitor_store.is_incident_claimed", fake_is_claimed)
     monkeypatch.setattr(poller, "_run_investigation", fake_run)
     monkeypatch.setattr(poller, "_persist_and_notify", fake_persist)
     monkeypatch.setattr(poller.settings, "poll_error_threshold", 5.0, raising=False)

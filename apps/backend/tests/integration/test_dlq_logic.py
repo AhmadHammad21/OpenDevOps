@@ -89,7 +89,7 @@ def test_processing_exception_leaves_message_in_queue():
 
 def test_max_receive_count_constant():
     """MAX_RECEIVE_COUNT must match what we verified in AWS."""
-    from providers.aws.event_infra import MAX_RECEIVE_COUNT
+    from opendevops_core.providers.aws.event_infra import MAX_RECEIVE_COUNT
     assert MAX_RECEIVE_COUNT == "5", (
         "maxReceiveCount changed — update the DLQ in AWS to match "
         "(aws sqs set-queue-attributes --attribute-names RedrivePolicy)"
@@ -97,7 +97,7 @@ def test_max_receive_count_constant():
 
 
 def test_dlq_queue_name_constant():
-    from providers.aws.event_infra import DLQ_QUEUE_NAME, QUEUE_NAME
+    from opendevops_core.providers.aws.event_infra import DLQ_QUEUE_NAME, QUEUE_NAME
     assert DLQ_QUEUE_NAME == f"{QUEUE_NAME}-dlq", (
         "DLQ name must be the main queue name with '-dlq' suffix"
     )
@@ -132,12 +132,12 @@ async def test_consumer_loop_skips_delete_on_bad_json(monkeypatch):
     mock_sqs.delete_message.side_effect = fake_delete
 
     with (
-        patch("providers.aws.event_consumer.get_runtime_sqs_queue_url", return_value="https://fake-url"),
-        patch("providers.aws.event_consumer.get_runtime_aws_region", return_value="us-east-1"),
+        patch("opendevops_core.providers.aws.event_consumer.get_runtime_sqs_queue_url", return_value="https://fake-url"),
+        patch("opendevops_core.providers.aws.event_consumer.get_runtime_aws_region", return_value="us-east-1"),
         patch("boto3.Session") as mock_session,
     ):
         mock_session.return_value.client.return_value = mock_sqs
-        from providers.aws.event_consumer import event_consumer_loop
+        from opendevops_core.providers.aws.event_consumer import event_consumer_loop
         try:
             await event_consumer_loop()
         except asyncio.CancelledError:
@@ -180,13 +180,13 @@ async def test_consumer_loop_skips_delete_on_processing_error(monkeypatch):
     mock_sqs.delete_message.side_effect = fake_delete
 
     with (
-        patch("providers.aws.event_consumer.get_runtime_sqs_queue_url", return_value="https://fake-url"),
-        patch("providers.aws.event_consumer.get_runtime_aws_region", return_value="us-east-1"),
-        patch("providers.aws.event_consumer._process_event", side_effect=fake_process_event),
+        patch("opendevops_core.providers.aws.event_consumer.get_runtime_sqs_queue_url", return_value="https://fake-url"),
+        patch("opendevops_core.providers.aws.event_consumer.get_runtime_aws_region", return_value="us-east-1"),
+        patch("opendevops_core.providers.aws.event_consumer._process_event", side_effect=fake_process_event),
         patch("boto3.Session") as mock_session,
     ):
         mock_session.return_value.client.return_value = mock_sqs
-        from providers.aws.event_consumer import event_consumer_loop
+        from opendevops_core.providers.aws.event_consumer import event_consumer_loop
         try:
             await event_consumer_loop()
         except asyncio.CancelledError:

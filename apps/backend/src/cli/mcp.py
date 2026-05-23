@@ -1,5 +1,6 @@
-import typer
 from typing import Annotated
+
+import typer
 
 
 def mcp_cmd(

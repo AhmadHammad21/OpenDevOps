@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-
-from agent.db import db
+from opendevops_core.agent.db import db
 
 router = APIRouter(tags=["dashboard"])
 

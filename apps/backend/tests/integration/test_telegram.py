@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-from integrations.telegram import _build_message, post_failed_investigation, post_investigation
+from opendevops_core.integrations.telegram import (
+    _build_message,
+    post_failed_investigation,
+    post_investigation,
+)
 
 SAMPLE_RESULT = {
     "root_cause_category": "RESOURCE_LIMIT",

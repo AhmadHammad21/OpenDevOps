@@ -10,7 +10,12 @@ OpenDevOps Agent is an open-source AWS incident investigation tool powered by an
 
 ```
 apps/
-  backend/        Python backend — src/, migrations/, tests/, scripts/, pyproject.toml
+  core/           Installable package `opendevops-core` — the shared agent brain:
+                  src/opendevops_core/{agent, tools, providers, models, skills,
+                  integrations, migrations, config.py}. Has no web/CLI layer.
+                  Consumed by the OSS backend (and, later, the SaaS product repo).
+  backend/        OSS web app + CLI — src/{api, cli, config, mcp_server.py}, tests/,
+                  scripts/, pyproject.toml. Depends on opendevops-core via a uv path source.
   frontend/       React/Vite UI — src/, package.json, vite.config.ts
   documentation/  Markdown docs (future hosted docs site)
 deployment/
@@ -22,6 +27,17 @@ Makefile         Root convenience targets — wraps `cd apps/backend && uv run .
 ```
 
 All Python commands run from `apps/backend/` (or via `make <target>` at repo root).
+`uv sync` from `apps/backend/` installs `opendevops-core` editable from `../core`, so edits
+to core are live without republishing.
+
+### Core vs app boundary
+- **Reusable agent logic lives in `apps/core` (`opendevops_core`)** — the DeepAgents loop,
+  tools, providers, models, skills, integrations, DB backends, and baseline migrations.
+- **Web/CLI-only code stays in `apps/backend`** — FastAPI routers, auth, the CLI, `mcp_server.py`.
+- **Config injection:** core reads settings through the `settings` proxy in
+  `opendevops_core/config.py`, which delegates to whatever instance the host app registers via
+  `configure()`. The OSS app's `Settings(CoreSettings)` (in `apps/backend/src/config/appsettings.py`)
+  adds web/auth-only fields (e.g. `jwt_*`) and calls `configure(settings)` at startup.
 
 ---
 
@@ -29,11 +45,11 @@ All Python commands run from `apps/backend/` (or via `make <target>` at repo roo
 
 **Always do these when making changes:**
 
-- **New env var:** add to both `apps/backend/src/config/appsettings.py` (source of truth, Pydantic field with default) AND `.env.example` (with a comment). Never read env vars directly — always go through `settings`.
-- **New DB column or table:** create a new numbered migration in `apps/backend/migrations/` (e.g. `006_name.sql`). Never add columns inline in Python code.
-- **New tool:** add it to `ALL_TOOLS` in `apps/backend/src/agent/core.py`. Tool functions must be plain synchronous Python functions — DeepAgents infers the JSON schema from type hints and docstrings.
-- **New API route that matches a React Router path:** prefix it with `/api/` to avoid the SPA fallback conflict. The `/{full_path:path}` catch-all in `app.py` intercepts any GET that matches a registered FastAPI route first.
-- **New skill:** drop a `SKILL.md` file into `apps/backend/src/skills/<name>/SKILL.md`. It is picked up automatically at startup — no code changes needed. Use the frontmatter format (`name`, `description`) from the existing `lambda-throttling` skill.
+- **New env var:** if core reads it, add the Pydantic field to `CoreSettings` in `apps/core/src/opendevops_core/config.py`; if it's web/auth-only, add it to `Settings(CoreSettings)` in `apps/backend/src/config/appsettings.py`. Either way mirror it in `.env.example` (with a comment). Never read env vars directly — always go through `settings`.
+- **New DB column or table:** add a new numbered migration. Core-domain schema (tables core code reads/writes) goes in `apps/core/src/opendevops_core/migrations/` (e.g. `014_name.sql`); OSS-app-only schema goes in `apps/backend/migrations/`. The runner applies core-then-app, tracked in the `schema_migrations(source, version)` ledger. Never add columns inline in Python code.
+- **New tool:** add it to `ALL_TOOLS` in `apps/core/src/opendevops_core/agent/core.py`. Tool functions must be plain synchronous Python functions — DeepAgents infers the JSON schema from type hints and docstrings.
+- **New API route that matches a React Router path:** prefix it with `/api/` to avoid the SPA fallback conflict. The `/{full_path:path}` catch-all in `apps/backend/src/api/app.py` intercepts any GET that matches a registered FastAPI route first.
+- **New skill:** drop a `SKILL.md` file into `apps/core/src/opendevops_core/skills/<name>/SKILL.md`. It is picked up automatically at startup (and bundled into the core wheel) — no code changes needed. Use the frontmatter format (`name`, `description`) from the existing `lambda-throttling` skill.
 - **Docs sync:** if a feature has a corresponding file in `apps/documentation/`, update it when the feature changes. The `apps/documentation/` folder is the public documentation source.
 
 ---
@@ -65,9 +81,9 @@ cd apps/backend && uv run devops-agent mcp --http       # HTTP+SSE transport, po
 # Tests
 cd apps/backend && uv run pytest    # or: make test
 
-# Lint / format
-cd apps/backend && uv run ruff check src/
-cd apps/backend && uv run ruff format src/   # or: make lint / make lint-fix
+# Lint / format (covers both the app and the core package)
+cd apps/backend && uv run ruff check src/ ../core/src
+cd apps/backend && uv run ruff format src/ ../core/src   # or: make lint / make lint-fix
 
 # Full stack with PostgreSQL (Docker Compose)
 docker compose -f deployment/docker-compose/docker-compose.yml up --build   # or: make compose-up
@@ -87,7 +103,7 @@ Everything below is built and working in the codebase:
 
 ### Agent & Tools
 - **Framework:** DeepAgents (`create_deep_agent`) wrapping a LangGraph ReAct loop. `ChatLiteLLM` as the model interface — supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint via a single `LLM_MODEL` env var.
-- **27 tools total** registered in `ALL_TOOLS` in `apps/backend/src/agent/core.py`:
+- **27 tools total** registered in `ALL_TOOLS` in `apps/core/src/opendevops_core/agent/core.py`:
   - CloudWatch (6): `get_alarms`, `get_alarm_history`, `get_metric_data`, `get_log_events`, `describe_log_groups`, `query_logs_insights`
   - CloudTrail (2): trail events + event lookup
   - ECS (4): clusters, services, service detail, tasks
@@ -101,13 +117,13 @@ Everything below is built and working in the codebase:
   - Final answer (1): `submit_investigation` — structured output required to end every investigation
 - **Tool response capping:** `with_cap()` wraps every tool at startup when `TOOL_RESPONSE_MAX_CHARS > 0`; truncates oversized responses and appends a notice to the LLM.
 - **Tool caching:** `@tool_cached` — in-process TTL LRU cache (2-min TTL, 256 entries max); cache key includes function name + AWS profile + region.
-- **Skills system:** one skill ships (`lambda-throttling`). The system prompt is built at import time by scanning `apps/backend/src/skills/*/SKILL.md` — skill names are injected; full content is loaded lazily when the agent calls `use_skill(name)`.
+- **Skills system:** several skills ship (e.g. `lambda-throttling`). The system prompt is built at import time by scanning `apps/core/src/opendevops_core/skills/*/SKILL.md` — skill names are injected; full content is loaded lazily when the agent calls `use_skill(name)`.
 - **Summarization:** `maybe_summarize()` runs before each agent call; compacts old messages when total chars exceed `SUMMARIZATION_THRESHOLD_CHARS`; tracks the event in `usage_events` with `metadata.summarization=True`.
 - **Cancellation:** `DELETE /chat/{session_id}` sets an `asyncio.Event` that stops the streaming loop at the next chunk boundary.
 
 ### Storage
 - Three backends all implementing `DatabaseBackend` ABC: `memory` (default, zero config), `sqlite` (aiosqlite + LangGraph SQLite checkpointer), `postgres` (psycopg3 async + `AsyncPostgresSaver`).
-- LangGraph checkpointer tables are created automatically by `AsyncPostgresSaver.setup()`. Application tables come from `migrations/001–005_*.sql`.
+- LangGraph checkpointer tables are created automatically by `AsyncPostgresSaver.setup()`. Application tables come from the bundled core migrations in `apps/core/src/opendevops_core/migrations/*.sql`.
 - Schema tables: `organizations`, `users`, `aws_profiles`, `sessions`, `messages`, `tool_calls`, `usage_events`, `findings`, `api_keys`, `alerts`.
 - Soft delete is in place on sessions (`is_deleted`, `deleted_at` from migration 002).
 
@@ -144,12 +160,12 @@ Everything below is built and working in the codebase:
 Incomplete items from the README roadmap (do not mark complete here — update README when done):
 
 - **Custom tools via URL** — register external tools by OpenAPI endpoint; agent discovers them alongside built-in tools
-- **Bash sandbox Phase 2** — throwaway Docker container per command: `--network none`, read-only FS, non-root, `--memory 256m`, killed immediately after; current Phase 1 (subprocess allowlist) is in `apps/backend/src/tools/bash_tool.py`
+- **Bash sandbox Phase 2** — throwaway Docker container per command: `--network none`, read-only FS, non-root, `--memory 256m`, killed immediately after; current Phase 1 (subprocess allowlist) is in `apps/core/src/opendevops_core/tools/bash_tool.py`
 - **Optimize tool loading** — pass only contextually relevant tools instead of the full 27-tool set per invocation
 - **OpenTelemetry traces** — spans for agent steps, tool call latency, token usage; OTLP export
 - **Follow-up question suggestions** — add `follow_up_questions: list[str]` to `submit_investigation` schema (same call, no extra LLM cost); surface as chips in the chat UI after investigation completes
 - **Session / user feedback loop** — thumbs up/down on investigations; `feedback` column in `usage_events` (needs migration 006)
-- **Slack Integration UI** — Slack backend is fully implemented (`apps/backend/src/integrations/slack_webhook.py`); Settings → Integrations "Connect" button is currently a non-functional stub
+- **Slack Integration UI** — Slack backend is fully implemented (`apps/core/src/opendevops_core/integrations/slack_webhook.py`); Settings → Integrations "Connect" button is currently a non-functional stub
 - **Session rename** — `PATCH /sessions/{id}` + inline edit in sidebar three-dot menu
 - **Multi-account AWS** — `aws_profiles` table already in schema; needs Settings UI + per-session profile selector
 - **Knowledge base** — attach runbooks, post-mortems, architecture docs beyond the skills system
@@ -162,7 +178,7 @@ Incomplete items from the README roadmap (do not mark complete here — update R
 |---|---|
 | **SSE event types:** `token`, `tool_status`, `tool_call`, `error`, `done`, `cancelled` | Frontend `ChatPage.tsx` switches on these exact strings. Renaming or adding new required fields is a breaking change. |
 | **Tool function signatures** | DeepAgents infers JSON schema from Python type hints + docstrings. Adding `*args`, `**kwargs`, removing type hints, or making parameters non-primitive breaks schema inference silently. |
-| **`DatabaseBackend` ABC** (`apps/backend/src/agent/db/base.py`) | All three backends must implement the same interface. Adding a method requires implementing it in all three backends plus `memory.py` defaults. |
+| **`DatabaseBackend` ABC** (`apps/core/src/opendevops_core/agent/db/base.py`) | All three backends must implement the same interface. Adding a method requires implementing it in all three backends plus `memory.py` defaults. |
 | **LangGraph checkpointer wiring** | The checkpointer is passed into `create_deep_agent()` and drives session continuity via `thread_id = session_id`. Do not write messages to the DB outside `save_*` calls or bypass the checkpointer. |
 | **Agent framework (DeepAgents + LangGraph)** | The ReAct loop, tool dispatch, checkpointing, and `recursion_limit` contract all depend on this. Do not swap. |
 | **DB schema migrations** | Tables have a defined shape. New columns need a new file in `migrations/`. Never add columns inline in Python or modify existing migration files. |
@@ -198,7 +214,7 @@ Incomplete items from the README roadmap (do not mark complete here — update R
 
 ## Environment Variables
 
-All read from `apps/backend/src/config/appsettings.py` (Pydantic Settings — single source of truth). `.env.example` mirrors every variable.
+Agent/core variables are defined on `CoreSettings` in `apps/core/src/opendevops_core/config.py`; web/auth-only variables (e.g. `JWT_SECRET`) live on `Settings(CoreSettings)` in `apps/backend/src/config/appsettings.py`. `.env.example` mirrors every variable. The OSS app instantiates `Settings` and registers it via `configure()` so core sees it at runtime.
 
 ```bash
 # LLM — LiteLLM model string format

@@ -46,18 +46,16 @@ def _info(msg: str) -> None:
 # ── Sync migration (psycopg3 sync API — simpler for a one-shot script) ───────
 
 def run_migration(database_url: str) -> None:
-    import psycopg  # type: ignore
+    from opendevops_core.migrations import run_migrations
 
-    migrations_dir = Path(__file__).parent.parent / "migrations"
-    sql_files = sorted(migrations_dir.glob("*.sql"))
-
+    app_dir = Path(__file__).parent.parent / "migrations"
     _info(f"Connecting to {_mask_url(database_url)}")
-    with psycopg.connect(database_url, autocommit=True) as conn:
-        _ok("Connected")
-        for sql_file in sql_files:
-            _info(f"Running {sql_file.name} …")
-            conn.execute(sql_file.read_text(encoding="utf-8"))
-            _ok(f"{sql_file.name} applied")
+    applied = run_migrations(database_url, app_dir)
+    if applied:
+        for ident in applied:
+            _ok(f"{ident} applied")
+    else:
+        _ok("Already up to date — no pending migrations")
 
 
 # ── Async LangGraph checkpointer setup ───────────────────────────────────────

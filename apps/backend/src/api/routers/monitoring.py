@@ -8,14 +8,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-
-from agent.monitor_store import (
+from opendevops_core.agent.monitor_store import (
     get_alert_async,
     get_alerts_async,
     get_services,  # async — returns in-memory or falls back to DB
     subscribe_alerts,
     unsubscribe_alerts,
 )
+
 from api.auth import get_current_user
 
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])

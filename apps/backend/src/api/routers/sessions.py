@@ -1,10 +1,9 @@
 """Session management endpoints."""
 
 from fastapi import APIRouter, HTTPException, Query
+from opendevops_core.agent.db import db
+from opendevops_core.models.sessions import MessageRecord, SessionSummary
 from pydantic import BaseModel
-
-from agent.db import db
-from models.sessions import MessageRecord, SessionSummary
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 

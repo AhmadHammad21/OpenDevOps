@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tools._cap import cap_tool_result, with_cap
+from opendevops_core.tools._cap import cap_tool_result, with_cap
 
 
 def test_small_result_passes_through():

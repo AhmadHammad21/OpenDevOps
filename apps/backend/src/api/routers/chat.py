@@ -12,13 +12,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
+from opendevops_core.agent.core import get_active_model, get_agent
+from opendevops_core.agent.summarizer import maybe_summarize
+from opendevops_core.agent.turns import calc_cost, notify_slack, save_turn
+from opendevops_core.models.chat import ChatRequest
 
-from config import settings
-from agent.core import get_agent, get_active_model
-from agent.summarizer import maybe_summarize
-from agent.turns import calc_cost, save_turn, notify_slack
-from models.chat import ChatRequest
 from api.streaming_labels import STREAMING_LABELS
+from config import settings
 
 router = APIRouter(tags=["chat"])
 

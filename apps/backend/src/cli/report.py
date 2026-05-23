@@ -1,12 +1,11 @@
 from datetime import UTC, datetime
 
 import typer
+from opendevops_core.providers.aws.tools.cloudwatch import get_alarms
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-
-from providers.aws.tools.cloudwatch import get_alarms
 
 console = Console()
 

@@ -6,8 +6,7 @@ import subprocess
 from unittest.mock import MagicMock
 
 import pytest
-
-from tools.bash_tool import run_bash_command
+from opendevops_core.tools.bash_tool import run_bash_command
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +66,7 @@ def _ok_proc(stdout: str = "output", stderr: str = "") -> MagicMock:
     "docker inspect my-container",
 ])
 def test_allowlisted_commands_pass(mocker, cmd):
-    mocker.patch("tools.bash_tool.subprocess.run", return_value=_ok_proc())
+    mocker.patch("opendevops_core.tools.bash_tool.subprocess.run", return_value=_ok_proc())
     result = run_bash_command(cmd)
     assert result["blocked"] is False
     assert result["success"] is True
@@ -128,7 +127,7 @@ def test_blocked_commands_return_blocked_true(cmd):
 
 
 def test_blocked_command_never_calls_subprocess(mocker):
-    mock_run = mocker.patch("tools.bash_tool.subprocess.run")
+    mock_run = mocker.patch("opendevops_core.tools.bash_tool.subprocess.run")
     run_bash_command("aws s3 ls")
     mock_run.assert_not_called()
 
@@ -137,7 +136,7 @@ def test_blocked_command_never_calls_subprocess(mocker):
 
 def test_timeout_returns_structured_error(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="aws logs describe-log-groups", timeout=30),
     )
     result = run_bash_command("aws logs describe-log-groups")
@@ -149,7 +148,7 @@ def test_timeout_returns_structured_error(mocker):
 
 def test_timeout_does_not_raise(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="aws cloudwatch describe-alarms", timeout=30),
     )
     # must not raise — tool always returns a dict
@@ -161,7 +160,7 @@ def test_timeout_does_not_raise(mocker):
 
 def test_file_not_found_is_caught(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         side_effect=FileNotFoundError("aws: command not found"),
     )
     result = run_bash_command("aws logs describe-log-groups")
@@ -172,7 +171,7 @@ def test_file_not_found_is_caught(mocker):
 
 def test_unexpected_exception_never_raises(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         side_effect=RuntimeError("unexpected failure"),
     )
     result = run_bash_command("aws ec2 describe-instances")
@@ -191,14 +190,14 @@ def test_blocked_result_has_all_keys():
 
 
 def test_success_result_has_all_keys(mocker):
-    mocker.patch("tools.bash_tool.subprocess.run", return_value=_ok_proc())
+    mocker.patch("opendevops_core.tools.bash_tool.subprocess.run", return_value=_ok_proc())
     result = run_bash_command("aws logs describe-log-groups")
     assert set(result.keys()) == _EXPECTED_KEYS
 
 
 def test_timeout_result_has_all_keys(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         side_effect=subprocess.TimeoutExpired(cmd="x", timeout=30),
     )
     result = run_bash_command("aws cloudwatch describe-alarms")
@@ -209,7 +208,7 @@ def test_timeout_result_has_all_keys(mocker):
 
 def test_stdout_is_capped(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         return_value=_ok_proc(stdout="x" * 10_000),
     )
     result = run_bash_command("aws logs describe-log-groups")
@@ -218,7 +217,7 @@ def test_stdout_is_capped(mocker):
 
 def test_stderr_is_capped(mocker):
     mocker.patch(
-        "tools.bash_tool.subprocess.run",
+        "opendevops_core.tools.bash_tool.subprocess.run",
         return_value=MagicMock(returncode=1, stdout="", stderr="e" * 5_000),
     )
     result = run_bash_command("aws logs describe-log-groups")
@@ -229,12 +228,12 @@ def test_stderr_is_capped(mocker):
 
 def test_command_field_echoes_input(mocker):
     cmd = "aws ec2 describe-instances --region us-east-1"
-    mocker.patch("tools.bash_tool.subprocess.run", return_value=_ok_proc())
+    mocker.patch("opendevops_core.tools.bash_tool.subprocess.run", return_value=_ok_proc())
     result = run_bash_command(cmd)
     assert result["command"] == cmd
 
 
 def test_command_is_stripped(mocker):
-    mocker.patch("tools.bash_tool.subprocess.run", return_value=_ok_proc())
+    mocker.patch("opendevops_core.tools.bash_tool.subprocess.run", return_value=_ok_proc())
     result = run_bash_command("  aws logs describe-log-groups  ")
     assert result["command"] == "aws logs describe-log-groups"

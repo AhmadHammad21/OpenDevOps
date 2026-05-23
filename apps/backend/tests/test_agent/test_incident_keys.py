@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent.incident_keys import event_incident_key, lambda_metric_incident_key
+from opendevops_core.agent.incident_keys import event_incident_key, lambda_metric_incident_key
 
 
 def test_lambda_event_keys_split_different_error_signatures():

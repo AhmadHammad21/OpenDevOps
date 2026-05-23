@@ -1,7 +1,10 @@
 import boto3
 from moto import mock_aws
-
-from providers.aws.tools.lambda_ import get_lambda_error_rate, get_lambda_function_config, list_lambda_functions
+from opendevops_core.providers.aws.tools.lambda_ import (
+    get_lambda_error_rate,
+    get_lambda_function_config,
+    list_lambda_functions,
+)
 
 
 def _create_lambda_role(iam_client: boto3.client) -> str:

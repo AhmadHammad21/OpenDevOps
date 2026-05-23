@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from agent.llm.identity import CLAUDE_CODE_IDENTITY, is_subscription_token, shape_system_content
+from opendevops_core.agent.llm.identity import (
+    CLAUDE_CODE_IDENTITY,
+    is_subscription_token,
+    shape_system_content,
+)
 
 
 def test_is_subscription_token():

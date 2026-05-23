@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from opendevops_core.agent.db import db
 from pydantic import BaseModel, EmailStr
 
-from agent.db import db
 from api.auth import create_access_token, get_current_user, hash_password, verify_password
 from config import settings
 

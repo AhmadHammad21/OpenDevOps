@@ -6,9 +6,8 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-
-from agent import core
-from models.agent import Investigation
+from opendevops_core.agent import core
+from opendevops_core.models.agent import Investigation
 
 
 class _FastAgent:

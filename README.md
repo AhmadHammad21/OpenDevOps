@@ -165,22 +165,27 @@ least-privilege policies (Operational + Setup) and full step-by-step instruction
 
 ```
 apps/
-├── backend/
+├── core/                  # Installable package `opendevops-core` — the shared agent brain
+│   └── src/opendevops_core/
+│       ├── agent/         # DeepAgents setup, prompts, LLM wiring, DB layer (backends + ABC)
+│       ├── tools/         # bash, history, skills, final-answer + response cap/cache
+│       ├── providers/     # AWS provider — tools, context, poller, event consumer
+│       ├── models/        # Pydantic models: agent, chat, sessions, users
+│       ├── skills/        # Markdown runbooks (lambda-throttling + add your own)
+│       ├── integrations/  # slack_webhook.py, telegram.py
+│       ├── migrations/    # Numbered baseline SQL migrations (001–013) — bundled with the wheel
+│       └── config.py      # CoreSettings + get_settings()/configure() injection hook
+├── backend/               # OSS web app + CLI — depends on opendevops-core via uv path source
 │   ├── src/
-│   │   ├── agent/         # DeepAgents setup, prompts, models, config, DB layer
-│   │   ├── tools/         # 19 read-only AWS tool functions
 │   │   ├── api/
 │   │   │   ├── app.py     # FastAPI app factory — mounts routers, serves frontend
 │   │   │   ├── auth.py    # JWT helpers + FastAPI auth dependencies
 │   │   │   └── routers/   # chat, sessions, users, settings, history, dashboard, monitoring
 │   │   ├── cli/           # Typer CLI commands
 │   │   ├── config/
-│   │   │   └── appsettings.py  # Pydantic Settings — single source of truth for all env vars
-│   │   ├── models/        # Pydantic models: agent, chat, sessions, users
-│   │   ├── skills/        # Markdown runbooks (lambda-throttling + add your own)
-│   │   └── integrations/
-│   │       └── slack_webhook.py
-│   ├── migrations/        # Numbered SQL migrations (001–013)
+│   │   │   └── appsettings.py  # Settings(CoreSettings) — adds web/auth-only fields, calls configure()
+│   │   └── mcp_server.py  # MCP server (stdio / HTTP+SSE)
+│   ├── migrations/        # OSS-app-only migrations (currently none; all schema is core baseline)
 │   ├── tests/
 │   └── pyproject.toml
 ├── frontend/

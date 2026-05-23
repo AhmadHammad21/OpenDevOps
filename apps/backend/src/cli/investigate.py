@@ -2,14 +2,13 @@ import json
 from typing import Annotated
 
 import typer
+from opendevops_core.agent.core import InvestigationAgent
+from opendevops_core.models.agent import Confidence, Investigation
+from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich import print as rprint
-
-from agent.core import InvestigationAgent
-from models.agent import Confidence, Investigation
 
 console = Console()
 

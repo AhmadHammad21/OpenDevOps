@@ -10,16 +10,16 @@ from typing import Annotated
 import boto3
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
-from pydantic import BaseModel, EmailStr, Field
-
-from agent.db import db
-from agent.llm import get_backend_info
-from agent.init_store import (
+from opendevops_core.agent.db import db
+from opendevops_core.agent.init_store import (
     get_runtime_aws_region,
     get_runtime_sqs_queue_url,
     load_init_async,
     save_init_async,
 )
+from opendevops_core.agent.llm import get_backend_info
+from pydantic import BaseModel, EmailStr, Field
+
 from api.auth import hash_password, require_admin
 from config import settings
 
@@ -46,7 +46,7 @@ async def reset_init_state(
     _: Annotated[dict | None, Depends(require_admin)],
 ):
     """Clear persisted init/setup state. Useful for re-running the wizard without touching AWS."""
-    from agent.init_store import reset_init_async
+    from opendevops_core.agent.init_store import reset_init_async
 
     await reset_init_async()
     return {"reset": True}
@@ -126,7 +126,7 @@ async def setup(
 async def check_permissions_endpoint(
     _: Annotated[dict | None, Depends(require_admin)],
 ):
-    from providers import get_active_provider
+    from opendevops_core.providers import get_active_provider
 
     provider = get_active_provider()
     data = await load_init_async()
@@ -165,7 +165,7 @@ async def complete(
     region = data.get("aws_region") or settings.aws_region
 
     try:
-        from providers.aws.event_infra import setup_event_infra
+        from opendevops_core.providers.aws.event_infra import setup_event_infra
 
         result = await asyncio.get_event_loop().run_in_executor(None, setup_event_infra, region)
         data["sqs_queue_url"] = result["queue_url"]
@@ -240,7 +240,7 @@ async def teardown_infra(
         return {"torn_down": True, "warnings": ["No event infrastructure was configured"]}
 
     try:
-        from providers.aws.event_infra import teardown_event_infra
+        from opendevops_core.providers.aws.event_infra import teardown_event_infra
 
         result = await asyncio.get_event_loop().run_in_executor(
             None,

@@ -16,7 +16,7 @@ def aws_credentials():
 @pytest.fixture(autouse=True)
 def clear_tool_cache():
     """Ensure tool-level TTL cache never leaks state between tests."""
-    from tools._cache import _cache
+    from opendevops_core.tools._cache import _cache
 
     _cache.clear()
     yield

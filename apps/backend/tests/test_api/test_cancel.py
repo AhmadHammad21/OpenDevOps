@@ -15,7 +15,8 @@ os.environ.setdefault("LLM_API_KEY", "test-key")
 @pytest.mark.asyncio
 async def test_cancel_unknown_session():
     """DELETE on a session with no active stream returns cancelled=False."""
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from api.app import app
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -28,7 +29,8 @@ async def test_cancel_unknown_session():
 @pytest.mark.asyncio
 async def test_cancel_active_session():
     """DELETE on a session with a registered cancel event sets it and returns cancelled=True."""
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from api.app import app
     from api.routers.chat import _cancel_events
 

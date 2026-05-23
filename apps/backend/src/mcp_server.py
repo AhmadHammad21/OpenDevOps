@@ -34,8 +34,8 @@ mcp = FastMCP(
 
 async def _init() -> None:
     """Initialise DB + agent once on first use."""
-    from agent.core import get_agent, init_agent
-    from agent.db import db
+    from opendevops_core.agent.core import get_agent, init_agent
+    from opendevops_core.agent.db import db
     try:
         get_agent()
     except RuntimeError:
@@ -46,8 +46,8 @@ async def _init() -> None:
 async def _run_agent(prompt: str) -> dict[str, Any]:
     """Run the agent, persist the turn to DB, notify Slack, and return the result."""
     await _init()
-    from agent.core import ainvoke_with_timeout
-    from agent.turns import save_turn, notify_slack
+    from opendevops_core.agent.core import ainvoke_with_timeout
+    from opendevops_core.agent.turns import notify_slack, save_turn
 
     thread_id = str(uuid.uuid4())
     config = {
@@ -187,7 +187,7 @@ async def list_sessions(limit: int = 10) -> str:
         limit: Number of sessions to return (max 50).
     """
     await _init()
-    from agent.db import db
+    from opendevops_core.agent.db import db
 
     limit = min(limit, 50)
     sessions = (await db.list_sessions())[:limit]

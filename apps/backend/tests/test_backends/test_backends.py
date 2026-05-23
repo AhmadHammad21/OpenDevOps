@@ -11,8 +11,7 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
-
-from agent.db.base import DatabaseBackend
+from opendevops_core.agent.db.base import DatabaseBackend
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -21,10 +20,10 @@ from agent.db.base import DatabaseBackend
 async def backend(request, tmp_path) -> AsyncGenerator[DatabaseBackend, None]:
     """Parametrised fixture: runs every test twice — once per local backend."""
     if request.param == "memory":
-        from agent.db.memory import MemoryBackend
+        from opendevops_core.agent.db.memory import MemoryBackend
         b = MemoryBackend()
     else:
-        from agent.db.sqlite import SQLiteBackend
+        from opendevops_core.agent.db.sqlite import SQLiteBackend
         b = SQLiteBackend()
         b._path = str(tmp_path / "agent.db")  # isolated per test
 
@@ -40,7 +39,8 @@ async def pg_backend() -> AsyncGenerator[DatabaseBackend, None]:
     if not url:
         pytest.skip("DATABASE_URL not set — skipping postgres backend tests")
 
-    from agent.db.postgres import PostgresBackend
+    from opendevops_core.agent.db.postgres import PostgresBackend
+
     from config import settings
     settings.database_url = url
 

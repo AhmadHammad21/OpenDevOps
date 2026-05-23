@@ -1,9 +1,10 @@
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Annotated
 
 import typer
-from langchain_litellm import ChatLiteLLM
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_litellm import ChatLiteLLM
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -17,7 +18,7 @@ def ask_cmd(
     question: Annotated[str, typer.Argument(help="Freeform question about your AWS environment.")],
 ) -> None:
     """Ask a freeform question about your AWS environment."""
-    from agent.llm import resolve_model_and_key, shape_system_content
+    from opendevops_core.agent.llm import resolve_model_and_key, shape_system_content
     model_name, api_key = resolve_model_and_key()
     model = ChatLiteLLM(
         model=model_name,

@@ -21,7 +21,7 @@ async def test_slack(
     if not settings.slack_webhook_url:
         raise HTTPException(status_code=400, detail="SLACK_WEBHOOK_URL is not configured")
 
-    from integrations.slack_webhook import post_investigation
+    from opendevops_core.integrations.slack_webhook import post_investigation
 
     test_result = {
         "root_cause_category": "SYSTEM_CHANGE",
@@ -55,7 +55,7 @@ async def test_telegram(
             detail="TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must both be configured",
         )
 
-    from integrations.telegram import _build_message, _post
+    from opendevops_core.integrations.telegram import _build_message, _post
 
     test_result = {
         "root_cause_category": "SYSTEM_CHANGE",

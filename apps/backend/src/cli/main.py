@@ -30,13 +30,13 @@ def main() -> None:
 
 
 # Import sub-commands so they register on the app
-from cli.investigate import investigate_cmd  # noqa: E402
 from cli.ask import ask_cmd  # noqa: E402
+from cli.dev import dev_cmd  # noqa: E402
+from cli.investigate import investigate_cmd  # noqa: E402
+from cli.mcp import mcp_cmd  # noqa: E402
+from cli.migrate import migrate_cmd  # noqa: E402
 from cli.report import report_cmd  # noqa: E402
 from cli.ui import ui_cmd  # noqa: E402
-from cli.mcp import mcp_cmd  # noqa: E402
-from cli.dev import dev_cmd  # noqa: E402
-from cli.migrate import migrate_cmd  # noqa: E402
 
 app.command("investigate")(investigate_cmd)
 app.command("ask")(ask_cmd)

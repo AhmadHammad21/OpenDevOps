@@ -6,9 +6,8 @@ import json
 import time
 
 import pytest
-
-from agent.llm.detectors import claude_code
-from agent.llm.detectors.claude_code import ClaudeCodeDetector
+from opendevops_core.agent.llm.detectors import claude_code
+from opendevops_core.agent.llm.detectors.claude_code import ClaudeCodeDetector
 
 
 @pytest.fixture

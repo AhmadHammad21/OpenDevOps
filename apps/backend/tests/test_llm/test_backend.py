@@ -6,8 +6,7 @@ All detectors are stubbed; no real ~/.claude access, no network, no API spend.
 from __future__ import annotations
 
 import pytest
-
-from agent.llm import backend
+from opendevops_core.agent.llm import backend
 
 
 class FakeDetector:

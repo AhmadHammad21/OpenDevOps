@@ -13,8 +13,9 @@ from loguru import logger
 # Suppress LiteLLM's "Provider List" info spam — we don't need provider discovery hints in logs
 litellm.suppress_debug_info = True
 
-from agent.core import init_agent  # noqa: E402
-from agent.db import db  # noqa: E402
+from opendevops_core.agent.core import init_agent  # noqa: E402
+from opendevops_core.agent.db import db  # noqa: E402
+
 from api.routers import (  # noqa: E402
     auth,
     chat,
@@ -66,7 +67,7 @@ def start_event_consumer(app_instance: "FastAPI | None" = None) -> None:
     existing: asyncio.Task | None = getattr(target, "_consumer_task", None)
     if existing and not existing.done():
         return
-    from providers import get_active_provider
+    from opendevops_core.providers import get_active_provider
 
     target._consumer_task = asyncio.create_task(get_active_provider().event_consumer_loop())  # type: ignore[attr-defined]
     logger.info("Event consumer task started")
@@ -96,7 +97,7 @@ async def lifespan(_app: FastAPI):
     from config import settings as _cfg
 
     checkpointer = await db.init()
-    from agent.init_store import refresh_init_cache_from_db
+    from opendevops_core.agent.init_store import refresh_init_cache_from_db
 
     await refresh_init_cache_from_db()
     init_agent(checkpointer)
@@ -109,7 +110,7 @@ async def lifespan(_app: FastAPI):
                 "or postgres for durable incident claims"
             )
         else:
-            from providers import get_active_provider
+            from opendevops_core.providers import get_active_provider
 
             poller_task = asyncio.create_task(get_active_provider().polling_loop())
             logger.info("Proactive poller started (interval={}s)", _cfg.poll_interval_seconds)
@@ -117,7 +118,7 @@ async def lifespan(_app: FastAPI):
     # Event consumer — started if explicitly enabled, SQS URL is set, or init wizard completed
     if _cfg.checkpoint_backend == "memory":
         try:
-            from agent.init_store import is_event_infra_enabled
+            from opendevops_core.agent.init_store import is_event_infra_enabled
 
             init_enabled = is_event_infra_enabled()
         except Exception:
@@ -131,7 +132,7 @@ async def lifespan(_app: FastAPI):
         start_event_consumer(_app)
     else:
         try:
-            from agent.init_store import is_event_infra_enabled
+            from opendevops_core.agent.init_store import is_event_infra_enabled
 
             if is_event_infra_enabled():
                 start_event_consumer(_app)
