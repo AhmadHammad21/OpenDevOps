@@ -1,20 +1,24 @@
-.venv/
-__pycache__/
-*.pyc
-*.pyo
+apps/backend/.venv/
+apps/backend/__pycache__/
+apps/backend/*.pyc
+apps/backend/*.pyo
+apps/backend/tests/
+apps/backend/*.db
+apps/backend/data/
+
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/.vite/
+
 .env
 .env.*
 !.env.example
 
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-
 .git/
 .github/
 
-tests/
-docs/
+apps/documentation/
 design-system/
+demos/
 PLAN.md
 *.md
