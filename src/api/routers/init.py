@@ -13,6 +13,7 @@ from loguru import logger
 from pydantic import BaseModel, EmailStr, Field
 
 from agent.db import db
+from agent.llm import get_backend_info
 from agent.init_store import (
     get_runtime_aws_region,
     get_runtime_sqs_queue_url,
@@ -62,6 +63,7 @@ async def status():
     data["event_infra_enabled"] = bool(get_runtime_sqs_queue_url()) and bool(
         settings.sqs_queue_url or data.get("event_infra_enabled")
     )
+    data["llm_backend"] = get_backend_info()
     return data
 
 
@@ -124,11 +126,12 @@ async def setup(
 async def check_permissions_endpoint(
     _: Annotated[dict | None, Depends(require_admin)],
 ):
-    from agent.permission_checker import check_permissions as _check
+    from providers import get_active_provider
 
+    provider = get_active_provider()
     data = await load_init_async()
     results = await asyncio.get_event_loop().run_in_executor(
-        None, _check, data.get("aws_region")
+        None, provider.check_permissions, data.get("aws_region")
     )
     data["permissions"] = {svc: r["passed"] for svc, r in results.items()}
     await save_init_async(data)
@@ -162,7 +165,7 @@ async def complete(
     region = data.get("aws_region") or settings.aws_region
 
     try:
-        from agent.event_infra import setup_event_infra
+        from providers.aws.event_infra import setup_event_infra
 
         result = await asyncio.get_event_loop().run_in_executor(None, setup_event_infra, region)
         data["sqs_queue_url"] = result["queue_url"]
@@ -237,7 +240,7 @@ async def teardown_infra(
         return {"torn_down": True, "warnings": ["No event infrastructure was configured"]}
 
     try:
-        from agent.event_infra import teardown_event_infra
+        from providers.aws.event_infra import teardown_event_infra
 
         result = await asyncio.get_event_loop().run_in_executor(
             None,

@@ -131,13 +131,15 @@ async def maybe_summarize(agent: Any, config: dict, session_id: str) -> bool:
     history_text = _format_for_summary(to_summarize)
     start = time.time()
     try:
+        from agent.llm import resolve_model_and_key, shape_system_content
+        model_name, api_key = resolve_model_and_key()
         llm = ChatLiteLLM(
-            model=settings.llm_model,
+            model=model_name,
             api_base=settings.llm_api_base or None,
-            api_key=settings.llm_api_key or None,
+            api_key=api_key,
         )
         response = await llm.ainvoke([
-            {"role": "system", "content": _SUMMARIZE_SYSTEM},
+            {"role": "system", "content": shape_system_content(_SUMMARIZE_SYSTEM, api_key)},
             {"role": "user",   "content": f"Summarize this investigation:\n\n{history_text}"},
         ])
         summary_text = str(response.content)

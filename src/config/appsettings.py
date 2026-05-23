@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # Active cloud provider — selects which provider package supplies tools, context,
+    # permission checks, and event/poller loops. One active provider per deployment.
+    cloud_provider: Literal["aws", "azure", "gcp"] = "aws"
+
     aws_region: str = "us-east-1"
     aws_profile: str | None = None
 
@@ -73,6 +77,11 @@ class Settings(BaseSettings):
 
     # Reserved for future file-based state; init config is stored in the DB backend.
     data_dir: str = "data"
+
+    # Auto-detect Claude Code CLI and use it as the Anthropic LLM backend.
+    # Fires only when LLM_MODEL is not explicitly set and no LLM_API_KEY is present.
+    # Set to false to disable auto-detection.
+    claude_code_autodetect: bool = True
 
 
 settings = Settings()

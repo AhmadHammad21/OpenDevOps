@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from tools.cloudwatch import get_alarms
+from providers.aws.tools.cloudwatch import get_alarms
 
 console = Console()
 

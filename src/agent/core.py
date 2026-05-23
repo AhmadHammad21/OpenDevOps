@@ -12,34 +12,27 @@ from config import settings
 from models.agent import Confidence, Investigation, InvestigationResult, RootCauseCategory
 from agent.prompts import SYSTEM_PROMPT
 from loguru import logger
+from providers import get_active_provider
 from tools._cap import with_cap
-from tools.cloudtrail import ALL_CLOUDTRAIL_TOOLS
-from tools.cloudwatch import ALL_CLOUDWATCH_TOOLS
-from tools.ec2 import ALL_EC2_TOOLS
-from tools.ecs import ALL_ECS_TOOLS
 from tools.bash_tool import ALL_BASH_TOOLS
 from tools.final_answer import ALL_FINAL_ANSWER_TOOLS
 from tools.history import ALL_HISTORY_TOOLS
-from tools.iam import ALL_IAM_TOOLS
-from tools.lambda_ import ALL_LAMBDA_TOOLS
-from tools.rds import ALL_RDS_TOOLS
 from tools.skills import ALL_SKILL_TOOLS
 
-ALL_TOOLS = (
-    ALL_CLOUDWATCH_TOOLS
-    + ALL_CLOUDTRAIL_TOOLS
-    + ALL_ECS_TOOLS
-    + ALL_LAMBDA_TOOLS
-    + ALL_EC2_TOOLS
-    + ALL_RDS_TOOLS
-    + ALL_IAM_TOOLS
-    + ALL_HISTORY_TOOLS
-    + ALL_BASH_TOOLS
-    + ALL_SKILL_TOOLS
-    + ALL_FINAL_ANSWER_TOOLS
-)
+# Cloud-agnostic tools available regardless of provider.
+SHARED_TOOLS = ALL_HISTORY_TOOLS + ALL_BASH_TOOLS + ALL_SKILL_TOOLS + ALL_FINAL_ANSWER_TOOLS
+
+# Active provider's cloud tools + shared tools. Provider is selected by CLOUD_PROVIDER.
+ALL_TOOLS = get_active_provider().tools() + SHARED_TOOLS
 
 _agent = None
+_active_model: str | None = None
+
+
+def get_active_model() -> str:
+    """Return the resolved LLM model string (may differ from settings.llm_model when
+    Claude Code auto-detection overrides the default)."""
+    return _active_model or settings.llm_model
 
 
 def _run_async(coro: Any) -> Any:
@@ -55,19 +48,33 @@ def _run_async(coro: Any) -> Any:
     raise RuntimeError("Cannot run synchronous agent call inside an active event loop")
 
 
+def _build_system_prompt(api_key: str | None) -> Any:
+    """Return the system prompt for create_deep_agent — a SystemMessage with the
+    Claude Code identity block for subscription OAuth tokens, else a plain string."""
+    from agent.llm import shape_system_content
+    content = shape_system_content(SYSTEM_PROMPT, api_key)
+    if isinstance(content, list):
+        from langchain_core.messages import SystemMessage
+        return SystemMessage(content=content)
+    return content
+
+
 def init_agent(checkpointer: Any) -> None:
     """Create the agent with the given checkpointer. Called once during app startup."""
-    global _agent
+    global _agent, _active_model
+    from agent.llm import resolve_model_and_key
+    model_name, api_key = resolve_model_and_key()
+    _active_model = model_name
     model = ChatLiteLLM(
-        model=settings.llm_model,
+        model=model_name,
         api_base=settings.llm_api_base or None,
-        api_key=settings.llm_api_key or None,
+        api_key=api_key,
     )
     tools = [with_cap(t) for t in ALL_TOOLS] if settings.tool_response_max_chars > 0 else ALL_TOOLS
     _agent = create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_build_system_prompt(api_key),
         checkpointer=checkpointer,
     )
 

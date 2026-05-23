@@ -1,7 +1,7 @@
 import boto3
 from moto import mock_aws
 
-from tools.ecs import describe_ecs_service, list_ecs_clusters, list_ecs_services
+from providers.aws.tools.ecs import describe_ecs_service, list_ecs_clusters, list_ecs_services
 
 
 @mock_aws
