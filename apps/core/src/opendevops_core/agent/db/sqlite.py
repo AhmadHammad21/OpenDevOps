@@ -1,0 +1,1111 @@
+"""SQLite backend — zero-config local persistence, ideal for single-server deployments."""
+
+from __future__ import annotations
+
+import json
+import os
+import uuid
+from typing import Any
+
+from loguru import logger
+
+from opendevops_core.agent.db.base import DatabaseBackend
+from opendevops_core.config import settings
+
+_DDL = """
+CREATE TABLE IF NOT EXISTS sessions (
+    id             TEXT PRIMARY KEY,
+    title          TEXT,
+    model          TEXT NOT NULL DEFAULT '',
+    aws_region     TEXT NOT NULL DEFAULT 'us-east-1',
+    source           TEXT NOT NULL DEFAULT 'chat',
+    user_interacted  INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    last_active_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    is_deleted       INTEGER NOT NULL DEFAULT 0,
+    deleted_at       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    metadata   TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS tool_calls (
+    id          TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL REFERENCES sessions(id),
+    message_id  TEXT REFERENCES messages(id),
+    tool_name   TEXT NOT NULL,
+    args        TEXT NOT NULL DEFAULT '{}',
+    result      TEXT NOT NULL DEFAULT '{}',
+    error       TEXT,
+    duration_ms INTEGER,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS usage_events (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL REFERENCES sessions(id),
+    message_id      TEXT REFERENCES messages(id),
+    model           TEXT NOT NULL,
+    input_tokens    INTEGER NOT NULL DEFAULT 0,
+    output_tokens   INTEGER NOT NULL DEFAULT 0,
+    cost_usd        REAL,
+    latency_ms      INTEGER NOT NULL DEFAULT 0,
+    tool_call_count INTEGER NOT NULL DEFAULT 0,
+    metadata        TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    slug       TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    org_id        TEXT REFERENCES organizations(id),
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    password_hash TEXT,
+    role          TEXT NOT NULL DEFAULT 'user',
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id          TEXT PRIMARY KEY,
+    service     TEXT NOT NULL,
+    error       TEXT NOT NULL,
+    resolution  TEXT NOT NULL DEFAULT '',
+    confidence  TEXT NOT NULL DEFAULT 'LOW',
+    sns_sent    INTEGER NOT NULL DEFAULT 0,
+    dedup_key   TEXT,
+    status      TEXT NOT NULL DEFAULT 'completed',
+    session_id  TEXT,
+    trigger_source TEXT,
+    evidence    TEXT NOT NULL DEFAULT '[]',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS alerts_created_at_idx ON alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS alerts_service_idx ON alerts(service);
+CREATE INDEX IF NOT EXISTS idx_alerts_dedup_key_created ON alerts(dedup_key, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS alert_notifications (
+    id       TEXT PRIMARY KEY,
+    alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+    channel  TEXT NOT NULL,
+    status   TEXT NOT NULL DEFAULT 'attempted',
+    error    TEXT,
+    sent_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_alert_notifications_alert_id ON alert_notifications(alert_id);
+
+CREATE TABLE IF NOT EXISTS incident_claims (
+    incident_key   TEXT PRIMARY KEY,
+    trigger_source TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'claimed',
+    session_id     TEXT,
+    claimed_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')),
+    completed_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_incident_claims_claimed_at ON incident_claims(claimed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_incident_claims_status ON incident_claims(status);
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now'))
+);
+"""
+
+_SERVICE_MAP: dict[str, str] = {
+    "get_alarms": "CloudWatch",
+    "get_alarm_history": "CloudWatch",
+    "get_metric_data": "CloudWatch",
+    "get_log_events": "CloudWatch",
+    "describe_log_groups": "CloudWatch",
+    "query_logs_insights": "CloudWatch",
+    "lookup_cloudtrail_events": "CloudTrail",
+    "list_ecs_clusters": "ECS",
+    "list_ecs_services": "ECS",
+    "describe_ecs_service": "ECS",
+    "get_ecs_task_logs": "ECS",
+    "list_lambda_functions": "Lambda",
+    "get_lambda_function_config": "Lambda",
+    "get_lambda_error_rate": "Lambda",
+    "describe_ec2_instances": "EC2",
+    "get_ec2_system_status": "EC2",
+    "describe_rds_instances": "RDS",
+    "get_rds_events": "RDS",
+    "get_caller_identity": "IAM",
+    "get_iam_role_policies": "IAM",
+    "submit_investigation": "Agent",
+}
+
+
+class SQLiteBackend(DatabaseBackend):
+    """aiosqlite-backed persistent storage with LangGraph SQLite checkpointer."""
+
+    def __init__(self) -> None:
+        self._path: str = settings.sqlite_path
+        self._conn: Any = None
+        self._checkpointer: Any = None
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    async def init(self) -> Any:
+        import aiosqlite
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+        os.makedirs(os.path.dirname(os.path.abspath(self._path)), exist_ok=True)
+
+        self._conn = await aiosqlite.connect(self._path)
+        # WAL mode: concurrent reads don't block writes on a single-server deployment
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
+        await self._conn.execute("PRAGMA foreign_keys=ON")
+
+        for stmt in _DDL.strip().split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                await self._conn.execute(stmt)
+        await self._conn.commit()
+
+        # Migrate existing databases: add metadata column if absent
+        try:
+            await self._conn.execute(
+                "ALTER TABLE usage_events ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass  # column already exists
+
+        # Migrate existing sessions tables: add source / user_interacted columns if absent
+        for col_sql in (
+            "ALTER TABLE sessions ADD COLUMN source TEXT NOT NULL DEFAULT 'chat'",
+            "ALTER TABLE sessions ADD COLUMN user_interacted INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                await self._conn.execute(col_sql)
+                await self._conn.commit()
+            except Exception:
+                pass  # column already exists
+
+        # Migrate existing databases: create alerts table if absent
+        try:
+            await self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS alerts ("
+                "id TEXT PRIMARY KEY, service TEXT NOT NULL, error TEXT NOT NULL, "
+                "resolution TEXT NOT NULL DEFAULT '', confidence TEXT NOT NULL DEFAULT 'LOW', "
+                "sns_sent INTEGER NOT NULL DEFAULT 0, "
+                "dedup_key TEXT, status TEXT NOT NULL DEFAULT 'completed', "
+                "session_id TEXT, "
+                "created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass
+
+        # Migrate existing alerts tables: add dedup_key / status / session_id if absent
+        for col_sql in (
+            "ALTER TABLE alerts ADD COLUMN dedup_key TEXT",
+            "ALTER TABLE alerts ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
+            "ALTER TABLE alerts ADD COLUMN session_id TEXT",
+            "ALTER TABLE alerts ADD COLUMN trigger_source TEXT",
+            "ALTER TABLE alerts ADD COLUMN evidence TEXT NOT NULL DEFAULT '[]'",
+        ):
+            try:
+                await self._conn.execute(col_sql)
+                await self._conn.commit()
+            except Exception:
+                pass  # column already exists
+
+        for stmt in (
+            "CREATE INDEX IF NOT EXISTS idx_alerts_dedup_key_created "
+            "ON alerts(dedup_key, created_at DESC)",
+            "CREATE TABLE IF NOT EXISTS alert_notifications ("
+            "id TEXT PRIMARY KEY, alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE, "
+            "channel TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'attempted', error TEXT, "
+            "sent_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))",
+            "CREATE INDEX IF NOT EXISTS idx_alert_notifications_alert_id "
+            "ON alert_notifications(alert_id)",
+            "CREATE TABLE IF NOT EXISTS incident_claims ("
+            "incident_key TEXT PRIMARY KEY, trigger_source TEXT NOT NULL, "
+            "status TEXT NOT NULL DEFAULT 'claimed', session_id TEXT, "
+            "claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')), "
+            "completed_at TEXT)",
+            "CREATE INDEX IF NOT EXISTS idx_incident_claims_claimed_at "
+            "ON incident_claims(claimed_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_incident_claims_status ON incident_claims(status)",
+        ):
+            try:
+                await self._conn.execute(stmt)
+                await self._conn.commit()
+            except Exception:
+                pass
+
+        try:
+            await self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS app_config ("
+                "key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '{}', "
+                "updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now')))"
+            )
+            await self._conn.commit()
+        except Exception:
+            pass
+
+        # LangGraph checkpointer uses its own connection to the same file
+        cp_conn = await aiosqlite.connect(self._path)
+        self._checkpointer = AsyncSqliteSaver(cp_conn)
+        await self._checkpointer.setup()
+
+        logger.info("SQLite backend ready — path={}", self._path)
+        return self._checkpointer
+
+    async def close(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
+            logger.info("SQLite connection closed")
+
+    @property
+    def checkpointer(self) -> Any:
+        return self._checkpointer
+
+    # ── Low-level helpers ─────────────────────────────────────────────────────
+
+    async def _exec(self, sql: str, *params: Any) -> None:
+        if self._conn is None:
+            return
+        try:
+            await self._conn.execute(sql, params)
+            await self._conn.commit()
+        except Exception as e:
+            logger.error("SQLite write failed: {}", e)
+
+    async def _fetchall(self, sql: str, *params: Any) -> list[dict]:
+        if self._conn is None:
+            return []
+        try:
+            async with self._conn.execute(sql, params) as cur:
+                rows = await cur.fetchall()
+                if not rows:
+                    return []
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in rows]
+        except Exception as e:
+            logger.error("SQLite read failed: {}", e)
+            return []
+
+    async def _fetchone(self, sql: str, *params: Any) -> dict | None:
+        if self._conn is None:
+            return None
+        try:
+            async with self._conn.execute(sql, params) as cur:
+                row = await cur.fetchone()
+                if row is None:
+                    return None
+                cols = [d[0] for d in cur.description]
+                return dict(zip(cols, row))
+        except Exception as e:
+            logger.error("SQLite read failed: {}", e)
+            return None
+
+    # ── App helpers ───────────────────────────────────────────────────────────
+
+    async def upsert_session(
+        self,
+        session_id: str,
+        model: str,
+        aws_region: str,
+        title: str | None = None,
+        source: str = "chat",
+        org_id: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
+        # SQLite is the single-tenant/local backend — org_id/user_id are accepted for
+        # interface parity but not stored or scoped. Use Postgres for multi-tenant.
+        await self._exec(
+            """
+            INSERT INTO sessions (id, title, model, aws_region, source)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (id) DO UPDATE SET
+                last_active_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'),
+                model = excluded.model,
+                user_interacted = CASE
+                    WHEN excluded.source = 'chat' THEN 1
+                    ELSE sessions.user_interacted
+                END
+            """,
+            session_id,
+            title,
+            model,
+            aws_region,
+            source,
+        )
+
+    async def save_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        metadata: dict | None = None,
+    ) -> str:
+        msg_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO messages (id, session_id, role, content, metadata) VALUES (?, ?, ?, ?, ?)",
+            msg_id,
+            session_id,
+            role,
+            content,
+            json.dumps(metadata or {}),
+        )
+        return msg_id
+
+    async def save_tool_call(
+        self,
+        session_id: str,
+        message_id: str | None,
+        tool_name: str,
+        args: dict,
+        result: dict,
+        duration_ms: int | None = None,
+    ) -> None:
+        error = result.get("error") if isinstance(result, dict) else None
+        await self._exec(
+            """
+            INSERT INTO tool_calls
+                (id, session_id, message_id, tool_name, args, result, error, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            str(uuid.uuid4()),
+            session_id,
+            message_id,
+            tool_name,
+            json.dumps(args),
+            json.dumps(result),
+            error,
+            duration_ms,
+        )
+
+    async def save_usage_event(
+        self,
+        session_id: str,
+        message_id: str | None,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float | None,
+        latency_ms: int,
+        tool_call_count: int,
+        metadata: dict | None = None,
+    ) -> None:
+        await self._exec(
+            """
+            INSERT INTO usage_events
+                (id, session_id, message_id, model, input_tokens, output_tokens,
+                 cost_usd, latency_ms, tool_call_count, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            str(uuid.uuid4()),
+            session_id,
+            message_id,
+            model,
+            input_tokens,
+            output_tokens,
+            cost_usd,
+            latency_ms,
+            tool_call_count,
+            json.dumps(metadata or {}),
+        )
+
+    async def list_sessions(
+        self, limit: int = 15, offset: int = 0, org_id: str | None = None
+    ) -> list[dict]:
+        # org_id ignored — SQLite is single-tenant (see upsert_session note).
+        rows = await self._fetchall(
+            "SELECT id, title, last_active_at, model, aws_region FROM sessions"
+            " WHERE is_deleted = 0 AND (source = 'chat' OR user_interacted = 1)"
+            " ORDER BY last_active_at DESC LIMIT ? OFFSET ?",
+            limit,
+            offset,
+        )
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "last_active_at": r["last_active_at"],
+                "model": r["model"],
+                "aws_region": r["aws_region"],
+            }
+            for r in rows
+        ]
+
+    async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]:
+        session = await self._fetchone("SELECT is_deleted FROM sessions WHERE id = ?", session_id)
+        if session is None or session.get("is_deleted"):
+            return []
+
+        messages = await self._fetchall(
+            "SELECT id, role, content, created_at FROM messages "
+            "WHERE session_id = ? ORDER BY created_at ASC",
+            session_id,
+        )
+        tool_calls = await self._fetchall(
+            "SELECT message_id, tool_name, args, result, error FROM tool_calls "
+            "WHERE session_id = ? ORDER BY created_at ASC",
+            session_id,
+        )
+        usage_rows = await self._fetchall(
+            "SELECT message_id, model, input_tokens, output_tokens, cost_usd, latency_ms "
+            "FROM usage_events WHERE session_id = ?",
+            session_id,
+        )
+
+        tc_by_msg: dict[str, list] = {}
+        for tc in tool_calls:
+            mid = tc["message_id"]
+            if mid:
+                tc_by_msg.setdefault(mid, []).append(
+                    {
+                        "tool_name": tc["tool_name"],
+                        "args": json.loads(tc["args"])
+                        if isinstance(tc["args"], str)
+                        else tc["args"],
+                        "result": (
+                            json.loads(tc["result"])
+                            if isinstance(tc["result"], str)
+                            else tc["result"]
+                        ),
+                        "error": tc["error"],
+                    }
+                )
+
+        usage_by_msg = {
+            u["message_id"]: {
+                "model": u["model"],
+                "input_tokens": u["input_tokens"],
+                "output_tokens": u["output_tokens"],
+                "cost_usd": float(u["cost_usd"]) if u["cost_usd"] is not None else None,
+                "latency_ms": u["latency_ms"],
+            }
+            for u in usage_rows
+            if u["message_id"]
+        }
+
+        result = []
+        for msg in messages:
+            mid = msg["id"]
+            item: dict = {
+                "id": mid,
+                "role": msg["role"],
+                "content": msg["content"],
+                "created_at": msg["created_at"],
+                "tool_calls": [],
+                "usage": None,
+            }
+            if msg["role"] == "assistant":
+                item["tool_calls"] = tc_by_msg.get(mid, [])
+                item["usage"] = usage_by_msg.get(mid)
+            result.append(item)
+        return result
+
+    async def delete_session(self, session_id: str) -> None:
+        await self._exec(
+            "UPDATE sessions SET is_deleted = 1, "
+            "deleted_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') WHERE id = ?",
+            session_id,
+        )
+
+    async def rename_session(self, session_id: str, title: str) -> None:
+        await self._exec(
+            "UPDATE sessions SET title = ? WHERE id = ? AND is_deleted = 0",
+            title,
+            session_id,
+        )
+
+    # ── Analytics ─────────────────────────────────────────────────────────────
+
+    async def get_dashboard_stats(self) -> dict:
+        summary = (
+            await self._fetchone("""
+            SELECT
+                (SELECT COUNT(*) FROM sessions WHERE is_deleted = 0) AS total_sessions,
+                (SELECT COUNT(*) FROM messages m
+                    JOIN sessions s ON s.id = m.session_id
+                    WHERE s.is_deleted = 0 AND m.role = 'user') AS total_queries,
+                (SELECT COUNT(*) FROM tool_calls tc
+                    JOIN sessions s ON s.id = tc.session_id
+                    WHERE s.is_deleted = 0) AS total_tool_calls,
+                (SELECT COUNT(*) FROM tool_calls tc
+                    JOIN sessions s ON s.id = tc.session_id
+                    WHERE s.is_deleted = 0 AND tc.error IS NOT NULL) AS total_tool_errors,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0) AS total_input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0) AS total_output_tokens,
+                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0) AS total_cost_usd,
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0) AS avg_latency_ms,
+                (SELECT COUNT(*) FROM usage_events ue
+                    JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0
+                      AND json_extract(ue.metadata, '$.summarization') = 1) AS total_summarizations,
+                (SELECT COALESCE(SUM(CAST(
+                    json_extract(ue.metadata, '$.chars_removed') AS INTEGER
+                )), 0)
+                    FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
+                    WHERE s.is_deleted = 0
+                      AND json_extract(ue.metadata, '$.summarization') = 1) AS total_chars_compacted
+        """)
+            or {}
+        )
+
+        activity_rows = await self._fetchall("""
+            SELECT strftime('%Y-%m-%d', last_active_at) AS day, COUNT(*) AS sessions
+            FROM sessions
+            WHERE is_deleted = 0
+              AND last_active_at > datetime('now', '-14 days')
+            GROUP BY 1 ORDER BY 1
+        """)
+
+        tool_rows = await self._fetchall("""
+            SELECT
+                tc.tool_name,
+                COUNT(*) AS call_count,
+                SUM(CASE WHEN tc.error IS NOT NULL THEN 1 ELSE 0 END) AS error_count
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = 0
+            GROUP BY tc.tool_name
+            ORDER BY call_count DESC
+            LIMIT 12
+        """)
+        top_tools = [
+            {"tool": r["tool_name"], "count": int(r["call_count"]), "errors": int(r["error_count"])}
+            for r in tool_rows
+        ]
+
+        service_totals: dict[str, int] = {}
+        for t in top_tools:
+            svc = _SERVICE_MAP.get(t["tool"], "Other")
+            service_totals[svc] = service_totals.get(svc, 0) + t["count"]
+        total_calls = sum(service_totals.values()) or 1
+        service_breakdown = sorted(
+            [
+                {"service": svc, "calls": cnt, "pct": round(cnt / total_calls * 100, 1)}
+                for svc, cnt in service_totals.items()
+            ],
+            key=lambda x: x["calls"],
+            reverse=True,
+        )
+
+        recent_rows = await self._fetchall("""
+            SELECT
+                s.id, s.title, s.last_active_at, s.model,
+                COUNT(DISTINCT CASE WHEN m.role = 'user' THEN m.id END) AS query_count,
+                COUNT(DISTINCT tc.id)                                    AS tool_count,
+                COALESCE(SUM(ue.cost_usd), 0)                           AS cost_usd
+            FROM sessions s
+            LEFT JOIN messages     m  ON m.session_id  = s.id
+            LEFT JOIN tool_calls   tc ON tc.session_id = s.id
+            LEFT JOIN usage_events ue ON ue.session_id = s.id
+            WHERE s.is_deleted = 0
+            GROUP BY s.id, s.title, s.last_active_at, s.model
+            ORDER BY s.last_active_at DESC
+            LIMIT 6
+        """)
+        recent_sessions = [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "last_active_at": r["last_active_at"],
+                "model": r["model"],
+                "query_count": int(r["query_count"] or 0),
+                "tool_count": int(r["tool_count"] or 0),
+                "cost_usd": float(r["cost_usd"] or 0),
+            }
+            for r in recent_rows
+        ]
+
+        rc_rows = await self._fetchall("""
+            SELECT
+                json_extract(tc.args, '$.root_cause_category') AS category,
+                COUNT(*) AS count
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = 0
+              AND tc.tool_name = 'submit_investigation'
+              AND json_extract(tc.args, '$.root_cause_category') IS NOT NULL
+            GROUP BY 1 ORDER BY 2 DESC
+        """)
+
+        return {
+            "summary": {
+                "total_sessions": int(summary.get("total_sessions", 0) or 0),
+                "total_queries": int(summary.get("total_queries", 0) or 0),
+                "total_tool_calls": int(summary.get("total_tool_calls", 0) or 0),
+                "total_tool_errors": int(summary.get("total_tool_errors", 0) or 0),
+                "total_input_tokens": int(summary.get("total_input_tokens", 0) or 0),
+                "total_output_tokens": int(summary.get("total_output_tokens", 0) or 0),
+                "total_cost_usd": float(summary.get("total_cost_usd", 0) or 0),
+                "avg_latency_ms": round(float(summary.get("avg_latency_ms", 0) or 0)),
+                "total_summarizations": int(summary.get("total_summarizations", 0) or 0),
+                "total_chars_compacted": int(summary.get("total_chars_compacted", 0) or 0),
+            },
+            "activity": [{"date": r["day"], "sessions": int(r["sessions"])} for r in activity_rows],
+            "top_tools": top_tools,
+            "service_breakdown": service_breakdown,
+            "recent_sessions": recent_sessions,
+            "root_causes": [{"category": r["category"], "count": int(r["count"])} for r in rc_rows],
+        }
+
+    async def get_history_stats(self, days: int = 30) -> dict:
+        cutoff = f"-{days} days"
+
+        alarm_rows = await self._fetchall(
+            """
+            SELECT
+                json_extract(tc.args, '$.alarm_name') AS alarm_name,
+                COUNT(DISTINCT tc.session_id)          AS session_count,
+                COUNT(*)                               AS total_lookups,
+                MAX(s.last_active_at)                  AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = 0
+              AND tc.tool_name = 'get_alarm_history'
+              AND json_extract(tc.args, '$.alarm_name') IS NOT NULL
+              AND s.last_active_at > datetime('now', ?)
+            GROUP BY 1
+            ORDER BY session_count DESC, total_lookups DESC
+            LIMIT 10
+        """,
+            cutoff,
+        )
+
+        lambda_rows = await self._fetchall(
+            """
+            SELECT
+                json_extract(tc.args, '$.function_name') AS function_name,
+                COUNT(DISTINCT tc.session_id)             AS session_count,
+                COUNT(*)                                  AS total_calls,
+                MAX(s.last_active_at)                     AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = 0
+              AND tc.tool_name IN ('get_lambda_error_rate', 'get_lambda_function_config')
+              AND json_extract(tc.args, '$.function_name') IS NOT NULL
+              AND s.last_active_at > datetime('now', ?)
+            GROUP BY 1 ORDER BY session_count DESC
+            LIMIT 10
+        """,
+            cutoff,
+        )
+
+        error_rows = await self._fetchall(
+            """
+            SELECT
+                tc.tool_name,
+                substr(tc.error, 1, 120) AS error_snippet,
+                COUNT(*)                 AS count,
+                MAX(tc.created_at)       AS last_seen
+            FROM tool_calls tc
+            JOIN sessions s ON s.id = tc.session_id
+            WHERE s.is_deleted = 0
+              AND tc.error IS NOT NULL
+              AND s.last_active_at > datetime('now', ?)
+            GROUP BY 1, 2 ORDER BY count DESC
+            LIMIT 10
+        """,
+            cutoff,
+        )
+
+        trend_rows = await self._fetchall(
+            """
+            SELECT
+                strftime('%Y-%m-%d', last_active_at) AS day,
+                COUNT(*) AS count
+            FROM sessions
+            WHERE is_deleted = 0
+              AND last_active_at > datetime('now', ?)
+            GROUP BY 1 ORDER BY 1
+        """,
+            cutoff,
+        )
+
+        return {
+            "days": days,
+            "top_alarms": [
+                {
+                    "alarm_name": r["alarm_name"],
+                    "session_count": int(r["session_count"]),
+                    "total_lookups": int(r["total_lookups"]),
+                    "last_seen": r["last_seen"],
+                }
+                for r in alarm_rows
+            ],
+            "top_lambdas": [
+                {
+                    "function_name": r["function_name"],
+                    "session_count": int(r["session_count"]),
+                    "total_calls": int(r["total_calls"]),
+                    "last_seen": r["last_seen"],
+                }
+                for r in lambda_rows
+            ],
+            "recurring_errors": [
+                {
+                    "tool_name": r["tool_name"],
+                    "error_snippet": r["error_snippet"],
+                    "count": int(r["count"]),
+                    "last_seen": r["last_seen"],
+                }
+                for r in error_rows
+            ],
+            "trend": [{"date": r["day"], "count": int(r["count"])} for r in trend_rows],
+        }
+
+    # ── User / auth ─────────────────────────────────────────────────────────
+
+    async def count_users(self) -> int:
+        row = await self._fetchone(
+            "SELECT COUNT(*) AS n FROM users WHERE password_hash IS NOT NULL"
+        )
+        return int(row["n"]) if row else 0
+
+    async def get_user_by_email(self, email: str) -> dict | None:
+        return await self._fetchone("SELECT * FROM users WHERE email = ?", email)
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        return await self._fetchone("SELECT * FROM users WHERE id = ?", user_id)
+
+    async def create_org(self, name: str, slug: str) -> dict | None:
+        org_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?) "
+            "ON CONFLICT(slug) DO UPDATE SET "
+            "name = excluded.name, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now')",
+            org_id,
+            name,
+            slug,
+        )
+        return await self._fetchone(
+            "SELECT id, name, slug FROM organizations WHERE slug = ?",
+            slug,
+        )
+
+    async def get_first_org(self) -> dict | None:
+        return await self._fetchone(
+            "SELECT id, name, slug FROM organizations ORDER BY created_at ASC LIMIT 1"
+        )
+
+    async def create_user(
+        self,
+        email: str,
+        name: str,
+        password_hash: str,
+        role: str,
+        org_id: str | None = None,
+    ) -> dict | None:
+        user_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO users (id, email, name, password_hash, role, org_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            user_id,
+            email,
+            name,
+            password_hash,
+            role,
+            org_id,
+        )
+        return await self._fetchone(
+            "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+            user_id,
+        )
+
+    async def list_users(self) -> list[dict]:
+        return await self._fetchall(
+            "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
+        )
+
+    async def update_user(self, user_id: str, **fields: Any) -> dict | None:
+        allowed = {"name", "role", "password_hash"}
+        updates = {key: value for key, value in fields.items() if key in allowed}
+        if not updates:
+            return await self._fetchone(
+                "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+                user_id,
+            )
+        sets = ", ".join(f"{key} = ?" for key in updates)
+        await self._exec(
+            f"UPDATE users SET {sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%S', 'now') "
+            "WHERE id = ?",
+            *updates.values(),
+            user_id,
+        )
+        return await self._fetchone(
+            "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+            user_id,
+        )
+
+    async def assign_org_to_users_without_org(self, org_id: str) -> None:
+        await self._exec("UPDATE users SET org_id = ? WHERE org_id IS NULL", org_id)
+
+    async def delete_user(self, user_id: str) -> None:
+        await self._exec("DELETE FROM users WHERE id = ?", user_id)
+
+    # ── Alerts ────────────────────────────────────────────────────────────────
+
+    async def add_alert(
+        self,
+        service: str,
+        error: str,
+        resolution: str,
+        confidence: str,
+        sns_sent: bool,
+        dedup_key: str | None = None,
+        status: str = "completed",
+        session_id: str | None = None,
+        trigger_source: str | None = None,
+        evidence: list | None = None,
+    ) -> str:
+        import json as _json
+
+        alert_id = str(uuid.uuid4())
+        await self._exec(
+            "INSERT INTO alerts"
+            " (id, service, error, resolution, confidence, sns_sent, dedup_key, status,"
+            "  session_id, trigger_source, evidence)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            alert_id,
+            service,
+            error,
+            resolution,
+            confidence,
+            1 if sns_sent else 0,
+            dedup_key,
+            status,
+            session_id,
+            trigger_source,
+            _json.dumps(evidence or []),
+        )
+        return alert_id
+
+    async def add_notification(
+        self,
+        alert_id: str,
+        channel: str,
+        status: str = "attempted",
+        error: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO alert_notifications (id, alert_id, channel, status, error)"
+            " VALUES (?, ?, ?, ?, ?)",
+            str(uuid.uuid4()),
+            alert_id,
+            channel,
+            status,
+            error,
+        )
+
+    async def is_recent_alert(self, dedup_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchone(
+            "SELECT 1 FROM alerts WHERE dedup_key = ? "
+            "AND julianday(created_at) > julianday('now', ?) LIMIT 1",
+            dedup_key,
+            f"-{within_minutes} minutes",
+        )
+        return row is not None
+
+    async def claim_incident(
+        self,
+        incident_key: str,
+        trigger_source: str,
+        within_minutes: int = 3,
+    ) -> bool:
+        if self._conn is None:
+            return False
+        try:
+            cur = await self._conn.execute(
+                "INSERT OR IGNORE INTO incident_claims "
+                "(incident_key, trigger_source, status, claimed_at, completed_at, session_id) "
+                "VALUES (?, ?, 'claimed', strftime('%Y-%m-%dT%H:%M:%S', 'now'), NULL, NULL)",
+                (incident_key, trigger_source),
+            )
+            await self._conn.commit()
+            if cur.rowcount == 1:
+                return True
+
+            cur = await self._conn.execute(
+                "UPDATE incident_claims SET trigger_source = ?, status = 'claimed', "
+                "claimed_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'), completed_at = NULL, "
+                "session_id = NULL WHERE incident_key = ? "
+                "AND julianday(COALESCE(completed_at, claimed_at)) < julianday('now', ?)",
+                (trigger_source, incident_key, f"-{within_minutes} minutes"),
+            )
+            await self._conn.commit()
+            return cur.rowcount > 0
+        except Exception as e:
+            logger.error("SQLite incident claim failed: {}", e)
+            return False
+
+    async def complete_incident(
+        self,
+        incident_key: str,
+        status: str = "completed",
+        session_id: str | None = None,
+    ) -> None:
+        await self._exec(
+            "INSERT INTO incident_claims "
+            "(incident_key, trigger_source, status, session_id, claimed_at, completed_at) "
+            "VALUES (?, 'unknown', ?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now'), "
+            "strftime('%Y-%m-%dT%H:%M:%S', 'now')) "
+            "ON CONFLICT(incident_key) DO UPDATE SET "
+            "status = excluded.status, session_id = excluded.session_id, "
+            "completed_at = excluded.completed_at",
+            incident_key,
+            status,
+            session_id,
+        )
+
+    async def release_incident(self, incident_key: str) -> None:
+        await self._exec(
+            "DELETE FROM incident_claims WHERE incident_key = ? AND status = 'claimed'",
+            incident_key,
+        )
+
+    async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
+        row = await self._fetchone(
+            "SELECT 1 FROM incident_claims WHERE incident_key = ? "
+            "AND julianday(COALESCE(completed_at, claimed_at)) > julianday('now', ?) LIMIT 1",
+            incident_key,
+            f"-{within_minutes} minutes",
+        )
+        return row is not None
+
+    async def get_alerts(self, limit: int = 50) -> list[dict]:
+        import json as _json
+
+        rows = await self._fetchall(
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, "
+            "       created_at, session_id, trigger_source, dedup_key, evidence "
+            "FROM alerts ORDER BY created_at DESC LIMIT ?",
+            min(limit, 200),
+        )
+        return [
+            {
+                "id": r["id"],
+                "service": r["service"],
+                "error": r["error"],
+                "resolution": r["resolution"],
+                "confidence": r["confidence"],
+                "sns_sent": bool(r["sns_sent"]),
+                "status": r.get("status", "completed"),
+                "timestamp": r["created_at"],
+                "session_id": r.get("session_id"),
+                "trigger_source": r.get("trigger_source"),
+                "dedup_key": r.get("dedup_key"),
+                "evidence": _json.loads(r["evidence"]) if r.get("evidence") else [],
+            }
+            for r in rows
+        ]
+
+    async def get_alert(self, alert_id: str) -> dict | None:
+        import json as _json
+
+        row = await self._fetchone(
+            "SELECT id, service, error, resolution, confidence, sns_sent, status, "
+            "       created_at, session_id, trigger_source, dedup_key, evidence "
+            "FROM alerts WHERE id = ?",
+            alert_id,
+        )
+        if not row:
+            return None
+        notifications = await self._fetchall(
+            "SELECT channel, status, error, sent_at FROM alert_notifications "
+            "WHERE alert_id = ? ORDER BY sent_at ASC",
+            alert_id,
+        )
+        return {
+            "id": row["id"],
+            "service": row["service"],
+            "error": row["error"],
+            "resolution": row["resolution"],
+            "confidence": row["confidence"],
+            "sns_sent": bool(row["sns_sent"]),
+            "status": row.get("status", "completed"),
+            "timestamp": row["created_at"],
+            "session_id": row.get("session_id"),
+            "trigger_source": row.get("trigger_source"),
+            "dedup_key": row.get("dedup_key"),
+            "evidence": _json.loads(row["evidence"]) if row.get("evidence") else [],
+            "notifications": notifications,
+        }
+
+    async def get_app_config(self, key: str) -> dict | None:
+        row = await self._fetchone("SELECT value FROM app_config WHERE key = ?", key)
+        if not row:
+            return None
+        try:
+            return json.loads(row["value"])
+        except Exception:
+            return None
+
+    async def set_app_config(self, key: str, value: dict) -> None:
+        await self._exec(
+            "INSERT INTO app_config (key, value, updated_at) "
+            "VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now')) "
+            "ON CONFLICT(key) DO UPDATE SET "
+            "value = excluded.value, updated_at = excluded.updated_at",
+            key,
+            json.dumps(value),
+        )
+
+    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
+        if not query.strip():
+            return []
+        pattern = f"%{query}%"
+        rows = await self._fetchall(
+            """
+            SELECT id, title, last_active_at, model, snippet
+            FROM (
+                SELECT
+                    s.id, s.title, s.last_active_at, s.model,
+                    substr(m.content, 1, 200) AS snippet,
+                    ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY m.created_at ASC) AS rn
+                FROM sessions s
+                JOIN messages m ON m.session_id = s.id AND m.role = 'user'
+                WHERE s.is_deleted = 0
+                  AND (s.title LIKE ? OR m.content LIKE ?)
+            ) sub
+            WHERE rn = 1
+            ORDER BY last_active_at DESC
+            LIMIT ?
+        """,
+            pattern,
+            pattern,
+            min(limit, 20),
+        )
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "last_active_at": r["last_active_at"],
+                "model": r["model"],
+                "snippet": r["snippet"],
+            }
+            for r in rows
+        ]

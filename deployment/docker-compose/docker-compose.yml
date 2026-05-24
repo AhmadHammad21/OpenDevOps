@@ -1,0 +1,68 @@
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16.4
+    environment:
+      POSTGRES_DB:       opendevops
+      POSTGRES_USER:     dev
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d opendevops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  backend:
+    build: ../../apps/backend
+    ports:
+      - "8000:8000"
+    env_file: ../../.env
+    environment:
+      # Keep one canonical variable name; container uses docker-internal host.
+      DATABASE_URL: postgresql://dev:dev@db:5432/opendevops
+    volumes:
+      # Mount host AWS credentials read-only so the bash tool can call the CLI.
+      # For production on AWS (ECS/EC2), remove this and use an IAM role instead.
+      - ${USERPROFILE}/.aws:/home/app/.aws:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── React frontend (production build served by nginx) ──────────────────────
+  frontend:
+    build: ../../apps/frontend
+    ports:
+      - "80:8080"
+    depends_on:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

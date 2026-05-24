@@ -20,9 +20,9 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 - **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
-- **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; uses a DLQ plus database-backed incident claims to avoid duplicate investigations; runs alongside the metric poller — see [docs/event_detection.md](docs/event_detection.md)
+- **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; uses a DLQ plus database-backed incident claims to avoid duplicate investigations; runs alongside the metric poller — see [apps/documentation/event_detection.md](apps/documentation/event_detection.md)
 - **Context enrichment** — before the LLM runs, deterministic boto3 calls fetch facts about the affected resource (alarm details, recent logs, function config, etc.) to reduce tool call count and speed up investigations
-- **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level (or FAILED badge), affected service, root cause summary; each alert links back to its original investigation session via **View investigation** so you can follow up without losing context; real-time SSE push keeps the page live without polling — see [docs/monitoring.md](docs/monitoring.md)
+- **Monitoring dashboard** — live incident feed showing all event-driven investigations: confidence level (or FAILED badge), affected service, root cause summary; each alert links back to its original investigation session via **View investigation** so you can follow up without losing context; real-time SSE push keeps the page live without polling — see [apps/documentation/monitoring.md](apps/documentation/monitoring.md)
 - **AWS Configuration settings tab** — admin-only editable tab in Settings for SQS Queue URL and AWS Region; shared org-wide via database-backed app config; includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
   - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button; supports `?prompt=` deeplink for pre-seeded investigations from the Monitoring dashboard
@@ -32,12 +32,12 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
   - **History page** — keyword search across all past sessions
   - **Settings page** — AWS Configuration (editable, admin-only), Environment (read-only env vars), Agent config, Integrations
   - **Team page** — admin-only user management: add, remove, and change roles
-- **Auth & RBAC** — optional password-based auth with `admin` and `user` roles; JWT tokens; first registered user auto-becomes admin; disabled by default (set `JWT_SECRET` to enable) — see [docs/auth.md](docs/auth.md)
-- **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`docs/databases.md`](docs/databases.md)
+- **Auth & RBAC** — optional password-based auth with `admin` and `user` roles; JWT tokens; first registered user auto-becomes admin; disabled by default (set `JWT_SECRET` to enable) — see [apps/documentation/auth.md](apps/documentation/auth.md)
+- **Three storage backends** — pick one via `CHECKPOINT_BACKEND` in `.env`; see [`apps/documentation/databases.md`](apps/documentation/databases.md)
   - `memory` — zero config, no persistence; great for CI and quick testing; autonomous polling/event monitoring is disabled in this mode
   - `sqlite` — local file, no external services; recommended for single-server and personal use
   - `postgres` — full production persistence via psycopg3 + `AsyncPostgresSaver`
-  - Schema: `users`, `sessions`, `messages`, `tool_calls`, `usage_events` — see [`docs/schema.md`](docs/schema.md)
+  - Schema: `users`, `sessions`, `messages`, `tool_calls`, `usage_events` — see [`apps/documentation/schema.md`](apps/documentation/schema.md)
   - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
 - **Structured logging** via Loguru — used consistently across all modules (tools, agent, API, CLI); every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
@@ -48,7 +48,7 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 ### 1. Install dependencies
 
 ```bash
-uv sync
+cd apps/backend && uv sync
 ```
 
 ### 2. Configure environment
@@ -73,7 +73,7 @@ aws sts get-caller-identity --profile devops-agent-readonly
 
 ### 4. Choose a storage backend
 
-Three options — pick one and add it to `.env`. Full details in [`docs/databases.md`](docs/databases.md).
+Three options — pick one and add it to `.env`. Full details in [`apps/documentation/databases.md`](apps/documentation/databases.md).
 
 **Memory** (default — zero config, nothing persists on restart)
 ```bash
@@ -101,7 +101,7 @@ CHECKPOINT_BACKEND=postgres
 DATABASE_URL=postgresql://dev:dev@localhost:5433/opendevops
 
 # Create app tables (safe to re-run)
-uv run migrate
+cd apps/backend && uv run migrate
 ```
 
 ### 5. Run
@@ -109,7 +109,7 @@ uv run migrate
 **Option A — Docker Compose (recommended, AWS CLI included)**
 
 ```bash
-docker compose up --build
+docker compose -f deployment/docker-compose/docker-compose.yml up --build
 # Backend: http://localhost:8000
 # Frontend: http://localhost:80
 # Postgres (host): localhost:5433
@@ -124,13 +124,12 @@ an IAM role to the instance/task instead.
 
 ```bash
 # Terminal 1 — FastAPI backend with hot reload
-uv run dev
+cd apps/backend && uv run dev
 ```
 
 ```bash
 # Terminal 2 — React frontend (Vite dev server with HMR)
-cd frontend
-npm run dev
+cd apps/frontend && npm run dev
 # Open http://localhost:5173
 ```
 
@@ -140,6 +139,8 @@ npm run dev
 **CLI**
 
 ```bash
+cd apps/backend
+
 # Investigate an incident
 uv run devops-agent investigate "high error rate on my payment Lambda"
 
@@ -158,53 +159,54 @@ uv run devops-agent report
 The agent needs read access across your AWS account, plus optional write access scoped to
 `opendevops-*` resources if you use the event-driven monitoring setup wizard. Two
 least-privilege policies (Operational + Setup) and full step-by-step instructions are in
-**[docs/iam_setup.md](docs/iam_setup.md)**.
+**[apps/documentation/iam_setup.md](apps/documentation/iam_setup.md)**.
 
 ## Project Structure
 
 ```
-src/
-├── agent/             # DeepAgents setup, prompts, models, config, DB layer
-├── tools/             # 19 read-only AWS tool functions
-├── api/
-│   ├── app.py         # FastAPI app factory — mounts routers, serves frontend
-│   ├── auth.py        # JWT helpers + FastAPI auth dependencies
-│   └── routers/
-│       ├── auth.py    # POST /auth/register|login · GET /auth/status|me
-│       ├── chat.py    # POST /chat — SSE streaming endpoint
-│       ├── sessions.py# GET/DELETE /sessions — session history
-│       ├── users.py   # GET/POST/PATCH/DELETE /users (admin only)
-│       ├── settings.py# GET /settings — read-only config view
-│       ├── history.py # GET /history/* — cross-session analytics
-│       └── dashboard.py# GET /stats
-├── cli/               # Typer CLI commands
-├── config/
-│   └── appsettings.py # Pydantic Settings — single source of truth for all env vars
-├── models/            # Pydantic models: agent, chat, sessions, users
-├── skills/            # Markdown runbooks (lambda-throttling + add your own)
-└── integrations/
-    └── slack_webhook.py
-frontend/
-└── src/
-    ├── pages/         # ChatPage, DashboardPage, HistoryPage, SettingsPage, UsersPage, LoginPage
-    └── components/    # Sidebar, Header, ProtectedRoute, AgentMessage, ...
-migrations/
-├── 001_initial.sql    # Base schema
-├── 002_soft_delete.sql
-├── 003_usage_events_metadata.sql
-└── 004_users_rbac.sql # password_hash + role on users
-docs/                  # Feature reference — auth, schema, skills, databases, UI, ...
+apps/
+├── core/                  # Installable package `opendevops-core` — the shared agent brain
+│   └── src/opendevops_core/
+│       ├── agent/         # DeepAgents setup, prompts, LLM wiring, DB layer (backends + ABC)
+│       ├── tools/         # bash, history, skills, final-answer + response cap/cache
+│       ├── providers/     # AWS provider — tools, context, poller, event consumer
+│       ├── models/        # Pydantic models: agent, chat, sessions, users
+│       ├── skills/        # Markdown runbooks (lambda-throttling + add your own)
+│       ├── integrations/  # slack_webhook.py, telegram.py
+│       ├── migrations/    # Numbered baseline SQL migrations (001–013) — bundled with the wheel
+│       └── config.py      # CoreSettings + get_settings()/configure() injection hook
+├── backend/               # OSS web app + CLI — depends on opendevops-core via uv path source
+│   ├── src/
+│   │   ├── api/
+│   │   │   ├── app.py     # FastAPI app factory — mounts routers, serves frontend
+│   │   │   ├── auth.py    # JWT helpers + FastAPI auth dependencies
+│   │   │   └── routers/   # chat, sessions, users, settings, history, dashboard, monitoring
+│   │   ├── cli/           # Typer CLI commands
+│   │   ├── config/
+│   │   │   └── appsettings.py  # Settings(CoreSettings) — adds web/auth-only fields, calls configure()
+│   │   └── mcp_server.py  # MCP server (stdio / HTTP+SSE)
+│   ├── migrations/        # OSS-app-only migrations (currently none; all schema is core baseline)
+│   ├── tests/
+│   └── pyproject.toml
+├── frontend/
+│   └── src/
+│       ├── pages/         # ChatPage, DashboardPage, HistoryPage, SettingsPage, UsersPage, LoginPage
+│       └── components/    # Sidebar, Header, ProtectedRoute, AgentMessage, ...
+└── documentation/         # Feature reference — auth, schema, skills, databases, UI, ...
+deployment/
+├── docker-compose/        # docker-compose.yml (PostgreSQL + backend + frontend)
+└── railway/               # Dockerfile.railway + railway.toml (combined single-image deploy)
 ```
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_MODEL` | `openrouter/openai/gpt-4o` | LiteLLM model string — `provider/model` format; see [docs/llm_providers.md](docs/llm_providers.md) |
+| `LLM_MODEL` | `openrouter/openai/gpt-4o` | LiteLLM model string — `provider/model` format; see [apps/documentation/llm_providers.md](apps/documentation/llm_providers.md) |
 | `LLM_API_BASE` | none | Custom base URL for OpenAI-compatible endpoints (e.g. Ollama, vLLM) |
 | `LLM_API_KEY` | none | API key for custom endpoints; standard provider keys (e.g. `ANTHROPIC_API_KEY`) are read automatically |
 | `OPENROUTER_API_KEY` | none | Required when using any `openrouter/` model |
-| `CHECKPOINT_BACKEND` | `memory` | Storage backend: `memory` · `sqlite` · `postgres` — see [docs/databases.md](docs/databases.md) |
+| `CHECKPOINT_BACKEND` | `memory` | Storage backend: `memory` · `sqlite` · `postgres` — see [apps/documentation/databases.md](apps/documentation/databases.md) |
 | `SQLITE_PATH` | `./data/agent.db` | SQLite file path — only used when `CHECKPOINT_BACKEND=sqlite` |
 | `DATABASE_URL` | none | PostgreSQL connection string — only used when `CHECKPOINT_BACKEND=postgres` |
 | `AWS_REGION` | `us-east-1` | AWS region |
@@ -235,14 +237,14 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [x] **Schema / models layer** — centralized `src/models/` package for all Pydantic models: agent domain, memory state, and API request/response schemas
 - [ ] **Soft-deleted session cleanup job** — product version only; OSS users manage their own DB
 - [x] **Investigation history skill** — cross-session analysis: recurring errors, most-triggered alarms, patterns across all past sessions for a user
-- [x] **User roles** — `admin` / `user` roles with JWT auth, first-user bootstrap, admin-only user management UI; optional (disabled when `JWT_SECRET` unset) — see [docs/auth.md](docs/auth.md)
+- [x] **User roles** — `admin` / `user` roles with JWT auth, first-user bootstrap, admin-only user management UI; optional (disabled when `JWT_SECRET` unset) — see [apps/documentation/auth.md](apps/documentation/auth.md)
 
 ### Medium-term
 - [x] **React frontend** — rewrite the single-file HTML UI in React; component-based architecture, proper state management, hot reload
 - [x] **Dashboard** — summarized view of troubleshooting activity, recurring incidents, query breakdown by service
-- [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [docs/llm_providers.md](docs/llm_providers.md)
-- [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [docs/mcp_server.md](docs/mcp_server.md)
-- [x] **Multi-backend storage** — `memory` (zero config), `sqlite` (local file, no external service), `postgres` (production); switch with one env var; see [docs/databases.md](docs/databases.md)
+- [x] **Multi-provider LLM support** — 100+ providers via LiteLLM; swap models with a single `LLM_MODEL` env var change; supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint; see [apps/documentation/llm_providers.md](apps/documentation/llm_providers.md)
+- [x] **MCP integration** — expose the agent as an MCP server (`devops-agent mcp`); `investigate`, `ask`, and `list_sessions` tools available in Claude Desktop, Cursor, or any MCP-compatible client; stdio and HTTP+SSE transports; see [apps/documentation/mcp_server.md](apps/documentation/mcp_server.md)
+- [x] **Multi-backend storage** — `memory` (zero config), `sqlite` (local file, no external service), `postgres` (production); switch with one env var; see [apps/documentation/databases.md](apps/documentation/databases.md)
 - [x] **Skills system** — on-demand investigation skills loaded from `src/skills/*/SKILL.md`; skill names injected into system prompt at startup, full content loaded only when agent calls `use_skill(name)`; ships with `lambda-throttling` skill; add your own by dropping a `SKILL.md` into `src/skills/<name>/`
 - [ ] **Custom tools via URL** — register external tools by pointing at an OpenAPI/HTTP endpoint; agent discovers and calls them alongside built-in AWS tools
 - [x] **Bash CLI escape hatch (Phase 1)** — `run_bash_command` is implemented for read-only AWS CLI, kubectl, and docker commands with strict allowlist validation and timeout.
@@ -254,10 +256,10 @@ docs/                  # Feature reference — auth, schema, skills, databases, 
 - [ ] **Guardrails** — input/output validation, PII scrubbing, query scope enforcement
 - [ ] **Multi-model escalation** — route simple queries to cheaper/smaller models, escalate hard investigations to larger ones
 - [x] **Fun streaming labels** — contextual loading copy ("Digging through CloudTrail…", "Lemonizing metrics…", "Cooking up a root cause…")
-- [x] **Slack & Telegram notifications** — reactive: posts after every investigation to Slack (Block Kit) and/or Telegram (HTML bot message); proactive: background poller checks CloudWatch alarms and Lambda error rates, auto-investigates, and delivers to both channels; set `SLACK_WEBHOOK_URL` and/or `TELEGRAM_BOT_TOKEN`+`TELEGRAM_CHAT_ID` in `.env`; see [docs/telegram.md](docs/telegram.md)
-- [x] **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules covering CloudWatch alarms, ECS, Lambda, RDS, EC2, CodePipeline, and AWS Health; runs in parallel with the metric poller; see [docs/event_detection.md](docs/event_detection.md)
+- [x] **Slack & Telegram notifications** — reactive: posts after every investigation to Slack (Block Kit) and/or Telegram (HTML bot message); proactive: background poller checks CloudWatch alarms and Lambda error rates, auto-investigates, and delivers to both channels; set `SLACK_WEBHOOK_URL` and/or `TELEGRAM_BOT_TOKEN`+`TELEGRAM_CHAT_ID` in `.env`; see [apps/documentation/telegram.md](apps/documentation/telegram.md)
+- [x] **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules covering CloudWatch alarms, ECS, Lambda, RDS, EC2, CodePipeline, and AWS Health; runs in parallel with the metric poller; see [apps/documentation/event_detection.md](apps/documentation/event_detection.md)
 - [x] **Context enrichment** — deterministic boto3 calls per event type before LLM runs; reduces tool call count by front-loading relevant resource facts
-- [x] **Monitoring dashboard** — live incident feed with real-time SSE push, per-service health summary (DB-backed, survives restarts), alert detail page; "View investigation" opens the original agent session for follow-up; failed investigations flagged separately; see [docs/monitoring.md](docs/monitoring.md)
+- [x] **Monitoring dashboard** — live incident feed with real-time SSE push, per-service health summary (DB-backed, survives restarts), alert detail page; "View investigation" opens the original agent session for follow-up; failed investigations flagged separately; see [apps/documentation/monitoring.md](apps/documentation/monitoring.md)
 - [x] **AWS Configuration settings tab** — admin-only editable tab for SQS/region config; shared org-wide via database-backed app config; inline IAM permission checker
 
 ### Later
@@ -299,11 +301,13 @@ and waits for human approval before anything changes.
 
 ## Development
 
+All backend commands run from `apps/backend/`, or use root `make` targets.
+
 ```bash
 # Run tests
-uv run pytest
+cd apps/backend && uv run pytest      # or: make test
 
 # Lint + format
-uv run ruff check src/ tests/
-uv run ruff format src/ tests/
+cd apps/backend && uv run ruff check src/ tests/
+cd apps/backend && uv run ruff format src/ tests/   # or: make lint / make lint-fix
 ```
