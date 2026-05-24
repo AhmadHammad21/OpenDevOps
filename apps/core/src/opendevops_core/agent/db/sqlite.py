@@ -328,7 +328,11 @@ class SQLiteBackend(DatabaseBackend):
         aws_region: str,
         title: str | None = None,
         source: str = "chat",
+        org_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
+        # SQLite is the single-tenant/local backend — org_id/user_id are accepted for
+        # interface parity but not stored or scoped. Use Postgres for multi-tenant.
         await self._exec(
             """
             INSERT INTO sessions (id, title, model, aws_region, source)
@@ -423,7 +427,10 @@ class SQLiteBackend(DatabaseBackend):
             json.dumps(metadata or {}),
         )
 
-    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
+    async def list_sessions(
+        self, limit: int = 15, offset: int = 0, org_id: str | None = None
+    ) -> list[dict]:
+        # org_id ignored — SQLite is single-tenant (see upsert_session note).
         rows = await self._fetchall(
             "SELECT id, title, last_active_at, model, aws_region FROM sessions"
             " WHERE is_deleted = 0 AND (source = 'chat' OR user_interacted = 1)"
@@ -442,7 +449,7 @@ class SQLiteBackend(DatabaseBackend):
             for r in rows
         ]
 
-    async def get_messages(self, session_id: str) -> list[dict]:
+    async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]:
         session = await self._fetchone("SELECT is_deleted FROM sessions WHERE id = ?", session_id)
         if session is None or session.get("is_deleted"):
             return []

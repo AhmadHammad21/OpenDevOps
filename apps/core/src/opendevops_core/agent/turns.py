@@ -43,12 +43,20 @@ async def save_turn(
     tool_calls_log: list[dict[str, Any]],
     usage: dict[str, Any],
     source: str = "chat",
+    org_id: str | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Persist a completed turn to Postgres. Errors are logged, never raised."""
     try:
         title = user_message[:80] if user_message else None
         await db.upsert_session(
-            session_id, usage.get("model", ""), get_runtime_aws_region(), title, source
+            session_id,
+            usage.get("model", ""),
+            get_runtime_aws_region(),
+            title,
+            source,
+            org_id=org_id,
+            user_id=user_id,
         )
 
         await db.save_message(session_id, "user", user_message)

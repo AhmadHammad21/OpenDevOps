@@ -126,6 +126,7 @@ Everything below is built and working in the codebase:
 - LangGraph checkpointer tables are created automatically by `AsyncPostgresSaver.setup()`. Application tables come from the bundled core migrations in `apps/core/src/opendevops_core/migrations/*.sql`.
 - Schema tables: `organizations`, `users`, `aws_profiles`, `sessions`, `messages`, `tool_calls`, `usage_events`, `findings`, `api_keys`, `alerts`.
 - Soft delete is in place on sessions (`is_deleted`, `deleted_at` from migration 002).
+- Multi-tenant scoping: `upsert_session`, `list_sessions`, and `get_messages` accept an optional `org_id` (default `None` = unscoped). Postgres enforces it (filters lists, denies cross-org `get_messages`); memory scopes it; sqlite accepts-but-ignores it (single-tenant). `None` preserves single-tenant OSS behavior — the scoping exists for downstream multi-tenant consumers (the SaaS product).
 
 ### API
 - FastAPI SSE endpoint at `POST /chat`; streams `token`, `tool_status`, `tool_call`, `error`, `done`, `cancelled` events.

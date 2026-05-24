@@ -58,12 +58,16 @@ class MemoryBackend(DatabaseBackend):
         aws_region: str,
         title: str | None = None,
         source: str = "chat",
+        org_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         if session_id in self._sessions:
             self._sessions[session_id]["last_active_at"] = self._now()
             self._sessions[session_id]["model"] = model
             if source == "chat":
                 self._sessions[session_id]["user_interacted"] = True
+            self._sessions[session_id].setdefault("org_id", org_id)
+            self._sessions[session_id].setdefault("user_id", user_id)
         else:
             self._sessions[session_id] = {
                 "id": session_id,
@@ -71,6 +75,8 @@ class MemoryBackend(DatabaseBackend):
                 "model": model,
                 "aws_region": aws_region,
                 "source": source,
+                "org_id": org_id,
+                "user_id": user_id,
                 "user_interacted": source == "chat",
                 "created_at": self._now(),
                 "last_active_at": self._now(),
@@ -147,19 +153,24 @@ class MemoryBackend(DatabaseBackend):
             }
         )
 
-    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
+    async def list_sessions(
+        self, limit: int = 15, offset: int = 0, org_id: str | None = None
+    ) -> list[dict]:
         active = [
             s
             for s in self._sessions.values()
             if not s.get("is_deleted")
             and (s.get("source", "chat") == "chat" or s.get("user_interacted", False))
+            and (org_id is None or s.get("org_id") == org_id)
         ]
         sorted_sessions = sorted(active, key=lambda s: s["last_active_at"], reverse=True)
         return sorted_sessions[offset : offset + limit]
 
-    async def get_messages(self, session_id: str) -> list[dict]:
+    async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]:
         session = self._sessions.get(session_id)
         if session is None or session.get("is_deleted"):
+            return []
+        if org_id is not None and session.get("org_id") != org_id:
             return []
 
         tc_by_msg: dict[str, list] = defaultdict(list)

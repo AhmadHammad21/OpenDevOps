@@ -126,14 +126,18 @@ class PostgresBackend(DatabaseBackend):
         aws_region: str,
         title: str | None = None,
         source: str = "chat",
+        org_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         await self._exec(
             """
-            INSERT INTO sessions (id, title, model, aws_region, source)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO sessions (id, title, model, aws_region, source, org_id, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = NOW(),
                 model = EXCLUDED.model,
+                org_id = COALESCE(sessions.org_id, EXCLUDED.org_id),
+                user_id = COALESCE(sessions.user_id, EXCLUDED.user_id),
                 user_interacted = CASE
                     WHEN EXCLUDED.source = 'chat' THEN TRUE
                     ELSE sessions.user_interacted
@@ -144,6 +148,8 @@ class PostgresBackend(DatabaseBackend):
             model,
             aws_region,
             source,
+            uuid.UUID(org_id) if org_id else None,
+            uuid.UUID(user_id) if user_id else None,
         )
 
     async def save_message(
@@ -219,13 +225,17 @@ class PostgresBackend(DatabaseBackend):
             self._jsonb(metadata or {}),
         )
 
-    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]:
+    async def list_sessions(
+        self, limit: int = 15, offset: int = 0, org_id: str | None = None
+    ) -> list[dict]:
+        org_filter = " AND org_id = %s" if org_id else ""
+        params: list = [uuid.UUID(org_id), limit, offset] if org_id else [limit, offset]
         rows = await self._fetchall(
             "SELECT id, title, last_active_at, model, aws_region FROM sessions"
             " WHERE is_deleted = FALSE AND (source = 'chat' OR user_interacted = TRUE)"
-            " ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
-            limit,
-            offset,
+            + org_filter
+            + " ORDER BY last_active_at DESC LIMIT %s OFFSET %s",
+            *params,
         )
         return [
             {
@@ -238,10 +248,14 @@ class PostgresBackend(DatabaseBackend):
             for r in rows
         ]
 
-    async def get_messages(self, session_id: str) -> list[dict]:
+    async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]:
         uid = uuid.UUID(session_id)
-        session = await self._fetchrow("SELECT is_deleted FROM sessions WHERE id = %s", uid)
+        session = await self._fetchrow(
+            "SELECT is_deleted, org_id FROM sessions WHERE id = %s", uid
+        )
         if session is None or session.get("is_deleted"):
+            return []
+        if org_id is not None and str(session.get("org_id")) != str(org_id):
             return []
 
         messages = await self._fetchall(

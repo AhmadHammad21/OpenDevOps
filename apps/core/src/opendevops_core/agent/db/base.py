@@ -32,6 +32,8 @@ class DatabaseBackend(ABC):
         aws_region: str,
         title: str | None = None,
         source: str = "chat",
+        org_id: str | None = None,
+        user_id: str | None = None,
     ) -> None: ...
 
     @abstractmethod
@@ -69,10 +71,12 @@ class DatabaseBackend(ABC):
     ) -> None: ...
 
     @abstractmethod
-    async def list_sessions(self, limit: int = 15, offset: int = 0) -> list[dict]: ...
+    async def list_sessions(
+        self, limit: int = 15, offset: int = 0, org_id: str | None = None
+    ) -> list[dict]: ...
 
     @abstractmethod
-    async def get_messages(self, session_id: str) -> list[dict]: ...
+    async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]: ...
 
     @abstractmethod
     async def delete_session(self, session_id: str) -> None: ...
