@@ -223,7 +223,7 @@ class MemoryBackend(DatabaseBackend):
 
     # ── Analytics ─────────────────────────────────────────────────────────────
 
-    async def get_dashboard_stats(self) -> dict:
+    async def get_dashboard_stats(self, org_id: str | None = None) -> dict:
         active = [s for s in self._sessions.values() if not s.get("is_deleted")]
         all_tc = [tc for tcs in self._tool_calls.values() for tc in tcs]
         all_usage = [u for us in self._usage.values() for u in us]
@@ -259,7 +259,7 @@ class MemoryBackend(DatabaseBackend):
             "root_causes": [],
         }
 
-    async def get_history_stats(self, days: int = 30) -> dict:
+    async def get_history_stats(self, days: int = 30, org_id: str | None = None) -> dict:
         return {
             "days": days,
             "top_alarms": [],
@@ -322,7 +322,7 @@ class MemoryBackend(DatabaseBackend):
         self._users[user_id] = user
         return {k: v for k, v in user.items() if k != "password_hash"}
 
-    async def list_users(self) -> list[dict]:
+    async def list_users(self, org_id: str | None = None) -> list[dict]:
         users = sorted(self._users.values(), key=lambda item: item["created_at"])
         return [{k: v for k, v in user.items() if k != "password_hash"} for user in users]
 
@@ -457,10 +457,10 @@ class MemoryBackend(DatabaseBackend):
         last = claim.get("completed_at") or claim.get("claimed_at")
         return bool(last and datetime.now(UTC) - last <= timedelta(minutes=within_minutes))
 
-    async def get_alerts(self, limit: int = 50) -> list[dict]:
+    async def get_alerts(self, limit: int = 50, org_id: str | None = None) -> list[dict]:
         return list(reversed(self._alerts))[: min(limit, 200)]
 
-    async def get_alert(self, alert_id: str) -> dict | None:
+    async def get_alert(self, alert_id: str, org_id: str | None = None) -> dict | None:
         for a in self._alerts:
             if a["id"] == alert_id:
                 return a
@@ -472,7 +472,9 @@ class MemoryBackend(DatabaseBackend):
     async def set_app_config(self, key: str, value: dict) -> None:
         self._app_config[key] = value
 
-    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
+    async def search_sessions(
+        self, query: str, limit: int = 10, org_id: str | None = None
+    ) -> list[dict]:
         if not query.strip():
             return []
         q = query.lower()

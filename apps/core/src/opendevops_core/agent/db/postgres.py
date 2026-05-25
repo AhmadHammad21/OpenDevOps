@@ -326,7 +326,18 @@ class PostgresBackend(DatabaseBackend):
 
     # ── Analytics ─────────────────────────────────────────────────────────────
 
-    async def get_dashboard_stats(self) -> dict:
+    async def get_dashboard_stats(self, org_id: str | None = None) -> dict:
+        # Org scoping: when org_id is given, every session reference is filtered to that org.
+        # `dj` filters a joined `sessions s`; `dd` filters a direct `FROM sessions`. When
+        # org_id is None they're empty strings → identical to the OSS single-tenant query.
+        dj = "AND s.org_id = %s" if org_id is not None else ""
+        dd = "AND org_id = %s" if org_id is not None else ""
+        _oid = uuid.UUID(org_id) if org_id is not None else None
+
+        def _p(n: int) -> tuple:
+            """n copies of the org id (or empty when unscoped) for a query with n filters."""
+            return (_oid,) * n if org_id is not None else ()
+
         _SERVICE_MAP: dict[str, str] = {
             "get_alarms": "CloudWatch",
             "get_alarm_history": "CloudWatch",
@@ -351,36 +362,45 @@ class PostgresBackend(DatabaseBackend):
             "submit_investigation": "Agent",
         }
 
-        summary_row = await self._fetchrow("""
+        summary_row = await self._fetchrow(
+            f"""
             SELECT
-                (SELECT COUNT(*) FROM sessions WHERE is_deleted = FALSE) AS total_sessions,
-                (SELECT COUNT(*) FROM messages m JOIN sessions s ON s.id = m.session_id WHERE s.is_deleted = FALSE AND m.role = 'user') AS total_queries,
-                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE) AS total_tool_calls,
-                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL) AS total_tool_errors,
-                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_input_tokens,
-                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_output_tokens,
-                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS total_cost_usd,
-                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE) AS avg_latency_ms,
+                (SELECT COUNT(*) FROM sessions WHERE is_deleted = FALSE {dd}) AS total_sessions,
+                (SELECT COUNT(*) FROM messages m JOIN sessions s ON s.id = m.session_id WHERE s.is_deleted = FALSE AND m.role = 'user' {dj}) AS total_queries,
+                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE {dj}) AS total_tool_calls,
+                (SELECT COUNT(*) FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL {dj}) AS total_tool_errors,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE {dj}) AS total_input_tokens,
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE {dj}) AS total_output_tokens,
+                (SELECT COALESCE(SUM(cost_usd), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE {dj}) AS total_cost_usd,
+                (SELECT COALESCE(AVG(latency_ms), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id WHERE s.is_deleted = FALSE {dj}) AS avg_latency_ms,
                 (SELECT COUNT(*) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_summarizations,
+                    WHERE s.is_deleted = FALSE {dj} AND ue.metadata @> '{{"summarization": true}}'::jsonb) AS total_summarizations,
                 (SELECT COALESCE(SUM((ue.metadata->>'chars_removed')::int), 0) FROM usage_events ue JOIN sessions s ON s.id = ue.session_id
-                    WHERE s.is_deleted = FALSE AND ue.metadata @> '{"summarization": true}'::jsonb) AS total_chars_compacted
-        """)
+                    WHERE s.is_deleted = FALSE {dj} AND ue.metadata @> '{{"summarization": true}}'::jsonb) AS total_chars_compacted
+        """,
+            *_p(10),
+        )
         summary = summary_row or {}
 
-        activity_rows = await self._fetchall("""
+        activity_rows = await self._fetchall(
+            f"""
             SELECT DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS sessions
-            FROM sessions WHERE is_deleted = FALSE AND last_active_at > NOW() - INTERVAL '14 days'
+            FROM sessions WHERE is_deleted = FALSE {dd} AND last_active_at > NOW() - INTERVAL '14 days'
             GROUP BY 1 ORDER BY 1
-        """)
+        """,
+            *_p(1),
+        )
 
-        tool_rows = await self._fetchall("""
+        tool_rows = await self._fetchall(
+            f"""
             SELECT tc.tool_name, COUNT(*) AS call_count,
                    COUNT(*) FILTER (WHERE tc.error IS NOT NULL) AS error_count
             FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE
+            WHERE s.is_deleted = FALSE {dj}
             GROUP BY tc.tool_name ORDER BY call_count DESC LIMIT 12
-        """)
+        """,
+            *_p(1),
+        )
         top_tools = [
             {"tool": r["tool_name"], "count": int(r["call_count"]), "errors": int(r["error_count"])}
             for r in tool_rows
@@ -400,7 +420,8 @@ class PostgresBackend(DatabaseBackend):
             reverse=True,
         )
 
-        recent_rows = await self._fetchall("""
+        recent_rows = await self._fetchall(
+            f"""
             SELECT s.id, s.title, s.last_active_at, s.model,
                    COUNT(DISTINCT m.id) FILTER (WHERE m.role = 'user') AS query_count,
                    COUNT(DISTINCT tc.id) AS tool_count,
@@ -409,10 +430,12 @@ class PostgresBackend(DatabaseBackend):
             LEFT JOIN messages     m  ON m.session_id  = s.id
             LEFT JOIN tool_calls   tc ON tc.session_id = s.id
             LEFT JOIN usage_events ue ON ue.session_id = s.id
-            WHERE s.is_deleted = FALSE
+            WHERE s.is_deleted = FALSE {dj}
             GROUP BY s.id, s.title, s.last_active_at, s.model
             ORDER BY s.last_active_at DESC LIMIT 6
-        """)
+        """,
+            *_p(1),
+        )
         recent_sessions = [
             {
                 "id": str(r["id"]),
@@ -426,13 +449,16 @@ class PostgresBackend(DatabaseBackend):
             for r in recent_rows
         ]
 
-        rc_rows = await self._fetchall("""
+        rc_rows = await self._fetchall(
+            f"""
             SELECT tc.args->>'root_cause_category' AS category, COUNT(*) AS count
             FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE AND tc.tool_name = 'submit_investigation'
+            WHERE s.is_deleted = FALSE {dj} AND tc.tool_name = 'submit_investigation'
               AND tc.args->>'root_cause_category' IS NOT NULL
             GROUP BY 1 ORDER BY 2 DESC
-        """)
+        """,
+            *_p(1),
+        )
 
         return {
             "summary": {
@@ -456,56 +482,67 @@ class PostgresBackend(DatabaseBackend):
             "root_causes": [{"category": r["category"], "count": int(r["count"])} for r in rc_rows],
         }
 
-    async def get_history_stats(self, days: int = 30) -> dict:
+    async def get_history_stats(self, days: int = 30, org_id: str | None = None) -> dict:
+        # Org scoping: filter every session-joined query to the caller's org. When org_id
+        # is None (OSS single-tenant), the clauses collapse to empty strings — identical
+        # behaviour to before. org_id is injected before the `days` param in each query.
+        org_join = "AND s.org_id = %s" if org_id is not None else ""
+        org_direct = "AND org_id = %s" if org_id is not None else ""
+        oid = (uuid.UUID(org_id),) if org_id is not None else ()
+
         alarm_rows = await self._fetchall(
-            """
+            f"""
             SELECT tc.args->>'alarm_name' AS alarm_name,
                    COUNT(DISTINCT tc.session_id) AS session_count,
                    COUNT(*) AS total_lookups, MAX(s.last_active_at) AS last_seen
             FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
             WHERE s.is_deleted = FALSE AND tc.tool_name = 'get_alarm_history'
-              AND tc.args->>'alarm_name' IS NOT NULL
+              AND tc.args->>'alarm_name' IS NOT NULL {org_join}
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
             GROUP BY 1 ORDER BY session_count DESC, total_lookups DESC LIMIT 10
         """,
+            *oid,
             days,
         )
 
         lambda_rows = await self._fetchall(
-            """
+            f"""
             SELECT tc.args->>'function_name' AS function_name,
                    COUNT(DISTINCT tc.session_id) AS session_count,
                    COUNT(*) AS total_calls, MAX(s.last_active_at) AS last_seen
             FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
             WHERE s.is_deleted = FALSE
               AND tc.tool_name IN ('get_lambda_error_rate', 'get_lambda_function_config')
-              AND tc.args->>'function_name' IS NOT NULL
+              AND tc.args->>'function_name' IS NOT NULL {org_join}
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
             GROUP BY 1 ORDER BY session_count DESC LIMIT 10
         """,
+            *oid,
             days,
         )
 
         error_rows = await self._fetchall(
-            """
+            f"""
             SELECT tc.tool_name, LEFT(tc.error, 120) AS error_snippet,
                    COUNT(*) AS count, MAX(tc.created_at) AS last_seen
             FROM tool_calls tc JOIN sessions s ON s.id = tc.session_id
-            WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL
+            WHERE s.is_deleted = FALSE AND tc.error IS NOT NULL {org_join}
               AND s.last_active_at > NOW() - (%s * INTERVAL '1 day')
             GROUP BY 1, 2 ORDER BY count DESC LIMIT 10
         """,
+            *oid,
             days,
         )
 
         trend_rows = await self._fetchall(
-            """
+            f"""
             SELECT DATE_TRUNC('day', last_active_at AT TIME ZONE 'UTC')::date AS day,
                    COUNT(*) AS count
-            FROM sessions WHERE is_deleted = FALSE
+            FROM sessions WHERE is_deleted = FALSE {org_direct}
               AND last_active_at > NOW() - (%s * INTERVAL '1 day')
             GROUP BY 1 ORDER BY 1
         """,
+            *oid,
             days,
         )
 
@@ -615,10 +652,17 @@ class PostgresBackend(DatabaseBackend):
             row["id"] = str(row["id"])
         return row
 
-    async def list_users(self) -> list[dict]:
-        rows = await self._fetchall(
-            "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
-        )
+    async def list_users(self, org_id: str | None = None) -> list[dict]:
+        if org_id is not None:
+            rows = await self._fetchall(
+                "SELECT id, email, name, role, created_at FROM users"
+                " WHERE org_id = %s ORDER BY created_at ASC",
+                uuid.UUID(org_id),
+            )
+        else:
+            rows = await self._fetchall(
+                "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
+            )
         return [
             {
                 "id": str(r["id"]),
@@ -766,15 +810,26 @@ class PostgresBackend(DatabaseBackend):
         )
         return row is not None
 
-    async def get_alerts(self, limit: int = 50) -> list[dict]:
+    async def get_alerts(self, limit: int = 50, org_id: str | None = None) -> list[dict]:
         import json as _json
 
-        rows = await self._fetchall(
-            "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source, dedup_key, evidence"
-            " FROM alerts ORDER BY created_at DESC LIMIT %s",
-            min(limit, 200),
-        )
+        if org_id is not None:
+            rows = await self._fetchall(
+                "SELECT a.id, a.service, a.error, a.resolution, a.confidence, a.sns_sent,"
+                "       a.status, a.created_at, a.session_id, a.trigger_source, a.dedup_key,"
+                "       a.evidence"
+                " FROM alerts a JOIN sessions s ON s.id = a.session_id"
+                " WHERE s.org_id = %s ORDER BY a.created_at DESC LIMIT %s",
+                uuid.UUID(org_id),
+                min(limit, 200),
+            )
+        else:
+            rows = await self._fetchall(
+                "SELECT id, service, error, resolution, confidence, sns_sent, status,"
+                "       created_at, session_id, trigger_source, dedup_key, evidence"
+                " FROM alerts ORDER BY created_at DESC LIMIT %s",
+                min(limit, 200),
+            )
         return [
             {
                 "id": str(r["id"]),
@@ -793,16 +848,20 @@ class PostgresBackend(DatabaseBackend):
             for r in rows
         ]
 
-    async def get_alert(self, alert_id: str) -> dict | None:
+    async def get_alert(self, alert_id: str, org_id: str | None = None) -> dict | None:
         import json as _json
 
         row = await self._fetchrow(
-            "SELECT id, service, error, resolution, confidence, sns_sent, status,"
-            "       created_at, session_id, trigger_source, dedup_key, evidence"
-            " FROM alerts WHERE id = %s",
+            "SELECT a.id, a.service, a.error, a.resolution, a.confidence, a.sns_sent,"
+            "       a.status, a.created_at, a.session_id, a.trigger_source, a.dedup_key,"
+            "       a.evidence, s.org_id AS _org_id"
+            " FROM alerts a LEFT JOIN sessions s ON s.id = a.session_id"
+            " WHERE a.id = %s",
             uuid.UUID(alert_id),
         )
         if not row:
+            return None
+        if org_id is not None and str(row.get("_org_id")) != str(org_id):
             return None
         notif_rows = await self._fetchall(
             "SELECT channel, status, error, sent_at FROM alert_notifications"
@@ -845,11 +904,18 @@ class PostgresBackend(DatabaseBackend):
             self._jsonb(value),
         )
 
-    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
+    async def search_sessions(
+        self, query: str, limit: int = 10, org_id: str | None = None
+    ) -> list[dict]:
         if not query.strip():
             return []
+        org_clause = "AND s.org_id = %s" if org_id is not None else ""
+        params: list[Any] = [query, query]
+        if org_id is not None:
+            params.append(uuid.UUID(org_id))
+        params.append(min(limit, 20))
         rows = await self._fetchall(
-            """
+            f"""
             SELECT id, title, last_active_at, model, snippet
             FROM (
                 SELECT DISTINCT ON (s.id)
@@ -859,12 +925,11 @@ class PostgresBackend(DatabaseBackend):
                 JOIN messages m ON m.session_id = s.id AND m.role = 'user'
                 WHERE s.is_deleted = FALSE
                   AND (s.title ILIKE '%%' || %s || '%%' OR m.content ILIKE '%%' || %s || '%%')
+                  {org_clause}
                 ORDER BY s.id, m.created_at ASC
             ) sub ORDER BY last_active_at DESC LIMIT %s
         """,
-            query,
-            query,
-            min(limit, 20),
+            *params,
         )
         return [
             {
