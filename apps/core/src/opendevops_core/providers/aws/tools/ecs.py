@@ -2,31 +2,19 @@
 
 from typing import Any
 
-import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from loguru import logger
 
-from opendevops_core.agent.init_store import get_runtime_aws_region
-from opendevops_core.config import settings
+from opendevops_core.providers.aws.credentials import get_client
 from opendevops_core.tools._cache import tool_cached
 
 
 def _ecs_client() -> Any:
-    session = (
-        boto3.Session(profile_name=settings.aws_profile)
-        if settings.aws_profile
-        else boto3.Session()
-    )
-    return session.client("ecs", region_name=get_runtime_aws_region())
+    return get_client("ecs")
 
 
 def _logs_client() -> Any:
-    session = (
-        boto3.Session(profile_name=settings.aws_profile)
-        if settings.aws_profile
-        else boto3.Session()
-    )
-    return session.client("logs", region_name=get_runtime_aws_region())
+    return get_client("logs")
 
 
 @tool_cached

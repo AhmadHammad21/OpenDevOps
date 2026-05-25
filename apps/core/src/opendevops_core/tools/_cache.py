@@ -1,9 +1,13 @@
 """Shared TTL cache for AWS tool responses.
 
 All tool functions use the @tool_cached decorator. The cache key includes the
-function name + AWS profile + region so:
+function name + credential identity + region so:
   - different functions with identical args never collide
-  - results from different AWS accounts are never mixed (multi-tenant safe)
+  - results from different AWS accounts/orgs are never mixed (multi-tenant safe)
+
+The credential identity comes from the active cloud account (assume-role ARN or
+account id) when one is set for the request, else the global profile — so two orgs
+hitting the same query against different accounts never share a cache entry.
 
 To swap to Redis later, replace _cache and tool_cached here — tool files need
 no changes.
@@ -19,7 +23,7 @@ from cachetools import TTLCache, cached
 from cachetools.keys import hashkey
 
 from opendevops_core.agent.init_store import get_runtime_aws_region
-from opendevops_core.config import settings
+from opendevops_core.providers.aws.credentials import current_credential_identity
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -41,7 +45,7 @@ def tool_cached(fn: F) -> F:
 
         return hashkey(
             fn_name,
-            settings.aws_profile,
+            current_credential_identity(),
             get_runtime_aws_region(),
             *[_h(a) for a in args],
             **{k: _h(v) for k, v in kwargs.items()},

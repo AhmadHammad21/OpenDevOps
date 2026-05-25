@@ -5,15 +5,11 @@ from __future__ import annotations
 import boto3
 from loguru import logger
 
-from opendevops_core.config import settings
+from opendevops_core.providers.aws.credentials import resolve_region, resolve_session
 
 
 def _session() -> boto3.Session:
-    return (
-        boto3.Session(profile_name=settings.aws_profile)
-        if settings.aws_profile
-        else boto3.Session()
-    )
+    return resolve_session()
 
 
 def _check(fn) -> dict:
@@ -31,7 +27,7 @@ def _c(s, service: str, region: str):
 def check_permissions(region: str | None = None) -> dict[str, dict]:
     """Run one lightweight read call per service. Returns {service: {passed, error}}."""
     s = _session()
-    region = region or settings.aws_region
+    region = region or resolve_region()
 
     results: dict[str, dict] = {
         "cloudwatch": _check(lambda: _c(s, "cloudwatch", region).describe_alarms(MaxRecords=1)),

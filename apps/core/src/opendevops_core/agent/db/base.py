@@ -195,6 +195,18 @@ class DatabaseBackend(ABC):
     async def get_alert(self, alert_id: str, org_id: str | None = None) -> dict | None:
         return None
 
+    # ── Cloud accounts (per-org/per-install credential configs) ───────────────
+    # Default: no rows -> the credential resolver falls back to env/profile creds.
+    # Only the Postgres backend persists these today (the product's multi-tenant DB).
+
+    async def get_cloud_accounts(self, org_id: str | None = None) -> list[dict]:
+        return []
+
+    async def get_default_cloud_account(
+        self, org_id: str | None = None, provider: str = "aws"
+    ) -> dict | None:
+        return None
+
     # ── App config (init wizard / infrastructure state) ──────────────────────
 
     async def get_app_config(self, key: str) -> dict | None:

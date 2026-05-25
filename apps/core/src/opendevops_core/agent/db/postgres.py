@@ -892,6 +892,71 @@ class PostgresBackend(DatabaseBackend):
             ],
         }
 
+    # ── Cloud accounts ────────────────────────────────────────────────────────
+
+    _CLOUD_COLS = (
+        "id, org_id, provider, auth_method, label, region, config, secret_enc,"
+        " status, status_detail, is_default, created_at, updated_at"
+    )
+
+    @staticmethod
+    def _cloud_account_row(row: dict) -> dict:
+        import json as _json
+
+        config = row.get("config")
+        if isinstance(config, str):
+            config = _json.loads(config or "{}")
+        return {
+            "id": str(row["id"]),
+            "org_id": str(row["org_id"]) if row.get("org_id") else None,
+            "provider": row["provider"],
+            "auth_method": row["auth_method"],
+            "label": row["label"],
+            "region": row.get("region"),
+            "config": config or {},
+            "secret_enc": row.get("secret_enc"),
+            "status": row["status"],
+            "status_detail": row.get("status_detail"),
+            "is_default": bool(row.get("is_default")),
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+        }
+
+    async def get_cloud_accounts(self, org_id: str | None = None) -> list[dict]:
+        if org_id is not None:
+            rows = await self._fetchall(
+                f"SELECT {self._CLOUD_COLS} FROM cloud_accounts"
+                " WHERE org_id = %s ORDER BY created_at ASC",
+                uuid.UUID(org_id),
+            )
+        else:
+            rows = await self._fetchall(
+                f"SELECT {self._CLOUD_COLS} FROM cloud_accounts"
+                " WHERE org_id IS NULL ORDER BY created_at ASC"
+            )
+        return [self._cloud_account_row(r) for r in rows]
+
+    async def get_default_cloud_account(
+        self, org_id: str | None = None, provider: str = "aws"
+    ) -> dict | None:
+        # Prefer the row flagged is_default; otherwise the oldest account for the provider.
+        if org_id is not None:
+            row = await self._fetchrow(
+                f"SELECT {self._CLOUD_COLS} FROM cloud_accounts"
+                " WHERE org_id = %s AND provider = %s"
+                " ORDER BY is_default DESC, created_at ASC LIMIT 1",
+                uuid.UUID(org_id),
+                provider,
+            )
+        else:
+            row = await self._fetchrow(
+                f"SELECT {self._CLOUD_COLS} FROM cloud_accounts"
+                " WHERE org_id IS NULL AND provider = %s"
+                " ORDER BY is_default DESC, created_at ASC LIMIT 1",
+                provider,
+            )
+        return self._cloud_account_row(row) if row else None
+
     async def get_app_config(self, key: str) -> dict | None:
         row = await self._fetchrow("SELECT value FROM app_config WHERE key = %s", key)
         return row["value"] if row else None

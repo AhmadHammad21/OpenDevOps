@@ -36,6 +36,11 @@ class CoreSettings(BaseSettings):
     aws_region: str = "us-east-1"
     aws_profile: str | None = None
 
+    # Fernet key used to decrypt cloud_accounts.secret_enc (external ids, raw keys, SA JSON).
+    # Unset = no encrypted secrets are read (assume-role with a plaintext-config external id
+    # still works). Generate with: Fernet.generate_key().decode()
+    credentials_encryption_key: str | None = None
+
     max_tool_calls: int = 20
     investigation_timeout: int = 120
     log_level: str = "INFO"
