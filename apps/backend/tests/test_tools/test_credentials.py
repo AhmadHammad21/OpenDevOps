@@ -84,3 +84,22 @@ def test_no_account_uses_base_session():
     session = cred.resolve_session()
     ident = session.client("sts", region_name="us-east-1").get_caller_identity()
     assert "Account" in ident
+
+
+def test_encrypt_secret_noop_without_key():
+    # No CREDENTIALS_ENCRYPTION_KEY configured in tests -> nothing to encrypt with.
+    assert cred.encrypt_secret({}) is None
+    assert cred.encrypt_secret({"external_id": "x"}) is None
+
+
+def test_encrypt_decrypt_roundtrip(monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from opendevops_core.config import get_settings
+
+    key = Fernet.generate_key().decode()
+    monkeypatch.setattr(get_settings(), "credentials_encryption_key", key)
+
+    enc = cred.encrypt_secret({"external_id": "ext-123"})
+    assert enc and enc != "ext-123"
+    assert cred._account_secrets({"secret_enc": enc, "config": {}}) == {"external_id": "ext-123"}

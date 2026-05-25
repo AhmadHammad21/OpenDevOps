@@ -957,6 +957,67 @@ class PostgresBackend(DatabaseBackend):
             )
         return self._cloud_account_row(row) if row else None
 
+    async def get_cloud_account(self, account_id: str, org_id: str | None = None) -> dict | None:
+        row = await self._fetchrow(
+            f"SELECT {self._CLOUD_COLS} FROM cloud_accounts WHERE id = %s",
+            uuid.UUID(account_id),
+        )
+        if not row:
+            return None
+        if org_id is not None and str(row.get("org_id")) != str(org_id):
+            return None
+        return self._cloud_account_row(row)
+
+    async def create_cloud_account(
+        self,
+        org_id: str | None,
+        provider: str,
+        auth_method: str,
+        label: str,
+        region: str | None,
+        config: dict,
+        secret_enc: str | None = None,
+    ) -> dict | None:
+        import json as _json
+
+        row = await self._fetchrow(
+            "INSERT INTO cloud_accounts"
+            " (org_id, provider, auth_method, label, region, config, secret_enc, status)"
+            " VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, 'pending')"
+            f" RETURNING {self._CLOUD_COLS}",
+            uuid.UUID(org_id) if org_id else None,
+            provider,
+            auth_method,
+            label,
+            region,
+            _json.dumps(config or {}),
+            secret_enc,
+        )
+        return self._cloud_account_row(row) if row else None
+
+    async def set_cloud_account_status(
+        self, account_id: str, status: str, status_detail: str | None = None
+    ) -> None:
+        await self._exec(
+            "UPDATE cloud_accounts SET status = %s, status_detail = %s, updated_at = NOW()"
+            " WHERE id = %s",
+            status,
+            status_detail,
+            uuid.UUID(account_id),
+        )
+
+    async def delete_cloud_account(self, account_id: str, org_id: str | None = None) -> None:
+        if org_id is not None:
+            await self._exec(
+                "DELETE FROM cloud_accounts WHERE id = %s AND org_id = %s",
+                uuid.UUID(account_id),
+                uuid.UUID(org_id),
+            )
+        else:
+            await self._exec(
+                "DELETE FROM cloud_accounts WHERE id = %s", uuid.UUID(account_id)
+            )
+
     async def get_app_config(self, key: str) -> dict | None:
         row = await self._fetchrow("SELECT value FROM app_config WHERE key = %s", key)
         return row["value"] if row else None

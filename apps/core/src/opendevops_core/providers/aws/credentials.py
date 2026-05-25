@@ -85,6 +85,23 @@ def _base_session() -> boto3.Session:
     )
 
 
+def encrypt_secret(data: dict) -> str | None:
+    """Fernet-encrypt a secrets dict for storage in ``cloud_accounts.secret_enc``.
+
+    Returns None when there's nothing to store, or when no encryption key is configured
+    (callers should then fall back to a non-secret field or reject the request).
+    """
+    if not data:
+        return None
+    key = settings.credentials_encryption_key
+    if not key:
+        logger.warning("CREDENTIALS_ENCRYPTION_KEY not set; cannot encrypt account secret")
+        return None
+    from cryptography.fernet import Fernet
+
+    return Fernet(key.encode()).encrypt(json.dumps(data).encode()).decode()
+
+
 def _account_secrets(account: dict) -> dict:
     """Decrypt and parse the account's secret blob, or {} when none / no key configured."""
     blob = account.get("secret_enc")

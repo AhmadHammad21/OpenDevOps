@@ -207,6 +207,31 @@ class DatabaseBackend(ABC):
     ) -> dict | None:
         return None
 
+    async def get_cloud_account(
+        self, account_id: str, org_id: str | None = None
+    ) -> dict | None:
+        return None
+
+    async def create_cloud_account(
+        self,
+        org_id: str | None,
+        provider: str,
+        auth_method: str,
+        label: str,
+        region: str | None,
+        config: dict,
+        secret_enc: str | None = None,
+    ) -> dict | None:
+        return None
+
+    async def set_cloud_account_status(
+        self, account_id: str, status: str, status_detail: str | None = None
+    ) -> None:
+        pass
+
+    async def delete_cloud_account(self, account_id: str, org_id: str | None = None) -> None:
+        pass
+
     # ── App config (init wizard / infrastructure state) ──────────────────────
 
     async def get_app_config(self, key: str) -> dict | None:
