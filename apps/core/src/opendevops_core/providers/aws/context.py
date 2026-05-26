@@ -8,15 +8,11 @@ import boto3
 from loguru import logger
 
 from opendevops_core.agent.init_store import get_runtime_aws_region
-from opendevops_core.config import settings
+from opendevops_core.providers.aws.credentials import resolve_session
 
 
 def _session() -> boto3.Session:
-    return (
-        boto3.Session(profile_name=settings.aws_profile)
-        if settings.aws_profile
-        else boto3.Session()
-    )
+    return resolve_session()
 
 
 def collect_context(event: dict) -> dict[str, Any]:

@@ -87,13 +87,15 @@ class DatabaseBackend(ABC):
     # ── Analytics ──────────────────────────────────────────────────────────────
 
     @abstractmethod
-    async def get_dashboard_stats(self) -> dict: ...
+    async def get_dashboard_stats(self, org_id: str | None = None) -> dict: ...
 
     @abstractmethod
-    async def get_history_stats(self, days: int = 30) -> dict: ...
+    async def get_history_stats(self, days: int = 30, org_id: str | None = None) -> dict: ...
 
     @abstractmethod
-    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]: ...
+    async def search_sessions(
+        self, query: str, limit: int = 10, org_id: str | None = None
+    ) -> list[dict]: ...
 
     # ── User / auth ────────────────────────────────────────────────────────────
     # Default implementations return empty/zero — real auth requires PostgreSQL.
@@ -123,7 +125,7 @@ class DatabaseBackend(ABC):
     ) -> dict | None:
         return None
 
-    async def list_users(self) -> list[dict]:
+    async def list_users(self, org_id: str | None = None) -> list[dict]:
         return []
 
     async def update_user(self, user_id: str, **fields: Any) -> dict | None:
@@ -187,11 +189,48 @@ class DatabaseBackend(ABC):
     async def is_incident_claimed(self, incident_key: str, within_minutes: int = 3) -> bool:
         return False
 
-    async def get_alerts(self, limit: int = 50) -> list[dict]:
+    async def get_alerts(self, limit: int = 50, org_id: str | None = None) -> list[dict]:
         return []
 
-    async def get_alert(self, alert_id: str) -> dict | None:
+    async def get_alert(self, alert_id: str, org_id: str | None = None) -> dict | None:
         return None
+
+    # ── Cloud accounts (per-org/per-install credential configs) ───────────────
+    # Default: no rows -> the credential resolver falls back to env/profile creds.
+    # Only the Postgres backend persists these today (the product's multi-tenant DB).
+
+    async def get_cloud_accounts(self, org_id: str | None = None) -> list[dict]:
+        return []
+
+    async def get_default_cloud_account(
+        self, org_id: str | None = None, provider: str = "aws"
+    ) -> dict | None:
+        return None
+
+    async def get_cloud_account(
+        self, account_id: str, org_id: str | None = None
+    ) -> dict | None:
+        return None
+
+    async def create_cloud_account(
+        self,
+        org_id: str | None,
+        provider: str,
+        auth_method: str,
+        label: str,
+        region: str | None,
+        config: dict,
+        secret_enc: str | None = None,
+    ) -> dict | None:
+        return None
+
+    async def set_cloud_account_status(
+        self, account_id: str, status: str, status_detail: str | None = None
+    ) -> None:
+        pass
+
+    async def delete_cloud_account(self, account_id: str, org_id: str | None = None) -> None:
+        pass
 
     # ── App config (init wizard / infrastructure state) ──────────────────────
 

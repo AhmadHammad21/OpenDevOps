@@ -534,7 +534,7 @@ class SQLiteBackend(DatabaseBackend):
 
     # ── Analytics ─────────────────────────────────────────────────────────────
 
-    async def get_dashboard_stats(self) -> dict:
+    async def get_dashboard_stats(self, org_id: str | None = None) -> dict:
         summary = (
             await self._fetchone("""
             SELECT
@@ -673,7 +673,7 @@ class SQLiteBackend(DatabaseBackend):
             "root_causes": [{"category": r["category"], "count": int(r["count"])} for r in rc_rows],
         }
 
-    async def get_history_stats(self, days: int = 30) -> dict:
+    async def get_history_stats(self, days: int = 30, org_id: str | None = None) -> dict:
         cutoff = f"-{days} days"
 
         alarm_rows = await self._fetchall(
@@ -836,7 +836,7 @@ class SQLiteBackend(DatabaseBackend):
             user_id,
         )
 
-    async def list_users(self) -> list[dict]:
+    async def list_users(self, org_id: str | None = None) -> list[dict]:
         return await self._fetchall(
             "SELECT id, email, name, role, created_at FROM users ORDER BY created_at ASC"
         )
@@ -996,7 +996,7 @@ class SQLiteBackend(DatabaseBackend):
         )
         return row is not None
 
-    async def get_alerts(self, limit: int = 50) -> list[dict]:
+    async def get_alerts(self, limit: int = 50, org_id: str | None = None) -> list[dict]:
         import json as _json
 
         rows = await self._fetchall(
@@ -1023,7 +1023,7 @@ class SQLiteBackend(DatabaseBackend):
             for r in rows
         ]
 
-    async def get_alert(self, alert_id: str) -> dict | None:
+    async def get_alert(self, alert_id: str, org_id: str | None = None) -> dict | None:
         import json as _json
 
         row = await self._fetchone(
@@ -1074,7 +1074,9 @@ class SQLiteBackend(DatabaseBackend):
             json.dumps(value),
         )
 
-    async def search_sessions(self, query: str, limit: int = 10) -> list[dict]:
+    async def search_sessions(
+        self, query: str, limit: int = 10, org_id: str | None = None
+    ) -> list[dict]:
         if not query.strip():
             return []
         pattern = f"%{query}%"
