@@ -6,12 +6,19 @@ Phase 2 (planned): throwaway Docker container per command, --network none, --rea
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import time
 from typing import Any
 
 from loguru import logger
+
+from opendevops_core.providers.aws.credentials import (
+    get_current_cloud_account,
+    resolve_region,
+    resolve_session,
+)
 
 # AWS CLI read-only operation verbs (the word before the first dash in the operation name).
 # Every read-only AWS CLI command starts with one of these — across ALL services.
@@ -198,12 +205,40 @@ def run_bash_command(command: str) -> dict[str, Any]:
         }
 
     logger.info("bash_tool RUN | cmd={!r}", command)
+
+    # When an org cloud account is active, `aws` CLI calls must use that org's assumed-role
+    # credentials — not the platform's ambient env creds. Inject temporary creds into the
+    # subprocess env, and fail closed (never fall back to platform creds for a scoped org).
+    run_env = None
+    if tokens and tokens[0] == "aws" and get_current_cloud_account() is not None:
+        try:
+            frozen = resolve_session().get_credentials().get_frozen_credentials()
+            run_env = {k: v for k, v in os.environ.items() if k != "AWS_PROFILE"}
+            run_env["AWS_ACCESS_KEY_ID"] = frozen.access_key
+            run_env["AWS_SECRET_ACCESS_KEY"] = frozen.secret_key
+            region = resolve_region()
+            run_env["AWS_REGION"] = run_env["AWS_DEFAULT_REGION"] = region
+            if frozen.token:
+                run_env["AWS_SESSION_TOKEN"] = frozen.token
+            else:
+                run_env.pop("AWS_SESSION_TOKEN", None)
+        except Exception as e:  # noqa: BLE001 - fail closed; do not leak platform creds
+            logger.error("bash_tool: could not resolve org AWS creds: {}", e)
+            return {
+                "success": False,
+                "output": "",
+                "error": f"Could not resolve organization AWS credentials: {e}",
+                "command": command,
+                "blocked": True,
+            }
+
     try:
         proc = subprocess.run(
             tokens,
             capture_output=True,
             text=True,
             timeout=_TIMEOUT,
+            env=run_env,
         )
         elapsed = time.monotonic() - start
         success = proc.returncode == 0

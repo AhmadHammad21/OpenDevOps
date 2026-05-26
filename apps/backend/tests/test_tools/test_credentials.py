@@ -94,7 +94,6 @@ def test_encrypt_secret_noop_without_key():
 
 def test_encrypt_decrypt_roundtrip(monkeypatch):
     from cryptography.fernet import Fernet
-
     from opendevops_core.config import get_settings
 
     key = Fernet.generate_key().decode()
@@ -103,3 +102,82 @@ def test_encrypt_decrypt_roundtrip(monkeypatch):
     enc = cred.encrypt_secret({"external_id": "ext-123"})
     assert enc and enc != "ext-123"
     assert cred._account_secrets({"secret_enc": enc, "config": {}}) == {"external_id": "ext-123"}
+
+
+class _Frozen:
+    access_key = "AKIAFAKE"
+    secret_key = "secretfake"
+    token = "sessiontoken"
+
+
+class _FakeCreds:
+    def get_frozen_credentials(self):
+        return _Frozen()
+
+
+class _FakeSession:
+    def get_credentials(self):
+        return _FakeCreds()
+
+
+class _CompletedProc:
+    returncode = 0
+    stdout = "{}"
+    stderr = ""
+
+
+def test_bash_injects_org_creds_for_aws(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    captured: dict = {}
+    monkeypatch.setattr(bash_tool, "resolve_session", lambda: _FakeSession())
+    monkeypatch.setattr(
+        bash_tool.subprocess,
+        "run",
+        lambda tokens, **kw: (captured.__setitem__("env", kw.get("env")), _CompletedProc())[1],
+    )
+
+    token = cred.set_current_cloud_account(_account("arn:aws:iam::111111111111:role/x"))
+    try:
+        res = bash_tool.run_bash_command("aws sts get-caller-identity")
+    finally:
+        cred.reset_current_cloud_account(token)
+
+    assert res["success"]
+    env = captured["env"]
+    assert env is not None
+    assert env["AWS_ACCESS_KEY_ID"] == "AKIAFAKE"
+    assert env["AWS_SESSION_TOKEN"] == "sessiontoken"
+    assert "AWS_PROFILE" not in env  # platform profile is stripped
+
+
+def test_bash_no_account_inherits_ambient_env(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        bash_tool.subprocess,
+        "run",
+        lambda tokens, **kw: (captured.__setitem__("env", kw.get("env")), _CompletedProc())[1],
+    )
+    res = bash_tool.run_bash_command("aws sts get-caller-identity")
+    assert res["success"]
+    assert captured["env"] is None  # no account -> inherit the process env (OSS behavior)
+
+
+def test_bash_fails_closed_when_org_creds_unresolvable(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    def _boom():
+        raise RuntimeError("assume failed")
+
+    monkeypatch.setattr(bash_tool, "resolve_session", _boom)
+    token = cred.set_current_cloud_account(_account("arn:aws:iam::111111111111:role/x"))
+    try:
+        res = bash_tool.run_bash_command("aws sts get-caller-identity")
+    finally:
+        cred.reset_current_cloud_account(token)
+
+    assert res["success"] is False
+    assert res.get("blocked") is True
+    assert "credentials" in res["error"].lower()
