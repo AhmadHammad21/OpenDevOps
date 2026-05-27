@@ -19,6 +19,7 @@ from opendevops_core.providers.aws.credentials import (
     resolve_region,
     resolve_session,
 )
+from opendevops_core.providers.azure.credentials import azure_cli_env
 
 # AWS CLI read-only operation verbs (the word before the first dash in the operation name).
 # Every read-only AWS CLI command starts with one of these — across ALL services.
@@ -79,6 +80,16 @@ _KUBECTL_FLAGS_WITH_VALUE: frozenset[str] = frozenset(
 )
 
 _DOCKER_FLAGS_WITH_VALUE: frozenset[str] = frozenset({"-H", "--host", "--context", "--config"})
+
+# Azure CLI read-only verbs (the verb is the LAST positional token of the command path,
+# e.g. "az aks show" → "show", "az aks get-credentials" → "get", "az monitor metrics list" → "list").
+_AZ_READONLY_VERBS: frozenset[str] = frozenset(
+    {"list", "show", "get", "check", "describe", "tail", "query", "version"}
+)
+_AZ_GLOBAL_FLAGS_WITH_VALUE: frozenset[str] = frozenset({"--subscription", "--output", "-o", "--query"})
+_AZ_GLOBAL_FLAGS_NO_VALUE: frozenset[str] = frozenset(
+    {"--debug", "--verbose", "--only-show-errors", "--help", "-h"}
+)
 
 _TIMEOUT = 30
 _MAX_OUTPUT = 4000
@@ -156,6 +167,30 @@ def _allowed(command: str, tokens: list[str]) -> bool:
             return True
         return verb in _AWS_READONLY_VERBS
 
+    if binary == "az":
+        # Consume leading global flags, then the command path is the run of positional tokens
+        # up to the first flag; the verb is the last token of that path (az convention).
+        i = 1
+        while i < len(tokens) and tokens[i].startswith("-"):
+            flag = tokens[i].lower()
+            if flag in _AZ_GLOBAL_FLAGS_WITH_VALUE:
+                if i + 1 >= len(tokens):
+                    return False
+                i += 2
+                continue
+            if flag in _AZ_GLOBAL_FLAGS_NO_VALUE:
+                i += 1
+                continue
+            return False
+        path: list[str] = []
+        while i < len(tokens) and not tokens[i].startswith("-"):
+            path.append(tokens[i])
+            i += 1
+        if not path:
+            return False
+        verb = path[-1].lower().split("-")[0]  # "get-credentials" → "get"
+        return verb in _AZ_READONLY_VERBS
+
     if binary == "kubectl":
         subcommand = _find_subcommand(tokens, 1, _KUBECTL_FLAGS_WITH_VALUE)
         return subcommand in {"get", "describe", "logs"}
@@ -175,7 +210,10 @@ def run_bash_command(command: str) -> dict[str, Any]:
       verb: describe-*, list-*, get-*, lookup-*, filter-*, search-*, scan-*, query*,
       batch-get-*. Covers ALL AWS services (S3, DynamoDB, SNS, SQS, Route53,
       ACM, Secrets Manager, SSM, IAM, etc.) not just the structured boto3 tools.
-    - kubectl get / describe / logs
+    - ANY `az <group...> <verb>` where the verb is read-only: list, show, get-*,
+      check, describe, tail, query, version (e.g. `az aks list`, `az monitor metrics list`,
+      `az webapp log tail`, `az aks get-credentials`). Covers the Azure surface.
+    - kubectl get / describe / logs  (works against AKS after `az aks get-credentials`)
     - docker ps / logs / inspect
 
     Use for docker and kubectl always (no boto3 equivalent). For AWS, use when
@@ -206,31 +244,52 @@ def run_bash_command(command: str) -> dict[str, Any]:
 
     logger.info("bash_tool RUN | cmd={!r}", command)
 
-    # When an org cloud account is active, `aws` CLI calls must use that org's assumed-role
-    # credentials — not the platform's ambient env creds. Inject temporary creds into the
-    # subprocess env, and fail closed (never fall back to platform creds for a scoped org).
+    # When an org cloud account is active, cloud CLI calls must use THAT org's credentials —
+    # never the platform's ambient creds — and cross-provider calls must fail closed (an Azure
+    # org's agent must not be able to run `aws`, and vice-versa).
+    account = get_current_cloud_account()
+    provider = account.get("provider") if account else None
+    binary = tokens[0]
     run_env = None
-    if tokens and tokens[0] == "aws" and get_current_cloud_account() is not None:
+
+    def _blocked(msg: str) -> dict[str, Any]:
+        return {"success": False, "output": "", "error": msg, "command": command, "blocked": True}
+
+    if binary == "aws":
+        if account is not None and provider != "aws":
+            return _blocked(f"AWS is not available for this organization (cloud: {provider}).")
+        if account is not None:
+            try:
+                frozen = resolve_session().get_credentials().get_frozen_credentials()
+                run_env = {k: v for k, v in os.environ.items() if k != "AWS_PROFILE"}
+                run_env["AWS_ACCESS_KEY_ID"] = frozen.access_key
+                run_env["AWS_SECRET_ACCESS_KEY"] = frozen.secret_key
+                region = resolve_region()
+                run_env["AWS_REGION"] = run_env["AWS_DEFAULT_REGION"] = region
+                if frozen.token:
+                    run_env["AWS_SESSION_TOKEN"] = frozen.token
+                else:
+                    run_env.pop("AWS_SESSION_TOKEN", None)
+            except Exception as e:  # noqa: BLE001 - fail closed; do not leak platform creds
+                logger.error("bash_tool: could not resolve org AWS creds: {}", e)
+                return _blocked(f"Could not resolve organization AWS credentials: {e}")
+    elif binary == "az":
+        if account is not None and provider != "azure":
+            return _blocked(f"Azure is not available for this organization (cloud: {provider}).")
+        if account is not None:
+            try:
+                run_env = azure_cli_env(account)
+            except Exception as e:  # noqa: BLE001 - fail closed
+                logger.error("bash_tool: could not resolve org Azure creds: {}", e)
+                return _blocked(f"Could not resolve organization Azure credentials: {e}")
+    elif binary == "kubectl" and provider == "azure":
+        # AKS: kubectl must read the per-org kubeconfig written by `az aks get-credentials`
+        # into the org's isolated config dir.
         try:
-            frozen = resolve_session().get_credentials().get_frozen_credentials()
-            run_env = {k: v for k, v in os.environ.items() if k != "AWS_PROFILE"}
-            run_env["AWS_ACCESS_KEY_ID"] = frozen.access_key
-            run_env["AWS_SECRET_ACCESS_KEY"] = frozen.secret_key
-            region = resolve_region()
-            run_env["AWS_REGION"] = run_env["AWS_DEFAULT_REGION"] = region
-            if frozen.token:
-                run_env["AWS_SESSION_TOKEN"] = frozen.token
-            else:
-                run_env.pop("AWS_SESSION_TOKEN", None)
-        except Exception as e:  # noqa: BLE001 - fail closed; do not leak platform creds
-            logger.error("bash_tool: could not resolve org AWS creds: {}", e)
-            return {
-                "success": False,
-                "output": "",
-                "error": f"Could not resolve organization AWS credentials: {e}",
-                "command": command,
-                "blocked": True,
-            }
+            run_env = azure_cli_env(account)
+        except Exception as e:  # noqa: BLE001 - fail closed
+            logger.error("bash_tool: could not resolve org Azure creds for kubectl: {}", e)
+            return _blocked(f"Could not resolve organization Azure credentials: {e}")
 
     try:
         proc = subprocess.run(
