@@ -93,4 +93,4 @@ python demos/azure/app_service_5xx.py teardown
 python demos/azure/aks_crashloop.py teardown
 ```
 
-For recording GIFs / short demos, see the tips in the AWS [demos/README.md](../README.md).
+For recording GIFs / short demos, see the tips in the AWS [README](../aws/README.md#recording-gifs--short-demos).
