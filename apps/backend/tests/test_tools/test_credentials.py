@@ -1,8 +1,20 @@
-"""Per-org AWS credential resolution + cache isolation."""
+"""Per-org credential resolution, cache isolation, and multi-cloud fail-closed behavior."""
 
+import pytest
 from moto import mock_aws
 from opendevops_core.providers.aws import credentials as cred
 from opendevops_core.tools._cache import tool_cached
+
+
+def _azure_account(client_id: str = "client-1") -> dict:
+    return {
+        "id": "az1",
+        "provider": "azure",
+        "auth_method": "service_principal",
+        "region": "eastus",
+        "config": {"tenant_id": "t", "client_id": client_id, "subscription_id": "sub-1"},
+        "secret_enc": None,
+    }
 
 
 def _account(role_arn: str, acct_id: str = "acct") -> dict:
@@ -181,3 +193,84 @@ def test_bash_fails_closed_when_org_creds_unresolvable(monkeypatch):
     assert res["success"] is False
     assert res.get("blocked") is True
     assert "credentials" in res["error"].lower()
+
+
+# ── Multi-cloud (Azure) ──────────────────────────────────────────────────────
+
+
+def test_resolve_session_fails_closed_for_non_aws_account():
+    # An Azure org must NOT fall back to the platform's base AWS creds.
+    token = cred.set_current_cloud_account(_azure_account())
+    try:
+        with pytest.raises(RuntimeError):
+            cred.resolve_session()
+    finally:
+        cred.reset_current_cloud_account(token)
+
+
+def test_bash_az_allowed_and_blocked():
+    from opendevops_core.tools import bash_tool
+
+    assert bash_tool._allowed("az aks list", ["az", "aks", "list"])
+    assert bash_tool._allowed(
+        "az aks get-credentials -g r -n n", ["az", "aks", "get-credentials", "-g", "r", "-n", "n"]
+    )
+    assert bash_tool._allowed("az monitor metrics list", ["az", "monitor", "metrics", "list"])
+    assert not bash_tool._allowed("az group create", ["az", "group", "create"])
+    assert not bash_tool._allowed("az vm delete --name x", ["az", "vm", "delete", "--name", "x"])
+
+
+def test_bash_injects_azure_env_for_az(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        bash_tool,
+        "azure_cli_env",
+        lambda account: {"AZURE_CONFIG_DIR": "/tmp/x", "AZURE_SUBSCRIPTION_ID": "sub-1"},
+    )
+    monkeypatch.setattr(
+        bash_tool.subprocess,
+        "run",
+        lambda tokens, **kw: (captured.__setitem__("env", kw.get("env")), _CompletedProc())[1],
+    )
+    token = cred.set_current_cloud_account(_azure_account())
+    try:
+        res = bash_tool.run_bash_command("az aks list")
+    finally:
+        cred.reset_current_cloud_account(token)
+
+    assert res["success"]
+    assert captured["env"]["AZURE_SUBSCRIPTION_ID"] == "sub-1"
+
+
+def test_bash_blocks_aws_for_azure_org(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    def _no_run(*a, **k):
+        raise AssertionError("subprocess must not run for a cross-provider command")
+
+    monkeypatch.setattr(bash_tool.subprocess, "run", _no_run)
+    token = cred.set_current_cloud_account(_azure_account())
+    try:
+        res = bash_tool.run_bash_command("aws s3api list-buckets")
+    finally:
+        cred.reset_current_cloud_account(token)
+    assert res["success"] is False and res.get("blocked") is True
+    assert "aws is not available" in res["error"].lower()
+
+
+def test_bash_blocks_az_for_aws_org(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    def _no_run(*a, **k):
+        raise AssertionError("subprocess must not run for a cross-provider command")
+
+    monkeypatch.setattr(bash_tool.subprocess, "run", _no_run)
+    token = cred.set_current_cloud_account(_account("arn:aws:iam::111111111111:role/x"))
+    try:
+        res = bash_tool.run_bash_command("az aks list")
+    finally:
+        cred.reset_current_cloud_account(token)
+    assert res["success"] is False and res.get("blocked") is True
+    assert "azure is not available" in res["error"].lower()

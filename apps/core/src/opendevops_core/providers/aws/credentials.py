@@ -163,8 +163,12 @@ def resolve_session() -> boto3.Session:
 
     provider = account.get("provider", "aws")
     if provider != "aws":
-        logger.warning("resolve_session for non-aws provider '{}'; using base creds", provider)
-        return _base_session()
+        # Fail closed: an org whose active account is non-AWS must NOT fall back to the
+        # platform's base AWS credentials — that would leak the platform account across
+        # tenants. AWS tools should error out instead. (Tools catch this and return an error.)
+        raise RuntimeError(
+            f"AWS is not available for this organization (active cloud provider: {provider})."
+        )
 
     identity = current_credential_identity()
     cached = _session_cache.get(identity)
