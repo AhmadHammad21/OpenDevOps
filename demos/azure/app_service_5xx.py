@@ -59,7 +59,7 @@ def setup() -> None:
         "webapp", "config", "appsettings", "set", "-g", RG, "-n", APP,
         "--settings", "WEBSITES_PORT=8080", "--only-show-errors",
     )
-    print("\n✅ Setup complete — web app is misconfigured (WEBSITES_PORT=8080, nginx on 80).")
+    print("\nSetup complete - web app is misconfigured (WEBSITES_PORT=8080, nginx on 80).")
     print(f'\n   App name: {APP}')
     print(f'   Prompt:  "My web app {APP} isn\'t responding / returns errors — investigate."')
     print("   Expect:  container fails health checks on 8080 -> 5xx; root cause = port mismatch.")
@@ -68,7 +68,7 @@ def setup() -> None:
 
 def teardown() -> None:
     az("group", "delete", "-n", RG, "--yes", "--no-wait", "--only-show-errors")
-    print(f"\n🧹 Teardown started — resource group {RG} is being deleted.")
+    print(f"\nTeardown started - resource group {RG} is being deleted.")
 
 
 if __name__ == "__main__":

@@ -71,7 +71,7 @@ def setup() -> None:
         "run", "crashloop", "--image=busybox", "--restart=Always",
         "--", "/bin/sh", "-c", "echo booting; sleep 3; exit 1",
     )
-    print("\n✅ Setup complete — pod 'crashloop' will enter CrashLoopBackOff within ~30s.")
+    print("\nSetup complete - pod 'crashloop' will enter CrashLoopBackOff within ~30s.")
     print('\n   Prompt:  "Pods in my AKS cluster are failing — find the root cause."')
     print("   Expect:  az aks get-credentials -> kubectl get/describe/logs -> container exits 1.")
     print("   Note:    the agent's SP needs the 'Azure Kubernetes Service Cluster User Role'.")
@@ -79,7 +79,7 @@ def setup() -> None:
 
 def teardown() -> None:
     az("group", "delete", "-n", RG, "--yes", "--no-wait", "--only-show-errors")
-    print(f"\n🧹 Teardown started — resource group {RG} is being deleted.")
+    print(f"\nTeardown started - resource group {RG} is being deleted.")
 
 
 if __name__ == "__main__":

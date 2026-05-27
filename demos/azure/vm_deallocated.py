@@ -57,7 +57,7 @@ def setup() -> None:
     )
     # The "incident": stop/deallocate the VM.
     az("vm", "deallocate", "-g", RG, "-n", VM, "--only-show-errors")
-    print("\n✅ Setup complete — VM is deallocated.")
+    print("\nSetup complete - VM is deallocated.")
     print(f'\n   Prompt:  "My VM {VM} is unreachable — what happened?"')
     print("   Expect:  powerState=deallocated + the Deallocate event in the Activity Log.")
     print("   (Activity Log can lag 1–2 min; wait a moment before investigating.)")
@@ -65,7 +65,7 @@ def setup() -> None:
 
 def teardown() -> None:
     az("group", "delete", "-n", RG, "--yes", "--no-wait", "--only-show-errors")
-    print(f"\n🧹 Teardown started — resource group {RG} is being deleted.")
+    print(f"\nTeardown started - resource group {RG} is being deleted.")
 
 
 if __name__ == "__main__":
