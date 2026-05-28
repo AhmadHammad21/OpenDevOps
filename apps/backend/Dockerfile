@@ -1,43 +1,43 @@
-# ── Stage 1: install Python dependencies with uv ─────────────────────────────
-FROM python:3.12.9-slim-bookworm AS deps
+# OpenDevOps OSS backend image.
+#
+# IMPORTANT: build from the REPO ROOT so the opendevops-core path dependency
+# (apps/backend -> ../core) is in the build context:
+#   docker build -f apps/backend/Dockerfile -t opendevops-backend .
+# (The docker-compose files set this context automatically.)
 
-COPY --from=ghcr.io/astral-sh/uv:0.6.17 /uv /uvx /bin/
-
-WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
-
-# ── Stage 2: final image ──────────────────────────────────────────────────────
 FROM python:3.12.9-slim-bookworm
 
-# AWS CLI v2 — required for the bash execution tool (run_bash_command)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl unzip ca-certificates \
-    && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
-    && unzip -q /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install \
-    && rm -rf /tmp/aws /tmp/awscliv2.zip \
-    && apt-get purge -y --auto-remove curl unzip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY --from=ghcr.io/astral-sh/uv:0.6.17 /uv /uvx /bin/
 
+# CLIs for the bash execution tool (read-only use): AWS CLI v2, Azure CLI, and
+# kubectl + kubelogin (for EKS/AKS). git is needed by uv for any git deps.
+RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates git \
+    # AWS CLI v2
+    && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
+    && unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install \
+    && rm -rf /tmp/aws /tmp/awscliv2.zip \
+    # Azure CLI
+    && curl -sL https://aka.ms/InstallAzureCLIDeb | bash \
+    # kubectl + kubelogin (Azure's installer drops both on PATH)
+    && az aks install-cli \
+         --install-location /usr/local/bin/kubectl \
+         --kubelogin-install-location /usr/local/bin/kubelogin \
+    && apt-get purge -y --auto-remove unzip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+# core is the path dependency of the backend — copy both, preserving layout.
+COPY apps/core/ apps/core/
+COPY apps/backend/ apps/backend/
 
-# Copy installed packages from deps stage
-COPY --from=deps /app/.venv .venv
+WORKDIR /app/apps/backend
+RUN uv sync --frozen --no-dev
 
-# Copy application source
-COPY src/ src/
-COPY migrations/ migrations/
-COPY scripts/ scripts/
+RUN groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app \
+    && chown -R app:app /app
 
-RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
-RUN chown -R app:app /app
-
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app/src" \
+ENV PATH="/app/apps/backend/.venv/bin:$PATH" \
     HOME="/home/app" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

@@ -1,0 +1,50 @@
+# SQLite backend — local file persistence, no external database.
+# Recommended for single-server / personal use and easy self-host testing.
+#   docker compose -f deployment/docker-compose/docker-compose.sqlite.yml up --build
+services:
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: ../../.env
+    environment:
+      CHECKPOINT_BACKEND: sqlite
+      SQLITE_PATH: /data/agent.db   # on the writable named volume below
+    volumes:
+      - sqlite_data:/data
+      - ${USERPROFILE}/.aws:/home/app/.aws:ro
+      - ${USERPROFILE}/.azure:/home/app/.azure
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build: ../../apps/frontend
+    ports:
+      - "80:8080"
+    depends_on:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

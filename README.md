@@ -1,7 +1,10 @@
 # OpenDevOps Agent
 
-Open-source AWS DevOps Agent powered by OpenRouter LLMs. Investigates incidents, finds root causes,
-and gives actionable mitigation plans — without the AWS DevOps Agent price tag.
+Open-source **multi-cloud** DevOps agent (**AWS + Azure**) powered by OpenRouter LLMs. Investigates
+incidents, finds root causes, and gives actionable mitigation plans — without the cloud-vendor
+DevOps-agent price tag.
+
+**Cloud setup:** [AWS (IAM)](apps/documentation/iam_setup.md) · [Azure (service principal / login)](apps/documentation/azure_setup.md)
 
 ## Demo
 
@@ -17,7 +20,8 @@ and gives actionable mitigation plans — without the AWS DevOps Agent price tag
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
 - **21 read-only AWS tools** across CloudWatch (6), CloudTrail (2), ECS (4), Lambda (4), EC2 (2), RDS (2), IAM (1), plus bash escape hatch, cross-session history analytics, skills, and `submit_investigation` — plain Python functions, schemas inferred automatically
-- **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI, kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
+- **Azure support (CLI-first)** — investigates Azure through the read-only `az` CLI + `kubectl` (for AKS) and a set of Azure runbook skills (AKS debugging, App Service errors, Azure Monitor/KQL, VM diagnostics) — no separate SDK tools needed. Read-only; connect via a service principal or `az login` — see [apps/documentation/azure_setup.md](apps/documentation/azure_setup.md)
+- **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI (`aws`), Azure CLI (`az`), kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete
 - **Event-driven incident detection** — EventBridge → SQS → long-poll consumer; 9 EventBridge rules cover CloudWatch alarms, ECS task failures, Lambda async errors, RDS events, EC2 state changes, CodePipeline failures, and AWS Health events; uses a DLQ plus database-backed incident claims to avoid duplicate investigations; runs alongside the metric poller — see [apps/documentation/event_detection.md](apps/documentation/event_detection.md)

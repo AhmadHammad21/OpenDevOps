@@ -1,0 +1,45 @@
+# In-memory backend — zero config, NO persistence (data lost on restart).
+# Great for a quick try / CI. Autonomous polling & event monitoring are disabled in this mode.
+#   docker compose -f deployment/docker-compose/docker-compose.memory.yml up --build
+services:
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: ../../.env
+    environment:
+      CHECKPOINT_BACKEND: memory
+    volumes:
+      - ${USERPROFILE}/.aws:/home/app/.aws:ro
+      - ${USERPROFILE}/.azure:/home/app/.azure
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build: ../../apps/frontend
+    ports:
+      - "80:8080"
+    depends_on:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
