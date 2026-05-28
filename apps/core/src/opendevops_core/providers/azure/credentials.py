@@ -25,7 +25,7 @@ from pathlib import Path
 
 from cachetools import TTLCache
 
-from opendevops_core.providers.aws.credentials import _account_secrets, get_current_cloud_account
+from opendevops_core.providers.aws.credentials import _account_secrets, account_for_provider
 
 # Identities that already have a logged-in AZURE_CONFIG_DIR (avoid re-login per tool call).
 _login_cache: TTLCache = TTLCache(maxsize=64, ttl=1800)  # 30 min
@@ -33,10 +33,7 @@ _BASE_DIR = Path(tempfile.gettempdir()) / "odo-azure"
 
 
 def current_azure_account() -> dict | None:
-    acct = get_current_cloud_account()
-    if acct and acct.get("provider") == "azure":
-        return acct
-    return None
+    return account_for_provider("azure")
 
 
 def azure_identity(account: dict) -> str:

@@ -29,9 +29,11 @@ from loguru import logger
 
 from opendevops_core.config import settings
 
-# The resolved cloud-account dict for the active request, or None (env/profile fallback).
-_current_account: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
-    "current_cloud_account", default=None
+# Map of provider -> active cloud account for this request (or None = env/profile fallback).
+# An org can have several connected clouds active at once (e.g. AWS + Azure); each cloud's
+# tools resolve credentials against that provider's account independently.
+_current_accounts: contextvars.ContextVar[dict[str, dict] | None] = contextvars.ContextVar(
+    "current_cloud_accounts", default=None
 )
 
 # Assumed-role sessions are cached briefly so a single investigation (many tool calls)
@@ -39,25 +41,43 @@ _current_account: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 _session_cache: TTLCache = TTLCache(maxsize=64, ttl=1800)  # 30 min
 
 
+def set_current_cloud_accounts(accounts: list[dict]) -> contextvars.Token:
+    """Activate the org's connected accounts (one per provider) for this task."""
+    by_provider = {a.get("provider", "aws"): a for a in accounts if a}
+    return _current_accounts.set(by_provider)
+
+
 def set_current_cloud_account(account: dict | None) -> contextvars.Token:
-    """Set the active account for this task. Returns a token for reset_current_cloud_account."""
-    return _current_account.set(account)
+    """Convenience: activate a single account (one provider). Back-compatible."""
+    return _current_accounts.set({account.get("provider", "aws"): account} if account else {})
 
 
 def reset_current_cloud_account(token: contextvars.Token) -> None:
-    _current_account.reset(token)
+    _current_accounts.reset(token)
+
+
+def current_cloud_accounts() -> dict[str, dict]:
+    """The provider->account map active for this task ({} when none)."""
+    return _current_accounts.get() or {}
+
+
+def account_for_provider(provider: str) -> dict | None:
+    return current_cloud_accounts().get(provider)
 
 
 def get_current_cloud_account() -> dict | None:
-    return _current_account.get()
+    """Back-compat single-account accessor: prefer AWS, else any active account, else None."""
+    accts = current_cloud_accounts()
+    if not accts:
+        return None
+    return accts.get("aws") or next(iter(accts.values()))
 
 
 def current_credential_identity() -> str:
-    """Stable identity string for the active credentials.
-
-    Used in the tool cache key so cached AWS results never bleed across orgs/accounts.
-    """
-    acct = _current_account.get()
+    """Stable identity for the tool cache key. The cached structured tools are AWS-only, so
+    this keys to the active AWS account (or the global profile) — keeping cached AWS results
+    from bleeding across orgs/accounts."""
+    acct = account_for_provider("aws")
     if acct:
         cfg = acct.get("config") or {}
         return cfg.get("role_arn") or str(acct.get("id") or "account")
@@ -65,8 +85,8 @@ def current_credential_identity() -> str:
 
 
 def resolve_region() -> str:
-    """Region for the active account, else the global runtime region."""
-    acct = _current_account.get()
+    """Region for the active AWS account, else the global runtime region."""
+    acct = account_for_provider("aws")
     if acct and acct.get("region"):
         return acct["region"]
     # Imported lazily to avoid a provider->agent import cycle.
@@ -156,18 +176,17 @@ def _access_key_session(account: dict) -> boto3.Session:
 
 
 def resolve_session() -> boto3.Session:
-    """The boto3 session for the active account, or the base session when none is set."""
-    account = _current_account.get()
-    if not account:
-        return _base_session()
+    """The boto3 session for the active AWS account, or the base session when nothing is set."""
+    accts = current_cloud_accounts()
+    if not accts:
+        return _base_session()  # OSS / unscoped -> ambient env/profile creds
 
-    provider = account.get("provider", "aws")
-    if provider != "aws":
-        # Fail closed: an org whose active account is non-AWS must NOT fall back to the
-        # platform's base AWS credentials — that would leak the platform account across
-        # tenants. AWS tools should error out instead. (Tools catch this and return an error.)
+    account = accts.get("aws")
+    if account is None:
+        # Fail closed: the org has connected clouds but no AWS account, so AWS access must NOT
+        # fall back to the platform's base credentials (that would leak the platform account).
         raise RuntimeError(
-            f"AWS is not available for this organization (active cloud provider: {provider})."
+            "AWS is not available for this organization (no AWS account connected)."
         )
 
     identity = current_credential_identity()

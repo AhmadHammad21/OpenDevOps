@@ -15,7 +15,7 @@ from typing import Any
 from loguru import logger
 
 from opendevops_core.providers.aws.credentials import (
-    get_current_cloud_account,
+    current_cloud_accounts,
     resolve_region,
     resolve_session,
 )
@@ -244,11 +244,12 @@ def run_bash_command(command: str) -> dict[str, Any]:
 
     logger.info("bash_tool RUN | cmd={!r}", command)
 
-    # When an org cloud account is active, cloud CLI calls must use THAT org's credentials —
-    # never the platform's ambient creds — and cross-provider calls must fail closed (an Azure
-    # org's agent must not be able to run `aws`, and vice-versa).
-    account = get_current_cloud_account()
-    provider = account.get("provider") if account else None
+    # Resolve credentials per command, against the org's connected account for that command's
+    # cloud. An org can have multiple clouds active at once (AWS + Azure); each binary uses its
+    # own provider's account. If the org has connected clouds but none for this binary's provider,
+    # fail closed (don't fall back to the platform's ambient creds). No connected accounts at all
+    # (OSS / self-host) -> ambient env (the host's `aws`/`az` login).
+    accounts = current_cloud_accounts()
     binary = tokens[0]
     run_env = None
 
@@ -256,9 +257,7 @@ def run_bash_command(command: str) -> dict[str, Any]:
         return {"success": False, "output": "", "error": msg, "command": command, "blocked": True}
 
     if binary == "aws":
-        if account is not None and provider != "aws":
-            return _blocked(f"AWS is not available for this organization (cloud: {provider}).")
-        if account is not None:
+        if accounts.get("aws") is not None:
             try:
                 frozen = resolve_session().get_credentials().get_frozen_credentials()
                 run_env = {k: v for k, v in os.environ.items() if k != "AWS_PROFILE"}
@@ -273,20 +272,22 @@ def run_bash_command(command: str) -> dict[str, Any]:
             except Exception as e:  # noqa: BLE001 - fail closed; do not leak platform creds
                 logger.error("bash_tool: could not resolve org AWS creds: {}", e)
                 return _blocked(f"Could not resolve organization AWS credentials: {e}")
+        elif accounts:
+            return _blocked("AWS is not available for this organization (no AWS account connected).")
     elif binary == "az":
-        if account is not None and provider != "azure":
-            return _blocked(f"Azure is not available for this organization (cloud: {provider}).")
-        if account is not None:
+        if accounts.get("azure") is not None:
             try:
-                run_env = azure_cli_env(account)
+                run_env = azure_cli_env(accounts["azure"])
             except Exception as e:  # noqa: BLE001 - fail closed
                 logger.error("bash_tool: could not resolve org Azure creds: {}", e)
                 return _blocked(f"Could not resolve organization Azure credentials: {e}")
-    elif binary == "kubectl" and provider == "azure":
+        elif accounts:
+            return _blocked("Azure is not available for this organization (no Azure account connected).")
+    elif binary == "kubectl" and accounts.get("azure") is not None:
         # AKS: kubectl must read the per-org kubeconfig written by `az aks get-credentials`
         # into the org's isolated config dir.
         try:
-            run_env = azure_cli_env(account)
+            run_env = azure_cli_env(accounts["azure"])
         except Exception as e:  # noqa: BLE001 - fail closed
             logger.error("bash_tool: could not resolve org Azure creds for kubectl: {}", e)
             return _blocked(f"Could not resolve organization Azure credentials: {e}")

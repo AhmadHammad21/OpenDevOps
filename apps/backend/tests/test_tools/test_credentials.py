@@ -274,3 +274,49 @@ def test_bash_blocks_az_for_aws_org(monkeypatch):
         cred.reset_current_cloud_account(token)
     assert res["success"] is False and res.get("blocked") is True
     assert "azure is not available" in res["error"].lower()
+
+
+# ── Multi-cloud: both providers active at once ───────────────────────────────
+
+
+def test_set_current_cloud_accounts_maps_by_provider():
+    token = cred.set_current_cloud_accounts(
+        [_account("arn:aws:iam::111111111111:role/x"), _azure_account()]
+    )
+    try:
+        assert cred.account_for_provider("aws")["config"]["role_arn"].endswith("role/x")
+        assert cred.account_for_provider("azure")["provider"] == "azure"
+    finally:
+        cred.reset_current_cloud_account(token)
+    assert cred.account_for_provider("aws") is None  # reset clears it
+
+
+def test_bash_uses_both_clouds_when_both_connected(monkeypatch):
+    from opendevops_core.tools import bash_tool
+
+    monkeypatch.setattr(bash_tool, "resolve_session", lambda: _FakeSession())
+    monkeypatch.setattr(
+        bash_tool,
+        "azure_cli_env",
+        lambda account: {"AZURE_CONFIG_DIR": "/tmp/x", "AZURE_SUBSCRIPTION_ID": "sub-1"},
+    )
+    runs: list[tuple] = []
+    monkeypatch.setattr(
+        bash_tool.subprocess,
+        "run",
+        lambda tokens, **kw: (runs.append((tokens[0], kw.get("env"))), _CompletedProc())[1],
+    )
+
+    token = cred.set_current_cloud_accounts(
+        [_account("arn:aws:iam::111111111111:role/x"), _azure_account()]
+    )
+    try:
+        r_aws = bash_tool.run_bash_command("aws s3api list-buckets")
+        r_az = bash_tool.run_bash_command("az aks list")
+    finally:
+        cred.reset_current_cloud_account(token)
+
+    assert r_aws["success"] and r_az["success"]
+    env_by_bin = dict(runs)
+    assert env_by_bin["aws"]["AWS_ACCESS_KEY_ID"] == "AKIAFAKE"  # AWS account creds
+    assert env_by_bin["az"]["AZURE_SUBSCRIPTION_ID"] == "sub-1"  # Azure account env

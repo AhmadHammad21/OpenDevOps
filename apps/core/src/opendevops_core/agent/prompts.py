@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-_BASE_PROMPT = """You are an expert cloud SRE investigating an incident. You have read-only access to the affected cloud (AWS or Azure) via structured tools and read-only CLIs. The active cloud for this run is given in the run context; if none is stated, assume AWS.
+_BASE_PROMPT = """You are an expert cloud SRE investigating an incident. You have read-only access to the affected cloud (AWS or Azure) via structured tools and read-only CLIs. The active cloud for this run is given in the run context; if none is stated, assume {default_cloud}.
 
 ## Investigation Methodology
 
@@ -80,7 +80,7 @@ Be concise. Skip obvious observations. Go straight to anomalies. If you're uncer
 
 
 def build_system_prompt() -> str:
-    """Build the system prompt, injecting the list of available runbooks."""
+    """Build the system prompt, injecting the list of available runbooks and the default cloud."""
     try:
         from opendevops_core.tools.skills import available_skill_summaries
 
@@ -96,7 +96,12 @@ def build_system_prompt() -> str:
     else:
         runbook_section = ""
 
-    return _BASE_PROMPT.format(runbook_section=runbook_section)
+    # Default cloud for this deployment (overridden per-request by the run context in multi-tenant).
+    from opendevops_core.config import settings
+
+    default_cloud = "Azure" if getattr(settings, "cloud_provider", "aws") == "azure" else "AWS"
+
+    return _BASE_PROMPT.format(runbook_section=runbook_section, default_cloud=default_cloud)
 
 
 # Evaluated once at import time so the agent gets a stable prompt per process.
