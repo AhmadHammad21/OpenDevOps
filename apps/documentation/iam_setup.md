@@ -2,6 +2,8 @@
 
 This guide covers how to create an AWS IAM user (or role) with the permissions OpenDevOps Agent needs, and how to plug the credentials into your environment.
 
+> **Using Azure instead?** See [azure_setup.md](./azure_setup.md).
+
 ---
 
 ## Credential options
