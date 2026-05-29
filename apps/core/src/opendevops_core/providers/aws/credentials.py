@@ -29,9 +29,15 @@ from loguru import logger
 
 from opendevops_core.config import settings
 
-# Map of provider -> active cloud account for this request (or None = env/profile fallback).
+# Map of provider -> active cloud account for this request.
 # An org can have several connected clouds active at once (e.g. AWS + Azure); each cloud's
 # tools resolve credentials against that provider's account independently.
+#
+# Three states matter:
+#   None  -> contextvar never set in this task. OSS / self-host => ambient env/profile creds.
+#   {}    -> explicitly set to empty (e.g. product tenant with no Cloud Account connected) =>
+#            fail closed; AWS/Azure tools deny instead of using the platform's creds.
+#   {p:a} -> active accounts; resolve per-provider.
 _current_accounts: contextvars.ContextVar[dict[str, dict] | None] = contextvars.ContextVar(
     "current_cloud_accounts", default=None
 )
@@ -56,18 +62,21 @@ def reset_current_cloud_account(token: contextvars.Token) -> None:
     _current_accounts.reset(token)
 
 
-def current_cloud_accounts() -> dict[str, dict]:
-    """The provider->account map active for this task ({} when none)."""
-    return _current_accounts.get() or {}
+def current_cloud_accounts() -> dict[str, dict] | None:
+    """Return the provider->account map active for this task, or None when the contextvar
+    was never set (OSS / self-host => ambient fallback). Callers must distinguish ``None``
+    (ambient) from ``{}`` (explicitly empty => fail closed)."""
+    return _current_accounts.get()
 
 
 def account_for_provider(provider: str) -> dict | None:
-    return current_cloud_accounts().get(provider)
+    accts = _current_accounts.get()
+    return accts.get(provider) if accts else None
 
 
 def get_current_cloud_account() -> dict | None:
     """Back-compat single-account accessor: prefer AWS, else any active account, else None."""
-    accts = current_cloud_accounts()
+    accts = _current_accounts.get()
     if not accts:
         return None
     return accts.get("aws") or next(iter(accts.values()))
@@ -176,15 +185,24 @@ def _access_key_session(account: dict) -> boto3.Session:
 
 
 def resolve_session() -> boto3.Session:
-    """The boto3 session for the active AWS account, or the base session when nothing is set."""
-    accts = current_cloud_accounts()
-    if not accts:
+    """The boto3 session for the active AWS account.
+
+    Tri-state on the per-task contextvar:
+      * Unset (None) — OSS / self-host => fall back to the host's ambient creds.
+      * Explicitly empty ({}) — product tenant with no Cloud Account connected =>
+        fail closed; do NOT fall back to platform creds (cross-tenant leak).
+      * Has an "aws" entry — assume role / use access key.
+      * Has entries but no "aws" — Azure-only / other; AWS access denied.
+    """
+    accts = _current_accounts.get()
+    if accts is None:
         return _base_session()  # OSS / unscoped -> ambient env/profile creds
 
     account = accts.get("aws")
     if account is None:
-        # Fail closed: the org has connected clouds but no AWS account, so AWS access must NOT
-        # fall back to the platform's base credentials (that would leak the platform account).
+        # Fail closed: either the contextvar was explicitly set to {} (product tenant with no
+        # connected accounts) or the org has only non-AWS clouds connected. Either way, AWS
+        # access must NOT fall back to the platform's base credentials.
         raise RuntimeError(
             "AWS is not available for this organization (no AWS account connected)."
         )
