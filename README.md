@@ -1,8 +1,9 @@
 # OpenDevOps Agent
 
-Open-source **multi-cloud** DevOps agent (**AWS + Azure**) powered by OpenRouter LLMs. Investigates
-incidents, finds root causes, and gives actionable mitigation plans — without the cloud-vendor
-DevOps-agent price tag.
+Open-source **multi-cloud** DevOps agent (**AWS + Azure**). Bring **any LLM** via LiteLLM — OpenAI,
+Anthropic, OpenRouter, Groq, Gemini, Mistral, **Ollama for air-gapped / regulated environments**, or
+reuse your existing **Claude Code** subscription (auto-detected). Investigates incidents, finds root
+causes, and gives actionable mitigation plans — without the cloud-vendor DevOps-agent price tag.
 
 **Cloud setup:** [AWS (IAM)](apps/documentation/iam_setup.md) · [Azure (service principal / login)](apps/documentation/azure_setup.md)
 
@@ -15,6 +16,28 @@ DevOps-agent price tag.
 <p align="center">
   <em>Autonomous incident detection — a crashing Lambda is caught automatically, the agent reads the traceback from CloudWatch Logs, finds the root cause, surfaces it on the Monitoring dashboard, and posts the mitigation to Slack. No human in the loop.</em>
 </p>
+
+## Why OpenDevOps?
+
+[Amazon Q Developer](https://aws.amazon.com/q/developer/) and the [AWS DevOps Agent](https://aws.amazon.com/devops-agent/) are excellent if you live entirely inside the AWS Console with Bedrock-managed models. OpenDevOps is the open-source alternative for everyone else:
+
+- **Any LLM, not just Bedrock.** LiteLLM-compatible — OpenAI, Anthropic direct, OpenRouter, Groq, Gemini, Mistral, or run **Ollama locally** for air-gapped / regulated environments. Auto-detects your existing **Claude Code** subscription so you pay **zero incremental LLM cost** if you're already on a Max/Pro plan.
+- **Multi-cloud out of the box.** AWS + Azure investigations in the same chat (one organization can connect both clouds at once). AWS-only agents stop at the AWS perimeter.
+- **Your data stays in your database.** Investigations, prompts, and tool outputs persist in **your** Postgres or SQLite — your VPC, your retention, your encryption. Matters for HIPAA, PCI, FedRAMP, and EU AI Act audits.
+- **Fully auditable.** Every prompt, tool call (args + result), and token is open and streamed live to the UI; nothing is hidden. AWS Agent is a closed black box.
+- **Customizable.** Add tools as plain Python functions, add runbooks by dropping a `SKILL.md` file, modify the system prompt. Fork it if you need to.
+- **Investigate from anywhere.** Built-in MCP server makes it usable from Claude Desktop, Cursor, or any MCP client — not just the AWS Console.
+
+|  | **OpenDevOps** | **AWS DevOps Agent / Q Developer** |
+|---|---|---|
+| **LLM** | Any (LiteLLM, Claude Code, Ollama) | Bedrock-managed only |
+| **Cloud coverage** | AWS + Azure (more coming) | AWS only |
+| **Data location** | Your DB / VPC | AWS-managed, not portable |
+| **Customization** | Open source — modify anything | Closed product |
+| **Pricing** | LLM at retail (or $0 via Ollama / Claude Code) | Per-investigation + Bedrock markup |
+| **Self-host** | Docker / Railway / on-prem / air-gapped | No |
+
+**When AWS is the better pick:** if you're 100% AWS, never plan to leave, and want zero infrastructure to run, Amazon Q Developer's native Console integration and AWS-only signals (Trusted Advisor, AWS Config, Compute Optimizer) are hard to beat. OpenDevOps is for everyone else.
 
 ## What's inside
 
@@ -45,7 +68,7 @@ DevOps-agent price tag.
   - Soft delete — deleted sessions are hidden immediately but data is preserved for the 30-day cleanup job
 - **Structured logging** via Loguru — used consistently across all modules (tools, agent, API, CLI); every request shows agent reasoning, tool calls with args/results, and a done summary with latency + token counts
 - **CLI** — `devops-agent investigate`, `ask`, and `report` commands powered by the same agent
-- **OpenRouter** as the LLM provider — swap models via a single env var, no code changes
+- **Any LLM via LiteLLM** — OpenAI, Anthropic, OpenRouter, Groq, Gemini, Mistral, **Ollama (local / air-gapped)**, or any OpenAI-compatible endpoint. Auto-detects local **Claude Code** subscription (`~/.claude` OAuth) so a Max/Pro plan can power the agent at zero incremental cost. Swap models via a single env var (`LLM_MODEL`) — no code changes
 
 ## Quick Start
 
