@@ -317,6 +317,60 @@ def test_bash_uses_both_clouds_when_both_connected(monkeypatch):
         cred.reset_current_cloud_account(token)
 
     assert r_aws["success"] and r_az["success"]
-    env_by_bin = dict(runs)
+    # runs[N][0] is the absolute exe path (shutil.which resolved it); match on basename
+    # so the test works regardless of where aws/az live (or .exe / .cmd on Windows).
+    import os as _os
+
+    env_by_bin = {_os.path.basename(t).split(".")[0]: env for t, env in runs}
     assert env_by_bin["aws"]["AWS_ACCESS_KEY_ID"] == "AKIAFAKE"  # AWS account creds
     assert env_by_bin["az"]["AZURE_SUBSCRIPTION_ID"] == "sub-1"  # Azure account env
+
+
+# ── Tri-state contextvar: None (ambient) vs {} (explicit empty / fail closed) ──
+
+
+def test_current_cloud_accounts_is_none_when_unset():
+    """OSS / self-host default: contextvar was never set → callers see None, not {}."""
+    assert cred.current_cloud_accounts() is None
+
+
+def test_resolve_session_ambient_when_contextvar_unset(monkeypatch):
+    """OSS default behavior is preserved: with no contextvar set, resolve_session falls back
+    to _base_session() (the host's ambient env/profile creds)."""
+    sentinel = object()
+    monkeypatch.setattr(cred, "_base_session", lambda: sentinel)
+    cred._session_cache.clear()
+    # contextvar is at its default (None); no setter was called.
+    assert cred.resolve_session() is sentinel
+
+
+def test_resolve_session_fails_closed_on_explicit_empty():
+    """Product safety net: when the contextvar is explicitly set to {} (e.g. tenant with no
+    Cloud Account connected), resolve_session must NOT fall back to platform creds — it raises.
+    """
+    cred._session_cache.clear()
+    token = cred.set_current_cloud_accounts([])  # builds {} -> fail-closed signal
+    try:
+        with pytest.raises(RuntimeError, match="no AWS account connected"):
+            cred.resolve_session()
+    finally:
+        cred.reset_current_cloud_account(token)
+
+
+def test_bash_aws_blocked_on_explicit_empty_accounts(monkeypatch):
+    """Mirror of the resolver test at the bash layer: with {} on the contextvar, bash `aws`
+    is denied without touching subprocess (so the platform's `aws` CLI can't be used either)."""
+    from opendevops_core.tools import bash_tool
+
+    def _no_run(*a, **k):  # subprocess must not execute
+        raise AssertionError("subprocess.run must not run when accounts is explicitly empty")
+
+    monkeypatch.setattr(bash_tool.subprocess, "run", _no_run)
+    token = cred.set_current_cloud_accounts([])
+    try:
+        res = bash_tool.run_bash_command("aws sts get-caller-identity")
+    finally:
+        cred.reset_current_cloud_account(token)
+
+    assert res["success"] is False and res.get("blocked") is True
+    assert "no cloud account" in res["error"].lower()
