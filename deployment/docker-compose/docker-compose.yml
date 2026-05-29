@@ -37,8 +37,14 @@ services:
       # Mount host cloud credentials so the bash tool's `aws`/`az` calls work.
       # AWS keys are static (read-only); az needs to refresh tokens, so mount it read-write.
       # On production (ECS/EC2/AKS), drop these and use an instance/managed identity instead.
+      # Windows note: if `az` in the container fails with "User does not exist in MSAL token
+      # cache", run `docker compose ... exec backend az login --use-device-code` once. See
+      # apps/documentation/azure_setup.md → "Docker (compose) on Windows".
       - ${USERPROFILE}/.aws:/home/app/.aws:ro
       - ${USERPROFILE}/.azure:/home/app/.azure
+      # Share host's Claude Code login (OAuth token + model slot) so CLAUDE_CODE_AUTODETECT
+      # works in-container. Drop this line if you'd rather pass ANTHROPIC_API_KEY via .env.
+      - ${USERPROFILE}/.claude:/home/app/.claude:ro
     depends_on:
       db:
         condition: service_healthy

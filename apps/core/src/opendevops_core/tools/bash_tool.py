@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from typing import Any
@@ -292,9 +293,18 @@ def run_bash_command(command: str) -> dict[str, Any]:
             logger.error("bash_tool: could not resolve org Azure creds for kubectl: {}", e)
             return _blocked(f"Could not resolve organization Azure credentials: {e}")
 
+    # Resolve the binary explicitly. On Windows, subprocess.run([...]) with shell=False
+    # calls CreateProcess, which only auto-appends `.exe` — so `az` (shipped as `az.cmd` by
+    # the MSI/winget installer) is not found. shutil.which honors PATHEXT and PATH from
+    # run_env when supplied.
+    exe = shutil.which(tokens[0], path=(run_env or os.environ).get("PATH"))
+    if exe is None:
+        return _blocked(f"{tokens[0]} not found on PATH")
+    resolved_tokens = [exe, *tokens[1:]]
+
     try:
         proc = subprocess.run(
-            tokens,
+            resolved_tokens,
             capture_output=True,
             text=True,
             timeout=_TIMEOUT,

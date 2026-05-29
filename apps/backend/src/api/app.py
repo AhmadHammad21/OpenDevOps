@@ -97,6 +97,24 @@ async def lifespan(_app: FastAPI):
     from config import settings as _cfg
 
     checkpointer = await db.init()
+
+    # Auto-apply pending SQL migrations on Postgres startup so the deployment "just works"
+    # without a separate `uv run migrate` step. Idempotent via the schema_migrations ledger.
+    if _cfg.checkpoint_backend == "postgres" and _cfg.database_url:
+        from pathlib import Path
+
+        from opendevops_core.migrations import run_migrations
+
+        app_migrations = Path(__file__).resolve().parents[2] / "migrations"
+        try:
+            applied = await asyncio.to_thread(
+                run_migrations, _cfg.database_url, app_migrations
+            )
+            if applied:
+                logger.info("Applied {} migration(s): {}", len(applied), ", ".join(applied))
+        except Exception as e:  # noqa: BLE001 - log + continue so the API still starts
+            logger.error("Migration run failed: {}", e)
+
     from opendevops_core.agent.init_store import refresh_init_cache_from_db
 
     await refresh_init_cache_from_db()

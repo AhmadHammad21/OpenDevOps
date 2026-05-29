@@ -122,6 +122,46 @@ bash tool.
 
 ---
 
+## Docker (compose) on Windows — log in inside the container
+
+The compose files mount your host's `%USERPROFILE%\.azure` into the container so `az` inside shares
+your login. On Windows that mount alone is **not** enough: by default the host's `az` encrypts the
+MSAL token cache with Windows DPAPI, which the Linux `az` in the container can't decrypt — you'll
+see `az account show` work but `az group list` fail with `User '…' does not exist in MSAL token
+cache`.
+
+Easiest fix: log in **once from inside the container** with the device-code flow. The token written
+is in the Linux-portable format and persists in the mounted `.azure` dir.
+
+```powershell
+# After `docker compose ... up --build`, in another terminal:
+docker compose -f deployment/docker-compose/docker-compose.memory.yml `
+  exec backend az login --use-device-code
+
+# Pick a subscription if you have more than one:
+docker compose -f deployment/docker-compose/docker-compose.memory.yml `
+  exec backend az account set --subscription <SUBSCRIPTION_ID>
+
+# Verify:
+docker compose -f deployment/docker-compose/docker-compose.memory.yml `
+  exec backend az group list --output table
+```
+
+Swap the compose file path for whichever backend you're running
+(`docker-compose.sqlite.yml` / `docker-compose.yml`). The login persists across container restarts
+because it's written to the mounted volume.
+
+**Alternative — disable DPAPI on the host** so a single `az login` on Windows works in both places:
+```powershell
+az config set core.encrypt_token_cache=false
+az logout
+az login
+```
+
+macOS/Linux hosts don't have this issue; `${HOME}/.azure` shares cleanly.
+
+---
+
 ## Self-host vs hosted product
 
 - **Self-host (this guide):** one `az` session on the host (service principal or personal login),

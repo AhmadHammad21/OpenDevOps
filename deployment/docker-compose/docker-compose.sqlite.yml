@@ -15,8 +15,14 @@ services:
       SQLITE_PATH: /data/agent.db   # on the writable named volume below
     volumes:
       - sqlite_data:/data
+      # Windows note: if `az` in the container fails with "User does not exist in MSAL token
+      # cache", run `docker compose ... exec backend az login --use-device-code` once. See
+      # apps/documentation/azure_setup.md → "Docker (compose) on Windows".
       - ${USERPROFILE}/.aws:/home/app/.aws:ro
       - ${USERPROFILE}/.azure:/home/app/.azure
+      # Share host's Claude Code login (OAuth token + model slot) so CLAUDE_CODE_AUTODETECT
+      # works in-container. Drop this line if you'd rather pass ANTHROPIC_API_KEY via .env.
+      - ${USERPROFILE}/.claude:/home/app/.claude:ro
     security_opt:
       - no-new-privileges:true
     cap_drop:
