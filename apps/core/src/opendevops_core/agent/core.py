@@ -1,9 +1,22 @@
-"""DeepAgents-based investigation agent."""
+"""DeepAgents-based investigation agent.
+
+The agent itself is **not** a singleton. We keep a tiny LRU cache keyed by
+``(model_name, key_hash)`` so callers can pick a different LLM per request (Settings →
+LLM picker; per-org choice in the product) without paying the create_deep_agent
+compilation cost on every chat message. First request for a given (model, key) compiles
+the agent and caches it; subsequent requests reuse.
+
+The LangGraph checkpointer is set once at startup via :func:`init_agent` and shared
+across all cached agent instances — it carries thread (session) state, so the cache key
+should not include it.
+"""
 
 import asyncio
+import hashlib
 import json
 import re
 import uuid
+from functools import lru_cache
 from typing import Any
 
 from deepagents import create_deep_agent
@@ -31,14 +44,32 @@ SHARED_TOOLS = ALL_HISTORY_TOOLS + ALL_BASH_TOOLS + ALL_SKILL_TOOLS + ALL_FINAL_
 # Active provider's cloud tools + shared tools. Provider is selected by CLOUD_PROVIDER.
 ALL_TOOLS = get_active_provider().tools() + SHARED_TOOLS
 
-_agent = None
-_active_model: str | None = None
+# Shared across all cached agent instances; set once during init_agent().
+_checkpointer: Any = None
+
+# api_key -> ChatLiteLLM-suitable string. lru_cache stores hashes (so plaintext keys never
+# end up in cache.repr), and this map lets us recover the actual key when building the model.
+_key_map: dict[str, str | None] = {}
 
 
-def get_active_model() -> str:
-    """Return the resolved LLM model string (may differ from settings.llm_model when
-    Claude Code auto-detection overrides the default)."""
-    return _active_model or settings.llm_model
+def _key_hash(key: str | None) -> str:
+    """Stable, repr-safe identifier for an API key. We register key -> hash both ways so
+    the lru_cache can be keyed by hash without exposing the plaintext key in repr/logs."""
+    h = hashlib.sha256((key or "").encode()).hexdigest()[:16] if key is not None else "_none_"
+    _key_map.setdefault(h, key)
+    return h
+
+
+def get_active_model(model_name: str | None = None) -> str:
+    """Return the resolved LLM model string. When called with no arg, returns the
+    deployment's default (resolved from env). Chat handlers should pass the per-session
+    model that resolve_agent() returned to label cost/usage events accurately."""
+    if model_name:
+        return model_name
+    from opendevops_core.agent.llm import resolve_model_and_key
+
+    m, _ = resolve_model_and_key()
+    return m or settings.llm_model
 
 
 def _run_async(coro: Any) -> Any:
@@ -67,37 +98,66 @@ def _build_system_prompt(api_key: str | None) -> Any:
     return content
 
 
-def init_agent(checkpointer: Any) -> None:
-    """Create the agent with the given checkpointer. Called once during app startup."""
-    global _agent, _active_model
-    from opendevops_core.agent.llm import resolve_model_and_key
-
-    model_name, api_key = resolve_model_and_key()
-    _active_model = model_name
+@lru_cache(maxsize=8)
+def _build_agent(model_name: str, key_hash: str) -> Any:
+    """Compile a fresh agent for the given (model, key) tuple. Cached so repeated chat
+    requests with the same selection reuse the compiled LangGraph."""
+    if _checkpointer is None:
+        raise RuntimeError("Agent not initialised — call init_agent() first")
+    api_key = _key_map.get(key_hash)
     model = ChatLiteLLM(
         model=model_name,
         api_base=settings.llm_api_base or None,
         api_key=api_key,
     )
     tools = [with_cap(t) for t in ALL_TOOLS] if settings.tool_response_max_chars > 0 else ALL_TOOLS
-    _agent = create_deep_agent(
+    logger.info("agent: building compiled graph for model={}", model_name)
+    return create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=_build_system_prompt(api_key),
-        checkpointer=checkpointer,
+        checkpointer=_checkpointer,
     )
 
 
+def resolve_agent(
+    override_source: str | None = None,
+    override_model: str | None = None,
+) -> tuple[Any, str]:
+    """Return (agent, model_name) using the override if provided, else the deployment
+    default. ``override_source`` accepts a CLI detector name (e.g. ``"claude_code"``) to
+    pin to the auto-detected subscription login regardless of CLAUDE_CODE_AUTODETECT.
+    """
+    from opendevops_core.agent.llm import resolve_model_and_key
+
+    model_name, api_key = resolve_model_and_key(
+        override_source=override_source, override_model=override_model
+    )
+    return _build_agent(model_name, _key_hash(api_key)), model_name
+
+
+def init_agent(checkpointer: Any) -> None:
+    """Set the shared checkpointer and warm the agent cache with the default selection.
+    Called once during app startup. The default agent is what serves the CLI and any
+    callers that don't pass an explicit model preference."""
+    global _checkpointer
+    _checkpointer = checkpointer
+    _build_agent.cache_clear()
+    _key_map.clear()
+    # Warm with the default selection so the first chat request is instant.
+    resolve_agent()
+
+
 def get_agent() -> Any:
-    if _agent is None:
-        raise RuntimeError("Agent not initialised — call init_agent() first")
-    return _agent
+    """Return the deployment-default compiled agent. Equivalent to ``resolve_agent()[0]``
+    for callers (CLI, non-chat entrypoints) that don't have a per-session override."""
+    agent, _ = resolve_agent()
+    return agent
 
 
 def ensure_agent_initialized() -> None:
     """Initialize DB + agent lazily for non-API entrypoints (CLI)."""
-    global _agent
-    if _agent is not None:
+    if _checkpointer is not None:
         return
     from opendevops_core.agent.db import db
 

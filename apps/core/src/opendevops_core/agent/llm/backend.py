@@ -45,6 +45,8 @@ def _provider_of(model: str) -> str:
         return "groq"
     if model.startswith("ollama/"):
         return "ollama"
+    if model.startswith("gemini/") or "gemini" in model:
+        return "gemini"
     return "custom"
 
 
@@ -76,10 +78,45 @@ def _detector_backend() -> LlmBackendInfo | None:
     return None
 
 
-def get_backend_info() -> LlmBackendInfo:
-    """Return a description of the active LLM backend for /api/settings and /api/init/status."""
-    model = settings.llm_model
+def get_backend_info(pref: dict | None = None) -> LlmBackendInfo:
+    """Return a description of the active LLM backend for /api/settings and /api/init/status.
+
+    When ``pref`` is provided (the saved Settings → LLM choice, shape
+    ``{"source": ..., "model": ...}``), it overrides the env-derived default — so the UI
+    shows what *new sessions* will actually use, not the original .env value.
+    """
     api_base = settings.llm_api_base or None
+
+    # Saved Settings pick wins over .env. (Existing sessions keep their pinned model;
+    # this only describes what would be used for a new session right now.)
+    if pref and pref.get("source"):
+        for det in ALL_DETECTORS:
+            if det.name == pref["source"]:
+                resolved_model = (pref.get("model") or "").strip()
+                if not resolved_model:
+                    st = det.status()
+                    resolved_model = st.get("model") or settings.llm_model
+                return LlmBackendInfo(
+                    source=det.name,
+                    model=resolved_model,
+                    display_name=f"{det.label} (picked in Settings)",
+                    provider=det.provider,
+                    configured=bool(det.enabled),
+                    detail=_strip_date(resolved_model),
+                )
+    if pref and pref.get("model"):
+        m = pref["model"]
+        provider = _provider_of(m)
+        return LlmBackendInfo(
+            source=provider,
+            model=m,
+            display_name=provider.title() + " (picked in Settings)",
+            provider=provider,
+            configured=bool(_api_key_for_provider(provider) or provider == "ollama"),
+            detail=_strip_date(m),
+        )
+
+    model = settings.llm_model
     explicit_model = bool(os.environ.get("LLM_MODEL"))
 
     # Custom endpoint always takes precedence
@@ -151,11 +188,51 @@ def get_backend_info() -> LlmBackendInfo:
     )
 
 
-def resolve_model_and_key() -> tuple[str, str | None]:
+def resolve_model_and_key(
+    override_source: str | None = None,
+    override_model: str | None = None,
+) -> tuple[str, str | None]:
     """Return (litellm_model_string, api_key_or_None) for ChatLiteLLM initialisation.
 
-    Called from init_agent() in core.py and other LLM call sites.
+    With no arguments, behaves as before: walk the env/detector priority chain and pick the
+    first match. With ``override_source`` and/or ``override_model`` provided (typically from
+    the UI's ``app_config["llm_preference"]`` row), bypass the default chain and use the
+    user-selected provider and model.
+
+      * ``override_source == "claude_code"`` (or any detector name) — run that detector's
+        resolve() and return its (model, key). Lets the user explicitly opt in to the
+        subscription login from the UI, independent of CLAUDE_CODE_AUTODETECT.
+      * ``override_model`` set, no source — look up the api key for the provider implied
+        by the model string (anthropic/* -> ANTHROPIC_API_KEY, openrouter/* -> OPENROUTER_API_KEY, ...).
     """
+    if override_source:
+        for det in ALL_DETECTORS:
+            if det.name == override_source:
+                if not det.enabled:
+                    # Flag-killed detector (e.g. CLAUDE_CODE_AUTODETECT=false). Respect it
+                    # even if a stale UI pick still names it.
+                    raise RuntimeError(
+                        f"{det.label}: disabled via .env flag. Re-enable to use it from Settings."
+                    )
+                resolved = det.resolve()
+                if resolved:
+                    model, key = resolved
+                    # Honor an explicit model pick alongside the detector source — lets
+                    # users pick Claude Code + Opus, Claude Code + Sonnet, etc. (the OAuth
+                    # token works against any Claude model the subscription tier allows).
+                    if override_model:
+                        model = override_model
+                    return model, key
+                # detector enabled in UI but no auth available -> surface a useful error
+                raise RuntimeError(
+                    f"{det.label}: selected in Settings but not authenticated. {det.status().get('hint', '')}"
+                )
+
+    if override_model:
+        provider = _provider_of(override_model)
+        key = _api_key_for_provider(provider)
+        return override_model, key
+
     info = get_backend_info()
 
     # If a CLI detector supplied the backend, use its resolved (model, key)
@@ -166,3 +243,176 @@ def resolve_model_and_key() -> tuple[str, str | None]:
                 return resolved
 
     return info["model"], (settings.llm_api_key or None)
+
+
+def _api_key_for_provider(provider: str) -> str | None:
+    """Return the API key env var (or settings field) associated with a provider name."""
+    if provider == "anthropic":
+        return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+    if provider == "openrouter":
+        return settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY")
+    if provider == "openai":
+        return os.environ.get("OPENAI_API_KEY")
+    if provider == "groq":
+        return os.environ.get("GROQ_API_KEY")
+    if provider == "gemini":
+        return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if provider == "ollama":
+        return None  # local server, no key
+    return settings.llm_api_key or None
+
+
+# A curated catalog of models per provider, shown in the Settings UI dropdown.
+# Custom models still work via .env LLM_MODEL — this is just for the picker convenience.
+# Keep this list reasonable: too many entries clutter the dropdown; too few hides options.
+_PROVIDER_CATALOG: dict[str, tuple[str, str, list[str]]] = {
+    # source_key: (label, marker, models)
+    "claude_code":  ("Claude Code (subscription)", "CLAUDE_CODE",   [
+        # Claude Code OAuth can call any Anthropic model the subscription tier allows.
+        # Newest first. Higher tiers (Max) unlock the heavier Opus models.
+        "anthropic/claude-opus-4-8",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-opus-4-5-20251001",
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-sonnet-4-5-20251024",
+        "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-3-5-sonnet-20241022",
+    ]),
+    "anthropic":    ("Anthropic API",              "ANTHROPIC",     [
+        # Same models as Claude Code, but billed via ANTHROPIC_API_KEY instead of OAuth.
+        "anthropic/claude-opus-4-8",
+        "anthropic/claude-opus-4-7",
+        "anthropic/claude-opus-4-5-20251001",
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-sonnet-4-5-20251024",
+        "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-3-5-sonnet-20241022",
+    ]),
+    "openrouter":   ("OpenRouter",                 "OPENROUTER",    [
+        # Anthropic
+        "openrouter/anthropic/claude-opus-4-8",
+        "openrouter/anthropic/claude-opus-4-7",
+        "openrouter/anthropic/claude-sonnet-4-6",
+        "openrouter/anthropic/claude-haiku-4-5",
+        # OpenAI
+        "openrouter/openai/gpt-4o",
+        "openrouter/openai/gpt-4o-mini",
+        "openrouter/openai/gpt-4-turbo",
+        # Google
+        "openrouter/google/gemini-2.5-pro",
+        "openrouter/google/gemini-2.5-flash",
+        "openrouter/google/gemma-3-27b-it",
+        # Open models
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
+        "openrouter/deepseek/deepseek-v3",
+        "openrouter/qwen/qwen-2.5-72b-instruct",
+        "openrouter/x-ai/grok-2-1212",
+        "openrouter/mistralai/mistral-large",
+    ]),
+    "openai":       ("OpenAI",                     "OPENAI",        [
+        "openai/gpt-4o",
+        "openai/gpt-4o-mini",
+        "openai/gpt-4-turbo",
+        "openai/o1-mini",
+    ]),
+    "gemini":       ("Google Gemini",              "GEMINI",        [
+        "gemini/gemini-2.5-pro",
+        "gemini/gemini-2.5-flash",
+        "gemini/gemini-2.5-flash-lite",
+    ]),
+    "groq":         ("Groq",                       "GROQ",          [
+        "groq/llama-3.3-70b-versatile",
+        "groq/llama-3.1-8b-instant",
+        "groq/mixtral-8x7b-32768",
+    ]),
+    "ollama":       ("Ollama (local)",             "OLLAMA",        [
+        "ollama/llama3.3",
+        "ollama/qwen2.5-coder",
+        "ollama/deepseek-r1",
+    ]),
+}
+
+
+class ProviderInfo(TypedDict):
+    name: str             # source key — "claude_code" | "anthropic" | "openrouter" | ...
+    label: str            # human-readable
+    configured: bool      # True if creds are available for this provider
+    models: list[str]     # curated picks; Claude Code is empty (auto-detected)
+    note: str             # hint shown in UI when unconfigured
+
+
+def available_providers() -> list[ProviderInfo]:
+    """Describe every provider the Settings UI can offer, with a ``configured`` flag.
+
+    The UI greys out providers whose credentials are not present in ``.env`` (or whose CLI
+    detector is not installed/authenticated). For Claude Code, ``configured`` reflects
+    whether the local subscription login is usable right now.
+    """
+    out: list[ProviderInfo] = []
+    for source, (label, marker, models) in _PROVIDER_CATALOG.items():
+        if source == "claude_code":
+            # Defer to the detector for the actual status. Gated on `enabled` so flipping
+            # CLAUDE_CODE_AUTODETECT=false acts as a single kill switch for the feature —
+            # the UI won't offer Claude Code unless the env flag allows it.
+            det = next((d for d in ALL_DETECTORS if d.name == "claude_code"), None)
+            st = det.status() if det else {}
+            enabled = bool(det and det.enabled)
+            configured = enabled and bool(st.get("installed") and st.get("authenticated"))
+            note = (
+                "Set CLAUDE_CODE_AUTODETECT=true in .env" if det and not enabled
+                else "Run `claude` to log in" if det and st.get("installed") and not st.get("authenticated")
+                else "Install Claude Code to enable" if det and not st.get("installed")
+                else ""
+            )
+            # Surface the FULL curated catalog so users can pick any Claude model the OAuth
+            # token can call (Opus 4.8, Sonnet 4.6, Haiku 4.5, etc.). If the user's
+            # ~/.claude/settings.json names a specific model, promote it to the top so it's
+            # the default selection.
+            cat_models = list(models)
+            cc_model = st.get("model")
+            if cc_model and cc_model in cat_models:
+                cat_models.remove(cc_model)
+                cat_models.insert(0, cc_model)
+            elif cc_model and cc_model not in cat_models:
+                cat_models.insert(0, cc_model)
+            out.append(ProviderInfo(
+                name=source,
+                label=label,
+                configured=configured,
+                models=cat_models,
+                note=note,
+            ))
+            continue
+
+        if marker == "ANTHROPIC":
+            configured = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+            note = "Set ANTHROPIC_API_KEY in .env"
+        elif marker == "OPENROUTER":
+            configured = bool(settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY"))
+            note = "Set OPENROUTER_API_KEY in .env"
+        elif marker == "OPENAI":
+            configured = bool(os.environ.get("OPENAI_API_KEY"))
+            note = "Set OPENAI_API_KEY in .env"
+        elif marker == "GROQ":
+            configured = bool(os.environ.get("GROQ_API_KEY"))
+            note = "Set GROQ_API_KEY in .env"
+        elif marker == "GEMINI":
+            configured = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+            note = "Set GEMINI_API_KEY (or GOOGLE_API_KEY) in .env"
+        elif marker == "OLLAMA":
+            # No key needed; just having an LLM_API_BASE pointing at Ollama is enough.
+            # We don't probe the server here — show as available; resolution failure surfaces on use.
+            configured = True
+            note = "Configure LLM_API_BASE for non-default Ollama endpoints"
+        else:
+            configured = False
+            note = ""
+
+        out.append(ProviderInfo(
+            name=source,
+            label=label,
+            configured=configured,
+            models=list(models),
+            note=note if not configured else "",
+        ))
+    return out

@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { cn } from '../lib/utils';
 import LlmBackendCard from '../components/LlmBackendCard';
-import type { LlmBackendInfo } from '../types';
+import type { LlmBackendInfo, LlmSettings } from '../types';
 
 interface EnvVar   { key: string; value: string; secret: boolean }
 interface AgentVar { key: string; label: string; value: string; hint: string }
@@ -61,6 +61,16 @@ export default function SettingsPage() {
   const [infraRules,    setInfraRules]    = useState<Record<string, string>>({});
   const [infraBusy,     setInfraBusy]     = useState(false);
 
+  // LLM picker (Agent config tab)
+  const [llm,           setLlm]           = useState<LlmSettings | null>(null);
+  const [llmSource,     setLlmSource]     = useState<string>('');
+  const [llmModel,      setLlmModel]      = useState<string>('');
+  const [llmSaving,     setLlmSaving]     = useState(false);
+  // When true, the model field becomes free-text so the user can type a model name
+  // we haven't curated yet (a new release, a niche OpenRouter variant, an Ollama tag).
+  const [llmCustomMode, setLlmCustomMode] = useState(false);
+  const _CUSTOM = '__custom__';
+
   const TABS: { id: Tab; label: string }[] = [
     ...(isAdmin ? [{ id: 'aws' as Tab, label: 'AWS Configuration' }] : []),
     { id: 'env',          label: 'Environment' },
@@ -99,6 +109,75 @@ export default function SettingsPage() {
       })
       .catch(() => {});
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'agent') return;
+    apiFetch('/api/settings/llm')
+      .then(r => r.json())
+      .then((d: LlmSettings) => {
+        setLlm(d);
+        const src = d.current.source || d.backend.source || '';
+        const mdl = d.current.model || d.backend.model || '';
+        setLlmSource(src);
+        setLlmModel(mdl);
+        // If the saved model isn't in the provider's curated list, treat it as custom.
+        const provider = d.providers.find(p => p.name === src);
+        if (mdl && provider && !provider.models.includes(mdl)) {
+          setLlmCustomMode(true);
+        }
+      })
+      .catch(() => {});
+  }, [tab]);
+
+  const selectedProvider = llm?.providers.find(p => p.name === llmSource) || null;
+  const availableModelsForSource = selectedProvider?.models || [];
+
+  // Hint for the custom-model text input: prefix the provider expects (anthropic/, openrouter/, …).
+  // Used as placeholder so users don't have to remember the LiteLLM naming convention.
+  const customModelHint = (() => {
+    if (!llmSource) return 'provider/model-name';
+    if (llmSource === 'claude_code') return 'anthropic/claude-…';
+    return `${llmSource}/your-model-name`;
+  })();
+
+  const onSelectProvider = (name: string) => {
+    setLlmSource(name);
+    setLlmCustomMode(false);
+    const p = llm?.providers.find(pr => pr.name === name);
+    setLlmModel(p?.models[0] || '');
+  };
+
+  const onSelectModel = (value: string) => {
+    if (value === _CUSTOM) {
+      setLlmCustomMode(true);
+      setLlmModel('');
+    } else {
+      setLlmCustomMode(false);
+      setLlmModel(value);
+    }
+  };
+
+  const saveLlmPick = async () => {
+    setLlmSaving(true);
+    try {
+      const r = await apiFetch('/api/settings/llm', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: llmSource, model: llmModel }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(err?.detail || 'Save failed');
+      }
+      toast.success('LLM updated — new chats will use it');
+      // Refresh the backend info so the active-model card reflects the new pick.
+      apiFetch('/api/settings').then(r => r.json()).then(d => setData(d as SettingsData)).catch(() => {});
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setLlmSaving(false);
+    }
+  };
 
   const toggleShow = (k: string) => setShown(p => ({ ...p, [k]: !p[k] }));
 
@@ -266,21 +345,111 @@ export default function SettingsPage() {
 
         {/* Agent config tab */}
         {tab === 'agent' && (
-          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
-              <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Agent Configuration</span>
-            </div>
-            {data ? data.agent.map((f, i) => (
-              <div key={f.key} className={`flex items-center gap-4 px-4 py-[11px] ${i < data.agent.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
-                <div className="flex-[0_0_220px]">
-                  <div className="text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{f.label}</div>
-                  <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-0.5">{f.hint}</div>
-                </div>
-                <span className="font-mono text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9]">{f.value}</span>
+          <div className="space-y-4">
+            {/* LLM picker card */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">LLM</span>
+                {data?.llm_backend && (
+                  <span className="text-[11px] font-mono text-gray-500 dark:text-[#94A3B8]">
+                    Active: {data.llm_backend.display_name} · {data.llm_backend.detail}
+                  </span>
+                )}
               </div>
-            )) : (
-              <div className="px-4 py-6 text-[13px] text-gray-400 dark:text-[#64748B] text-center">Loading…</div>
-            )}
+              <div className="px-4 py-4 space-y-3">
+                {!llm ? (
+                  <div className="text-[13px] text-gray-400 dark:text-[#64748B]">Loading…</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 dark:text-[#94A3B8] mb-1">Provider</label>
+                        <select
+                          className={inputCls}
+                          value={llmSource}
+                          onChange={e => onSelectProvider(e.target.value)}
+                        >
+                          {!llmSource && <option value="">— pick a provider —</option>}
+                          {llm.providers.map(p => (
+                            <option key={p.name} value={p.name} disabled={!p.configured}>
+                              {p.label}{p.configured ? '' : ' — not configured'}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedProvider && !selectedProvider.configured && selectedProvider.note && (
+                          <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">{selectedProvider.note}</div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-600 dark:text-[#94A3B8] mb-1">Model</label>
+                        {llmCustomMode ? (
+                          <>
+                            <input
+                              type="text"
+                              className={inputCls}
+                              value={llmModel}
+                              placeholder={customModelHint}
+                              onChange={e => setLlmModel(e.target.value.trim())}
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onSelectProvider(llmSource)}
+                              className="text-[10px] text-indigo-500 dark:text-[#818CF8] hover:underline mt-1"
+                            >
+                              ← back to curated list
+                            </button>
+                          </>
+                        ) : (
+                          <select
+                            className={inputCls}
+                            value={llmModel || ''}
+                            onChange={e => onSelectModel(e.target.value)}
+                            disabled={!llmSource}
+                          >
+                            {!llmSource && <option value="">— pick a provider first —</option>}
+                            {availableModelsForSource.map(m => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                            {llmSource && <option value={_CUSTOM}>Custom — type a model name…</option>}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <div className="text-[11px] text-gray-400 dark:text-[#64748B]">
+                        Changes apply to <span className="font-medium">new chats</span>. Existing sessions keep their original model. To enable more providers, add the key to <span className="font-mono">.env</span> and restart.
+                      </div>
+                      <button
+                        onClick={saveLlmPick}
+                        disabled={llmSaving || !llmSource}
+                        className="text-[12px] font-medium px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-[#27272F] text-white transition-colors"
+                      >
+                        {llmSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Existing read-only agent settings */}
+            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
+                <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Agent Configuration</span>
+              </div>
+              {data ? data.agent.map((f, i) => (
+                <div key={f.key} className={`flex items-center gap-4 px-4 py-[11px] ${i < data.agent.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
+                  <div className="flex-[0_0_220px]">
+                    <div className="text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{f.label}</div>
+                    <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-0.5">{f.hint}</div>
+                  </div>
+                  <span className="font-mono text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9]">{f.value}</span>
+                </div>
+              )) : (
+                <div className="px-4 py-6 text-[13px] text-gray-400 dark:text-[#64748B] text-center">Loading…</div>
+              )}
+            </div>
           </div>
         )}
 

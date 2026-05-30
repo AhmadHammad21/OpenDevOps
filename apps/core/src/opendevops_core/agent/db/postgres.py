@@ -135,7 +135,8 @@ class PostgresBackend(DatabaseBackend):
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = NOW(),
-                model = EXCLUDED.model,
+                -- model is intentionally NOT updated: the session is pinned to whichever
+                -- LLM it started with so the UI's "model picker" only affects NEW sessions.
                 org_id = COALESCE(sessions.org_id, EXCLUDED.org_id),
                 user_id = COALESCE(sessions.user_id, EXCLUDED.user_id),
                 user_interacted = CASE
@@ -224,6 +225,13 @@ class PostgresBackend(DatabaseBackend):
             tool_call_count,
             self._jsonb(metadata or {}),
         )
+
+    async def get_session_model(self, session_id: str) -> str | None:
+        rows = await self._fetchall(
+            "SELECT model FROM sessions WHERE id = %s AND is_deleted = FALSE",
+            uuid.UUID(session_id),
+        )
+        return rows[0]["model"] if rows else None
 
     async def list_sessions(
         self, limit: int = 15, offset: int = 0, org_id: str | None = None

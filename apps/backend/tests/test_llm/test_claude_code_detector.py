@@ -66,9 +66,9 @@ def test_installed_subscription_resolves(monkeypatch, fake_claude_home, clean_an
 
 @pytest.mark.parametrize("slot,expected", [
     ("sonnet", "anthropic/claude-sonnet-4-6"),
-    ("opus", "anthropic/claude-opus-4-7"),
+    ("opus", "anthropic/claude-opus-4-8"),     # latest Opus
     ("haiku", "anthropic/claude-haiku-4-5-20251001"),
-    ("some-future-model", "anthropic/claude-sonnet-4-6"),  # unknown slot → default
+    ("some-future-model", "anthropic/claude-opus-4-8"),  # unknown slot → default (latest Opus)
 ])
 def test_model_slot_mapping(monkeypatch, fake_claude_home, clean_anthropic_env, slot, expected):
     settings_path, creds_path = fake_claude_home

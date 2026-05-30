@@ -26,23 +26,25 @@ _CREDS_PATH = Path.home() / ".claude" / ".credentials.json"
 # Claude Code model slot names → LiteLLM model strings.
 # Includes both short aliases ("sonnet") and full slot names ("claude-sonnet-4-5").
 _MODEL_SLOTS: dict[str, str] = {
-    # Short aliases used by Claude Code settings.json
+    # Short aliases used by Claude Code settings.json — point at the latest of each tier.
     "sonnet": "anthropic/claude-sonnet-4-6",
-    "opus": "anthropic/claude-opus-4-7",
+    "opus": "anthropic/claude-opus-4-8",
     "haiku": "anthropic/claude-haiku-4-5-20251001",
-    # Full slot names
+    # Full slot names (newest first per tier)
+    "claude-opus-4-8": "anthropic/claude-opus-4-8",
     "claude-opus-4-7": "anthropic/claude-opus-4-7",
-    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
-    "claude-haiku-4-5": "anthropic/claude-haiku-4-5-20251001",
     "claude-opus-4-5": "anthropic/claude-opus-4-5-20251001",
     "claude-opus-4": "anthropic/claude-opus-4-20251101",
+    "claude-sonnet-4-6": "anthropic/claude-sonnet-4-6",
     "claude-sonnet-4-5": "anthropic/claude-sonnet-4-5-20251024",
     "claude-sonnet-4": "anthropic/claude-sonnet-4-20251120",
+    "claude-haiku-4-5": "anthropic/claude-haiku-4-5-20251001",
     "claude-3-5-sonnet-20241022": "anthropic/claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022": "anthropic/claude-3-5-haiku-20241022",
     "claude-3-opus-20240229": "anthropic/claude-3-opus-20240229",
 }
-_DEFAULT_MODEL = "anthropic/claude-sonnet-4-6"
+# Default to the newest released Opus when settings.json doesn't say.
+_DEFAULT_MODEL = "anthropic/claude-opus-4-8"
 
 
 class ClaudeCodeDetector:
