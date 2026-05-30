@@ -66,6 +66,10 @@ export default function SettingsPage() {
   const [llmSource,     setLlmSource]     = useState<string>('');
   const [llmModel,      setLlmModel]      = useState<string>('');
   const [llmSaving,     setLlmSaving]     = useState(false);
+  // When true, the model field becomes free-text so the user can type a model name
+  // we haven't curated yet (a new release, a niche OpenRouter variant, an Ollama tag).
+  const [llmCustomMode, setLlmCustomMode] = useState(false);
+  const _CUSTOM = '__custom__';
 
   const TABS: { id: Tab; label: string }[] = [
     ...(isAdmin ? [{ id: 'aws' as Tab, label: 'AWS Configuration' }] : []),
@@ -112,8 +116,15 @@ export default function SettingsPage() {
       .then(r => r.json())
       .then((d: LlmSettings) => {
         setLlm(d);
-        setLlmSource(d.current.source || d.backend.source || '');
-        setLlmModel(d.current.model || d.backend.model || '');
+        const src = d.current.source || d.backend.source || '';
+        const mdl = d.current.model || d.backend.model || '';
+        setLlmSource(src);
+        setLlmModel(mdl);
+        // If the saved model isn't in the provider's curated list, treat it as custom.
+        const provider = d.providers.find(p => p.name === src);
+        if (mdl && provider && !provider.models.includes(mdl)) {
+          setLlmCustomMode(true);
+        }
       })
       .catch(() => {});
   }, [tab]);
@@ -121,11 +132,29 @@ export default function SettingsPage() {
   const selectedProvider = llm?.providers.find(p => p.name === llmSource) || null;
   const availableModelsForSource = selectedProvider?.models || [];
 
+  // Hint for the custom-model text input: prefix the provider expects (anthropic/, openrouter/, …).
+  // Used as placeholder so users don't have to remember the LiteLLM naming convention.
+  const customModelHint = (() => {
+    if (!llmSource) return 'provider/model-name';
+    if (llmSource === 'claude_code') return 'anthropic/claude-…';
+    return `${llmSource}/your-model-name`;
+  })();
+
   const onSelectProvider = (name: string) => {
     setLlmSource(name);
+    setLlmCustomMode(false);
     const p = llm?.providers.find(pr => pr.name === name);
-    // Default to the first model of that provider when switching.
     setLlmModel(p?.models[0] || '');
+  };
+
+  const onSelectModel = (value: string) => {
+    if (value === _CUSTOM) {
+      setLlmCustomMode(true);
+      setLlmModel('');
+    } else {
+      setLlmCustomMode(false);
+      setLlmModel(value);
+    }
   };
 
   const saveLlmPick = async () => {
@@ -353,19 +382,38 @@ export default function SettingsPage() {
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium text-gray-600 dark:text-[#94A3B8] mb-1">Model</label>
-                        <select
-                          className={inputCls}
-                          value={llmModel}
-                          onChange={e => setLlmModel(e.target.value)}
-                          disabled={availableModelsForSource.length === 0 && llmSource !== 'claude_code'}
-                        >
-                          {availableModelsForSource.length === 0 && (
-                            <option value="">{llmSource === 'claude_code' ? '(auto-detected)' : '— pick a provider first —'}</option>
-                          )}
-                          {availableModelsForSource.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
+                        {llmCustomMode ? (
+                          <>
+                            <input
+                              type="text"
+                              className={inputCls}
+                              value={llmModel}
+                              placeholder={customModelHint}
+                              onChange={e => setLlmModel(e.target.value.trim())}
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onSelectProvider(llmSource)}
+                              className="text-[10px] text-indigo-500 dark:text-[#818CF8] hover:underline mt-1"
+                            >
+                              ← back to curated list
+                            </button>
+                          </>
+                        ) : (
+                          <select
+                            className={inputCls}
+                            value={llmModel || ''}
+                            onChange={e => onSelectModel(e.target.value)}
+                            disabled={!llmSource}
+                          >
+                            {!llmSource && <option value="">— pick a provider first —</option>}
+                            {availableModelsForSource.map(m => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                            {llmSource && <option value={_CUSTOM}>Custom — type a model name…</option>}
+                          </select>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3 pt-1">

@@ -33,8 +33,10 @@ def _mask(value: str | None, show_prefix: int = 4) -> str:
 async def get_settings(
     _user: Annotated[dict | None, Depends(get_current_user)],
 ) -> dict:
+    # NOTE: LLM_MODEL intentionally not surfaced here — the picker on the Agent config tab
+    # overrides it per-session, so showing the .env default would mislead users about what's
+    # actually running. See the LLM card for the active model.
     env = [
-        {"key": "LLM_MODEL",           "value": settings.llm_model,                                           "secret": False},
         {"key": "OPENROUTER_API_KEY",  "value": _mask(settings.openrouter_api_key or None),                   "secret": True},
         {"key": "OPENROUTER_BASE_URL", "value": settings.openrouter_base_url or "(not set)",                  "secret": False},
         {"key": "LLM_API_KEY",         "value": _mask(settings.llm_api_key),                                  "secret": True},
