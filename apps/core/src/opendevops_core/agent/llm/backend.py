@@ -364,13 +364,22 @@ def available_providers() -> list[ProviderInfo]:
                 else "Install Claude Code to enable" if det and not st.get("installed")
                 else ""
             )
-            # When Claude Code is configured, surface the model the user picked there.
+            # Surface the FULL curated catalog so users can pick any Claude model the OAuth
+            # token can call (Opus 4.8, Sonnet 4.6, Haiku 4.5, etc.). If the user's
+            # ~/.claude/settings.json names a specific model, promote it to the top so it's
+            # the default selection.
+            cat_models = list(models)
             cc_model = st.get("model")
+            if cc_model and cc_model in cat_models:
+                cat_models.remove(cc_model)
+                cat_models.insert(0, cc_model)
+            elif cc_model and cc_model not in cat_models:
+                cat_models.insert(0, cc_model)
             out.append(ProviderInfo(
                 name=source,
                 label=label,
                 configured=configured,
-                models=[cc_model] if cc_model else [],
+                models=cat_models,
                 note=note,
             ))
             continue
