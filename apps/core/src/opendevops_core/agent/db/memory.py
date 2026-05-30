@@ -63,7 +63,8 @@ class MemoryBackend(DatabaseBackend):
     ) -> None:
         if session_id in self._sessions:
             self._sessions[session_id]["last_active_at"] = self._now()
-            self._sessions[session_id]["model"] = model
+            # model intentionally NOT updated: pinned to the LLM the session started with
+            # (the Settings picker only affects new sessions).
             if source == "chat":
                 self._sessions[session_id]["user_interacted"] = True
             self._sessions[session_id].setdefault("org_id", org_id)
@@ -152,6 +153,12 @@ class MemoryBackend(DatabaseBackend):
                 "metadata": metadata or {},
             }
         )
+
+    async def get_session_model(self, session_id: str) -> str | None:
+        s = self._sessions.get(session_id)
+        if not s or s.get("is_deleted"):
+            return None
+        return s.get("model")
 
     async def list_sessions(
         self, limit: int = 15, offset: int = 0, org_id: str | None = None

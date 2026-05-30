@@ -339,7 +339,8 @@ class SQLiteBackend(DatabaseBackend):
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 last_active_at = strftime('%Y-%m-%dT%H:%M:%S', 'now'),
-                model = excluded.model,
+                -- model intentionally NOT updated: pinned to the LLM the session started with
+                -- (the Settings picker only affects new sessions).
                 user_interacted = CASE
                     WHEN excluded.source = 'chat' THEN 1
                     ELSE sessions.user_interacted
@@ -426,6 +427,13 @@ class SQLiteBackend(DatabaseBackend):
             tool_call_count,
             json.dumps(metadata or {}),
         )
+
+    async def get_session_model(self, session_id: str) -> str | None:
+        rows = await self._fetchall(
+            "SELECT model FROM sessions WHERE id = ? AND is_deleted = 0",
+            session_id,
+        )
+        return rows[0]["model"] if rows else None
 
     async def list_sessions(
         self, limit: int = 15, offset: int = 0, org_id: str | None = None

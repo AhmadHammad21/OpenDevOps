@@ -12,7 +12,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
-from opendevops_core.agent.core import get_active_model, get_agent
+from opendevops_core.agent.core import resolve_agent
+from opendevops_core.agent.db import db
+from opendevops_core.agent.llm import load_llm_preference
 from opendevops_core.agent.summarizer import maybe_summarize
 from opendevops_core.agent.turns import calc_cost, notify_slack, save_turn
 from opendevops_core.models.chat import ChatRequest
@@ -62,7 +64,17 @@ def _clean(text: str) -> str:
 
 async def _stream_chat(session_id: str, user_message: str):
     """Stream SSE events to the frontend."""
-    agent   = get_agent()
+    # Pin existing sessions to their original model so the user's "switch model" action
+    # in Settings only affects NEW chats. For new sessions, use the saved preference.
+    pinned_model = await db.get_session_model(session_id)
+    if pinned_model:
+        agent, active_model = resolve_agent(override_model=pinned_model)
+    else:
+        pref = await load_llm_preference()
+        agent, active_model = resolve_agent(
+            override_source=(pref or {}).get("source") or None,
+            override_model=(pref or {}).get("model") or None,
+        )
     config  = {
         "configurable": {"thread_id": session_id},
         "recursion_limit": settings.max_tool_calls * 3 + 15,
@@ -223,7 +235,6 @@ async def _stream_chat(session_id: str, user_message: str):
 
     _flush_text_buf()
 
-    active_model = get_active_model()
     usage: dict[str, Any] = {
         "latency_ms": int((time.time() - start) * 1000),
         "model": active_model,

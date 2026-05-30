@@ -5,11 +5,17 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from opendevops_core.agent.init_store import get_runtime_aws_region
-from opendevops_core.agent.llm import get_backend_info
+from opendevops_core.agent.llm import (
+    available_providers,
+    get_backend_info,
+    load_llm_preference,
+    save_llm_preference,
+)
+from pydantic import BaseModel
 
-from api.auth import get_current_user
+from api.auth import get_current_user, require_admin
 from config import settings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -57,3 +63,59 @@ async def get_settings(
     ]
 
     return {"env": env, "agent": agent, "llm_backend": get_backend_info()}
+
+
+# ── LLM picker ──────────────────────────────────────────────────────────────────
+
+
+class LlmPick(BaseModel):
+    source: str | None = None  # detector key (e.g. "claude_code") or empty
+    model: str | None = None   # litellm model string, e.g. "anthropic/claude-opus-4-7"
+
+
+@router.get("/llm")
+async def get_llm(
+    _user: Annotated[dict | None, Depends(get_current_user)],
+) -> dict:
+    """Return the available providers (with `configured` flags) plus the saved preference.
+    The UI uses this to populate the provider dropdown and pre-select the user's pick."""
+    pref = await load_llm_preference()
+    return {
+        "providers": available_providers(),
+        "current": pref or {"source": "", "model": ""},
+        "backend": get_backend_info(),
+    }
+
+
+@router.put("/llm")
+async def put_llm(
+    body: LlmPick,
+    _admin: Annotated[dict | None, Depends(require_admin)],
+) -> dict:
+    """Persist a model pick. Validates the choice against `available_providers()` so the
+    UI can't save a model whose credentials are missing — surfaces a clear error instead."""
+    source = (body.source or "").strip()
+    model = (body.model or "").strip()
+    if not source and not model:
+        raise HTTPException(400, "Pick a provider or a model")
+
+    providers = available_providers()
+    by_name = {p["name"]: p for p in providers}
+
+    if source:
+        prov = by_name.get(source)
+        if prov is None:
+            raise HTTPException(400, f"Unknown provider: {source}")
+        if not prov["configured"]:
+            raise HTTPException(400, f"{prov['label']} is not configured: {prov['note']}")
+        if model and source != "claude_code" and model not in prov["models"]:
+            # Allow custom model names but warn — actually just accept; LiteLLM resolves it.
+            pass
+    elif model:
+        # Find which provider owns this model and check it's configured.
+        owner = next((p for p in providers if model in p["models"]), None)
+        if owner and not owner["configured"]:
+            raise HTTPException(400, f"{owner['label']} is not configured: {owner['note']}")
+
+    saved = await save_llm_preference(source or None, model or None)
+    return {"current": saved}

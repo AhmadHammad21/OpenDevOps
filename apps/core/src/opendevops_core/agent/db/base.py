@@ -75,6 +75,14 @@ class DatabaseBackend(ABC):
         self, limit: int = 15, offset: int = 0, org_id: str | None = None
     ) -> list[dict]: ...
 
+    async def get_session_model(self, session_id: str) -> str | None:
+        """Return the LLM model the session was created with, or None if the session
+        doesn't exist yet. Used by the chat router to pin existing chats to their
+        original model when the user changes the Settings picker.
+
+        Default returns None — backends override when they can answer cheaply."""
+        return None
+
     @abstractmethod
     async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]: ...
 

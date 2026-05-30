@@ -21,6 +21,25 @@ export interface LlmBackendInfo {
   detail: string;
 }
 
+export interface LlmProviderInfo {
+  name: string;
+  label: string;
+  configured: boolean;
+  models: string[];
+  note: string;
+}
+
+export interface LlmPick {
+  source: string;
+  model: string;
+}
+
+export interface LlmSettings {
+  providers: LlmProviderInfo[];
+  current: LlmPick;
+  backend: LlmBackendInfo;
+}
+
 export interface UserMessage {
   id: string;
   role: 'user';

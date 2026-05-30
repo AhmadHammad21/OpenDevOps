@@ -23,7 +23,8 @@ class _SlowAgent:
 
 
 def test_ainvoke_with_timeout_success(monkeypatch):
-    monkeypatch.setattr(core, "_agent", _FastAgent())
+    fake = _FastAgent()
+    monkeypatch.setattr(core, "get_agent", lambda: fake)
     monkeypatch.setattr(core.settings, "investigation_timeout", 1)
 
     result = asyncio.run(core.ainvoke_with_timeout({"messages": []}, {"configurable": {}}))
@@ -31,7 +32,8 @@ def test_ainvoke_with_timeout_success(monkeypatch):
 
 
 def test_ainvoke_with_timeout_raises_timeout(monkeypatch):
-    monkeypatch.setattr(core, "_agent", _SlowAgent())
+    fake = _SlowAgent()
+    monkeypatch.setattr(core, "get_agent", lambda: fake)
     monkeypatch.setattr(core.settings, "investigation_timeout", 0.01)
 
     with pytest.raises(TimeoutError):
