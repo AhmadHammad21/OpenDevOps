@@ -17,7 +17,7 @@ from opendevops_core.agent.init_store import (
     load_init_async,
     save_init_async,
 )
-from opendevops_core.agent.llm import get_backend_info
+from opendevops_core.agent.llm import get_backend_info, load_llm_preference
 from pydantic import BaseModel, EmailStr, Field
 
 from api.auth import hash_password, require_admin
@@ -63,7 +63,7 @@ async def status():
     data["event_infra_enabled"] = bool(get_runtime_sqs_queue_url()) and bool(
         settings.sqs_queue_url or data.get("event_infra_enabled")
     )
-    data["llm_backend"] = get_backend_info()
+    data["llm_backend"] = get_backend_info(pref=await load_llm_preference())
     return data
 
 

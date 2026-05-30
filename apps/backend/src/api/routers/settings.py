@@ -62,7 +62,10 @@ async def get_settings(
         {"key": "EVENT_CONSUMER_ENABLED",        "label": "Event consumer",         "value": str(settings.event_consumer_enabled).lower(), "hint": "EventBridge→SQS incident detection"},
     ]
 
-    return {"env": env, "agent": agent, "llm_backend": get_backend_info()}
+    # Use the saved Settings pick (if any) so the LLM display reflects what new sessions
+    # will actually use — not the original .env defaults.
+    pref = await load_llm_preference()
+    return {"env": env, "agent": agent, "llm_backend": get_backend_info(pref=pref)}
 
 
 # ── LLM picker ──────────────────────────────────────────────────────────────────
@@ -83,7 +86,7 @@ async def get_llm(
     return {
         "providers": available_providers(),
         "current": pref or {"source": "", "model": ""},
-        "backend": get_backend_info(),
+        "backend": get_backend_info(pref=pref),
     }
 
 
