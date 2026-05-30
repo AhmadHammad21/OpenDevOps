@@ -268,18 +268,29 @@ def _api_key_for_provider(provider: str) -> str | None:
 _PROVIDER_CATALOG: dict[str, tuple[str, str, list[str]]] = {
     # source_key: (label, marker, models)
     "claude_code":  ("Claude Code (subscription)", "CLAUDE_CODE",   [
-        # Claude Code OAuth can call any Anthropic model the subscription tier supports.
+        # Claude Code OAuth can call any Anthropic model the subscription tier allows.
+        # Newest first. Higher tiers (Max) unlock the heavier Opus models.
+        "anthropic/claude-opus-4-8",
         "anthropic/claude-opus-4-7",
+        "anthropic/claude-opus-4-5-20251001",
         "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-sonnet-4-5-20251024",
         "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-3-5-sonnet-20241022",
     ]),
     "anthropic":    ("Anthropic API",              "ANTHROPIC",     [
+        # Same models as Claude Code, but billed via ANTHROPIC_API_KEY instead of OAuth.
+        "anthropic/claude-opus-4-8",
         "anthropic/claude-opus-4-7",
+        "anthropic/claude-opus-4-5-20251001",
         "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-sonnet-4-5-20251024",
         "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-3-5-sonnet-20241022",
     ]),
     "openrouter":   ("OpenRouter",                 "OPENROUTER",    [
         # Anthropic
+        "openrouter/anthropic/claude-opus-4-8",
         "openrouter/anthropic/claude-opus-4-7",
         "openrouter/anthropic/claude-sonnet-4-6",
         "openrouter/anthropic/claude-haiku-4-5",
