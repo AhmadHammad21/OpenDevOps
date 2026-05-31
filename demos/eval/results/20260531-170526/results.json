@@ -1,0 +1,21 @@
+[
+  {
+    "scenario_id": "001_lambda_crashing",
+    "passed": false,
+    "reasons": [
+      "root_cause_category='' (expected 'COMPONENT_FAILURE')",
+      "no service overlap (agent=[] vs expected=['Lambda'])",
+      "evidence keywords 0/2 (need 50%): missed ['KeyError', 'user_id']",
+      "called expected tool(s): ['get_log_events', 'describe_log_groups', 'query_logs_insights', 'get_lambda_error_rate']"
+    ],
+    "latency_ms": 27884,
+    "tool_call_count": 7,
+    "cost_usd": null,
+    "input_tokens": 10623,
+    "output_tokens": 465,
+    "model": "openrouter/openai/gpt-4o-mini",
+    "agent_root_cause_category": "",
+    "agent_root_cause_summary": "",
+    "error": null
+  }
+]

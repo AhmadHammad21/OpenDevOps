@@ -1,0 +1,21 @@
+[
+  {
+    "scenario_id": "001_lambda_crashing",
+    "passed": true,
+    "reasons": [
+      "root_cause_category match: SYSTEM_CHANGE",
+      "services match: ['Lambda']",
+      "evidence keywords 2/2 found: ['KeyError', 'user_id']",
+      "called expected tool(s): ['describe_log_groups', 'query_logs_insights', 'get_lambda_error_rate']"
+    ],
+    "latency_ms": 45618,
+    "tool_call_count": 11,
+    "cost_usd": 0.0014351400000000001,
+    "input_tokens": 18667,
+    "output_tokens": 367,
+    "model": "openrouter/google/gemma-4-26b-a4b-it",
+    "agent_root_cause_category": "SYSTEM_CHANGE",
+    "agent_root_cause_summary": "The Lambda function 'opendevops-demo-crashing' is failing with a 100% error rate because it expects a 'user_id' key in the event payload that is missing. This appears to be due to a recent deployment (based on CloudTrail events) or a change in the upstream event schema.",
+    "error": null
+  }
+]

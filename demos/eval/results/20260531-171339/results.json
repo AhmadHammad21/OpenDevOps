@@ -1,0 +1,21 @@
+[
+  {
+    "scenario_id": "001_lambda_crashing",
+    "passed": false,
+    "reasons": [
+      "root_cause_category='SYSTEM_CHANGE' (expected 'COMPONENT_FAILURE')",
+      "services match: ['Lambda']",
+      "evidence keywords 2/2 found: ['KeyError', 'user_id']",
+      "called expected tool(s): ['describe_log_groups', 'query_logs_insights', 'get_lambda_error_rate']"
+    ],
+    "latency_ms": 48879,
+    "tool_call_count": 8,
+    "cost_usd": 0.0015890700000000002,
+    "input_tokens": 20746,
+    "output_tokens": 391,
+    "model": "openrouter/google/gemma-4-26b-a4b-it",
+    "agent_root_cause_category": "SYSTEM_CHANGE",
+    "agent_root_cause_summary": "The Lambda function 'opendevops-demo-crashing' is failing with a 100% error rate due to a 'KeyError: 'user_id'' in the code. This is caused by the code attempting to access 'user_id' from the event payload, but the payload being received does not contain this key. This appears to be a code-level issue introduced during a recent creation/deployment of the function.",
+    "error": null
+  }
+]

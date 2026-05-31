@@ -1,0 +1,17 @@
+{
+  "name": "Azure VM unreachable because it was deallocated",
+  "cloud": "azure",
+  "demo": "demos/azure/vm_deallocated.py",
+  "prompt": "My VM opendevops-demo-vm is unreachable - what happened?",
+  "timeout_seconds": 240,
+  "propagation_seconds": 60,
+  "ground_truth": {
+    "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE"],
+    "services_affected": ["Azure VM", "Virtual Machine"],
+    "evidence_keywords": ["deallocated", "powerstate"],
+    "expected_tools_any_of": [
+      "run_bash_command",
+      "use_skill"
+    ]
+  }
+}

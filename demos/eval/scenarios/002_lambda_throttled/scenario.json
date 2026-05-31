@@ -1,0 +1,17 @@
+{
+  "name": "Lambda fully throttled (reserved concurrency = 0)",
+  "cloud": "aws",
+  "demo": "demos/aws/e1_lambda_throttled.py",
+  "prompt": "my function opendevops-demo-throttled is throttling, why?",
+  "timeout_seconds": 180,
+  "propagation_seconds": 30,
+  "ground_truth": {
+    "root_cause_category": "RESOURCE_LIMIT",
+    "services_affected": ["Lambda"],
+    "evidence_keywords": ["concurrency", "0", "reserved"],
+    "expected_tools_any_of": [
+      "get_lambda_function_config",
+      "get_lambda_concurrent_executions"
+    ]
+  }
+}
