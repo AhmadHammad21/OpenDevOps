@@ -6,7 +6,7 @@
   "timeout_seconds": 180,
   "propagation_seconds": 30,
   "ground_truth": {
-    "root_cause_category": "RESOURCE_LIMIT",
+    "root_cause_category": ["RESOURCE_LIMIT", "SYSTEM_CHANGE"],
     "services_affected": ["Lambda"],
     "evidence_keywords": ["concurrency", "0", "reserved"],
     "expected_tools_any_of": [

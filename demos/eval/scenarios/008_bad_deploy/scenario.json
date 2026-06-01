@@ -1,0 +1,18 @@
+{
+  "name": "Bad deploy — errors started right after a Lambda code update",
+  "cloud": "aws",
+  "demo": "demos/aws/m1_bad_deploy.py",
+  "prompt": "opendevops-demo-deploy started erroring, did something change?",
+  "timeout_seconds": 240,
+  "propagation_seconds": 60,
+  "ground_truth": {
+    "root_cause_category": ["SYSTEM_CHANGE"],
+    "services_affected": ["Lambda"],
+    "evidence_keywords": ["deploy", "UpdateFunctionCode"],
+    "expected_tools_any_of": [
+      "get_lambda_error_rate",
+      "get_log_events",
+      "lookup_cloudtrail_events"
+    ]
+  }
+}
