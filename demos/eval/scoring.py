@@ -123,18 +123,36 @@ def score(
          "evidence": ["traceback line 12 ...", "8/8 invocations failed"],
          "services_affected": ["Lambda"],
          ...}
+
+    Tolerance choices:
+    * Agents frequently fill ``services_affected`` with the affected RESOURCE
+      name ("opendevops-demo-crashing") rather than the service category
+      ("Lambda"). The summary text usually mentions the service — so we
+      additionally match expected services against the summary.
+    * The structured ``evidence`` list can be sparse while the ``root_cause_summary``
+      contains the diagnostic prose. Keyword matching scans both.
     """
+    summary = (agent_output.get("root_cause_summary") or "").strip()
+    raw_services = agent_output.get("services_affected") or []
+    raw_evidence = agent_output.get("evidence") or []
+
+    # Include the summary as a synthetic "service" entry so substring-matching
+    # picks up service names mentioned in prose (Lambda, ECS, DynamoDB, ...).
+    services_for_match = list(raw_services) + ([summary] if summary else [])
+    # Same for evidence: scan summary + evidence list together.
+    evidence_for_match = list(raw_evidence) + ([summary] if summary else [])
+
     checks = [
         check_root_cause_category(
             agent_output.get("root_cause_category", ""),
             ground_truth.get("root_cause_category", ""),
         ),
         check_services_affected(
-            agent_output.get("services_affected") or [],
+            services_for_match,
             ground_truth.get("services_affected") or [],
         ),
         check_evidence_keywords(
-            agent_output.get("evidence") or [],
+            evidence_for_match,
             ground_truth.get("evidence_keywords") or [],
         ),
         check_tools_called(

@@ -8,7 +8,7 @@
   "ground_truth": {
     "root_cause_category": ["SYSTEM_CHANGE", "RESOURCE_LIMIT"],
     "services_affected": ["Lambda"],
-    "evidence_keywords": ["timed out", "timeout"],
+    "evidence_keywords": ["timeout"],
     "expected_tools_any_of": [
       "get_log_events",
       "get_lambda_function_config",

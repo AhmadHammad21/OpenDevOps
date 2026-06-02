@@ -6,7 +6,7 @@
   "timeout_seconds": 180,
   "propagation_seconds": 30,
   "ground_truth": {
-    "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE"],
+    "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE", "INPUT_ANOMALY"],
     "services_affected": ["Lambda"],
     "evidence_keywords": ["KeyError", "user_id"],
     "expected_tools_any_of": [

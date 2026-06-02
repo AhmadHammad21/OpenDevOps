@@ -8,6 +8,9 @@ agent's `submit_investigation` output against ground truth. Use it to:
 - Catch regressions when you upgrade models, change prompts, or refactor tools.
 - Decide empirically which LLM is reliable enough for production use.
 
+> Looking for the published results rather than how to run them? See
+> [`benchmark.md`](./benchmark.md).
+
 > This is **integration** code — it hits real AWS / Azure and pays real LLM
 > costs. It's deliberately *not* a pytest target. Run it nightly in a dedicated
 > CI lane, or manually before releases.
@@ -168,12 +171,18 @@ yourself with `python demos/<cloud>/<script>.py teardown`.
 
 ## Picking the right LLM for your eval
 
-The eval is strict by design — it scores only the structured
-`submit_investigation` tool call. **Smaller models routinely skip that step**
-and answer in prose, which the eval rightly counts as a fail.
+The eval scores the structured `submit_investigation` output. Some models
+(notably `gpt-oss-120b`) do the full investigation correctly but emit the
+structured answer as a JSON object in their final message instead of calling
+the tool. The runner has a **salvage fallback**: if no `submit_investigation`
+tool call arrives, it recovers a schema-shaped JSON object from the final
+message text and scores that. Such runs are tagged
+`⚠ recovered from final message text` in the report — the conclusion counts,
+but it's an honest signal that the model's tool-calling discipline is weak.
 
-If your model is < 70B params or a budget tier (e.g. `gpt-4o-mini`,
-`gemma-4-26b`, Haiku-class), expect false negatives. Switch to:
+Even with the salvage net, smaller / budget-tier models (e.g. `gpt-4o-mini`,
+`gemma-4-26b`, Haiku-class) still under-perform — usually by not producing a
+schema-shaped conclusion at all. For production reliability switch to:
 
 - `openrouter/anthropic/claude-sonnet-4-6` — strong tool-use, good price
 - `openrouter/openai/gpt-4o` — full, not -mini

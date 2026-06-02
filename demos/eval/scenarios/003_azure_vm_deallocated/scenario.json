@@ -7,7 +7,7 @@
   "propagation_seconds": 60,
   "ground_truth": {
     "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE"],
-    "services_affected": ["Azure VM", "Virtual Machine"],
+    "services_affected": ["VM", "Virtual Machine"],
     "evidence_keywords": ["deallocated", "powerstate"],
     "expected_tools_any_of": [
       "run_bash_command",

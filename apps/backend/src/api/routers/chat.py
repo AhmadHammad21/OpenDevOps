@@ -60,6 +60,35 @@ def _clean(text: str) -> str:
     return _CHANNEL_RE.sub("", text)
 
 
+def _extract_text(content: Any) -> str:
+    """Pull the user-visible text out of a chunk's ``content``, regardless of shape.
+
+    Reasoning / hybrid models (gpt-oss, OpenAI o1-family, some Anthropic configs,
+    Gemini Thinking) return ``content`` as a list of typed blocks:
+
+        [{'type': 'thinking', 'thinking': '...internal reasoning...'},
+         {'type': 'text',     'text':     'the actual answer'}]
+
+    Only the ``text`` blocks go to the UI; ``thinking`` blocks are billed but
+    not shown (they're shown via the tool-call inspector / reasoning UI if we
+    ever surface them). Plain-string content (older models, Sonnet, GPT-4o)
+    flows through unchanged.
+    """
+    if not content:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                txt = block.get("text") or ""
+                if isinstance(txt, str):
+                    parts.append(txt)
+        return "".join(parts)
+    return ""
+
+
 
 
 async def _stream_chat(session_id: str, user_message: str):
@@ -118,6 +147,13 @@ async def _stream_chat(session_id: str, user_message: str):
 
     await maybe_summarize(agent, config, session_id)
 
+    # DEBUG_LLM_CHUNKS=true in .env dumps every raw chunk's content + tool calls +
+    # usage to the log. Useful when a model returns "(no response)" in the UI to
+    # see whether the content is being stripped, wrapped in an unexpected format
+    # (e.g. gpt-oss harmony channels), or is genuinely empty from the provider.
+    import os as _os
+    _debug_chunks = _os.environ.get("DEBUG_LLM_CHUNKS", "").lower() in ("1", "true", "yes")
+
     try:
         async with asyncio.timeout(settings.investigation_timeout):
             async for chunk, _meta in agent.astream(
@@ -129,6 +165,20 @@ async def _stream_chat(session_id: str, user_message: str):
                     logger.info("[{sid}]  cancelled by user", sid=sid)
                     yield f"data: {json.dumps({'type': 'cancelled'})}\n\n"
                     return
+                if _debug_chunks:
+                    _raw = getattr(chunk, "content", None)
+                    _raw_type = type(_raw).__name__
+                    _raw_preview = repr(_raw)[:400] if _raw is not None else "None"
+                    _tcc = getattr(chunk, "tool_call_chunks", None)
+                    _tc = getattr(chunk, "tool_calls", None)
+                    _um = getattr(chunk, "usage_metadata", None)
+                    logger.info(
+                        "[{sid}] RAW chunk type={t} content={c}  tcc={tcc}  tc={tc}  usage={u}",
+                        sid=sid, t=_raw_type, c=_raw_preview,
+                        tcc=repr(_tcc)[:200] if _tcc else "-",
+                        tc=repr(_tc)[:200] if _tc else "-",
+                        u=repr(_um)[:200] if _um else "-",
+                    )
                 um = getattr(chunk, "usage_metadata", None)
                 if um:
                     usage_meta = um
@@ -160,9 +210,10 @@ async def _stream_chat(session_id: str, user_message: str):
                         }
 
                 content = getattr(chunk, "content", "")
-                if content and isinstance(content, str):
+                visible = _extract_text(content)
+                if visible:
                     if not getattr(chunk, "tool_call_id", None):
-                        text_buf += content
+                        text_buf += visible
                         new_clean = _clean(text_buf)
                         delta = new_clean[len(clean_buf):]
                         if delta:
@@ -199,12 +250,21 @@ async def _stream_chat(session_id: str, user_message: str):
                     )
                     if isinstance(result, dict) and "error" in result:
                         logger.warning("   [{sid}]  ⚠   error: {err}", sid=sid, err=result["error"])
-                    else:
-                        keys  = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+                    elif isinstance(result, dict):
+                        keys  = list(result.keys())
                         count = result.get("count", result.get("events", result.get("functions", "")))
                         logger.info(
                             "   [{sid}]  ✓   keys={keys}  count={count}",
                             sid=sid, keys=keys, count=count if isinstance(count, int) else "—",
+                        )
+                    else:
+                        # gpt-oss / some providers return tool results as JSON arrays
+                        # (e.g. CloudWatch metric data) — preserve them but don't try
+                        # to .get() into a list. Log shape only.
+                        logger.info(
+                            "   [{sid}]  ✓   type={t}  len={n}",
+                            sid=sid, t=type(result).__name__,
+                            n=len(result) if hasattr(result, "__len__") else "—",
                         )
 
                     tool_calls_log.append({"tool": call_info["tool"], "args": call_info["args"], "result": result})
@@ -243,6 +303,17 @@ async def _stream_chat(session_id: str, user_message: str):
     if usage_meta:
         usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
         usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
+        # Capture reasoning tokens (gpt-oss, o1-family, Gemini thinking) for visibility
+        # in the cost card and downstream analysis. We intentionally do NOT add them
+        # to output_tokens for the cost calc here: providers differ on whether
+        # output_tokens already includes reasoning (gpt-oss: YES — 53 total includes
+        # 38 reasoning; Gemini: NO — but reasoning is also missing from the metadata,
+        # which is the actual undercount bug). Per-provider normalization is tracked
+        # in issue #59.
+        details = _field(usage_meta, "output_token_details", None) or {}
+        reasoning = _field(details, "reasoning", 0) or 0
+        if reasoning and reasoning > 0:
+            usage["reasoning_tokens"] = reasoning
     cost = calc_cost(
         usage["model"],
         usage.get("input_tokens", 0),

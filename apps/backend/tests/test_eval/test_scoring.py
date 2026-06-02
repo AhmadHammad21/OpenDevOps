@@ -212,6 +212,35 @@ def test_score_fails_on_generic_evidence(lambda_crash_ground_truth):
     assert any("evidence" in m.lower() for m in r.reasons)
 
 
+def test_score_services_match_falls_back_to_summary_text(lambda_crash_ground_truth):
+    """Agents frequently fill services_affected with the affected resource NAME
+    ('opendevops-demo-crashing') rather than the service CATEGORY ('Lambda').
+    When the summary mentions the service, that should be enough to match."""
+    agent_output = {
+        "root_cause_category": "COMPONENT_FAILURE",
+        "root_cause_summary": "The Lambda function opendevops-demo-crashing is failing.",
+        "evidence": ["KeyError on user_id"],
+        "services_affected": ["opendevops-demo-crashing"],  # resource name, not category
+    }
+    r = score("001", agent_output, lambda_crash_ground_truth,
+              {"tools_called": ["get_log_events"]})
+    assert r.passed, f"reasons: {r.reasons}"
+
+
+def test_score_evidence_keywords_match_against_summary_too(lambda_crash_ground_truth):
+    """Some agents put diagnostic detail in root_cause_summary and leave
+    the structured evidence list sparse. The scorer should scan both."""
+    agent_output = {
+        "root_cause_category": "COMPONENT_FAILURE",
+        "root_cause_summary": "Lambda is failing with KeyError on user_id.",
+        "evidence": ["Something happened."],  # the keywords aren't in the evidence list
+        "services_affected": ["Lambda"],
+    }
+    r = score("001", agent_output, lambda_crash_ground_truth,
+              {"tools_called": ["get_log_events"]})
+    assert r.passed, f"reasons: {r.reasons}"
+
+
 def test_score_records_soft_metrics_even_when_failing(lambda_crash_ground_truth):
     """A failure shouldn't lose the cost/latency numbers — they're how we
     track regressions even when accuracy stays at 100%."""

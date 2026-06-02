@@ -7,7 +7,7 @@
   "propagation_seconds": 30,
   "ground_truth": {
     "root_cause_category": ["INPUT_ANOMALY", "COMPONENT_FAILURE", "SYSTEM_CHANGE"],
-    "services_affected": ["CloudWatch"],
+    "services_affected": ["CloudWatch", "Lambda"],
     "evidence_keywords": ["alarm", "high-errors"],
     "expected_tools_any_of": [
       "get_alarms",

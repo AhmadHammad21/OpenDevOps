@@ -145,6 +145,57 @@ def _run_demo(demo_rel: str, action: str) -> int:
     return proc.returncode
 
 
+def _salvage_submit_json(text: str) -> dict[str, Any]:
+    """Recover a submit_investigation payload that the model emitted as plain
+    JSON in its final message instead of as a tool call.
+
+    Some models (notably ``gpt-oss-120b``) complete the full investigation but
+    serialize the structured answer as a JSON object in their final-channel
+    text rather than invoking the ``submit_investigation`` tool. The answer is
+    correct and complete — the runner just never saw a ``tool_call`` event for
+    it. Scan the text for the first balanced ``{...}`` object that parses AND
+    carries the investigation schema, and return it.
+
+    String-aware brace matching so braces inside quoted values don't throw off
+    the depth count. Returns ``{}`` when nothing schema-shaped is found.
+    """
+    if not text:
+        return {}
+    for start in range(len(text)):
+        if text[start] != "{":
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        break  # not valid from this '{'; try the next one
+                    if isinstance(obj, dict) and (
+                        "root_cause_category" in obj or "root_cause_summary" in obj
+                    ):
+                        return obj
+                    break
+    return {}
+
+
 def _post_chat(
     base_url: str,
     token: str | None,
@@ -168,6 +219,7 @@ def _post_chat(
 
     tools_called: list[str] = []
     submit_args: dict[str, Any] = {}
+    text_buf: list[str] = []  # streamed assistant text, for the salvage fallback
     usage: dict[str, Any] = {}
     started = time.time()
 
@@ -190,16 +242,27 @@ def _post_chat(
                             evt = json.loads(line[6:].decode("utf-8"))
                         except json.JSONDecodeError:
                             continue
-                        if evt.get("type") == "tool_call":
+                        if evt.get("type") == "token":
+                            text_buf.append(evt.get("text") or "")
+                        elif evt.get("type") == "tool_call":
                             tools_called.append(evt.get("tool", ""))
                             if evt.get("tool") == "submit_investigation":
                                 submit_args = evt.get("args") or {}
                         elif evt.get("type") == "done":
                             usage = evt.get("usage") or {}
+                            # Fallback: model finished but emitted the structured
+                            # answer as JSON text instead of a tool call (gpt-oss).
+                            salvaged = False
+                            if not submit_args:
+                                recovered = _salvage_submit_json("".join(text_buf))
+                                if recovered:
+                                    submit_args = recovered
+                                    salvaged = True
                             return {
                                 "session_id": session_id,
                                 "tools_called": tools_called,
                                 "submit_args": submit_args,
+                                "submit_salvaged": salvaged,
                                 "latency_ms": usage.get("latency_ms", 0),
                                 "input_tokens": usage.get("input_tokens", 0),
                                 "output_tokens": usage.get("output_tokens", 0),
@@ -258,7 +321,7 @@ def run_one(
     if "error" in chat_result:
         return _failure(sid, chat_result["error"], partial=chat_result)
 
-    return score(
+    result = score(
         scenario_id=sid,
         agent_output=chat_result.get("submit_args") or {},
         ground_truth=scenario.get("ground_truth") or {},
@@ -272,6 +335,15 @@ def run_one(
             "model": chat_result.get("model", ""),
         },
     )
+    # Flag answers we had to dig out of the final message (model emitted the
+    # submit_investigation payload as JSON text rather than calling the tool).
+    # Honest signal: the conclusion was right, but the model's tool-call
+    # protocol compliance was not.
+    if chat_result.get("submit_salvaged"):
+        result.reasons.insert(
+            0, "⚠ recovered from final message text (no submit_investigation tool call)"
+        )
+    return result
 
 
 def _failure(sid: str, msg: str, partial: dict[str, Any] | None = None) -> ScenarioResult:
