@@ -5,13 +5,14 @@ Anthropic, OpenRouter, Groq, Gemini, Mistral, **Ollama for air-gapped / regulate
 reuse your existing **Claude Code** subscription (auto-detected). Investigates incidents, finds root
 causes, and gives actionable mitigation plans — without the cloud-vendor DevOps-agent price tag.
 
-> ### 📊 Benchmarked, not just demoed
-> On a **reproducible 10-incident suite** (real AWS + Azure resources, scored against ground truth), running on a **commodity open model** (`gpt-oss-120b` — no frontier model required):
->
-> | Root causes found | Median time | Cost / investigation | vs. AWS DevOps Agent | vs. manual triage |
-> |:---:|:---:|:---:|:---:|:---:|
-> | **9 / 10 (90%)** | **~52 s** | **~$0.03** | **~10× cheaper**¹<br/>(~$0.03 vs ~$0.43) | **~1,000× cheaper**² |
->
+### 📊 Benchmarked, not just demoed
+
+On a **reproducible 10-incident suite** (real AWS + Azure resources, scored against ground truth), running on a **commodity open model** (`gpt-oss-120b` — no frontier model required):
+
+| Root causes found | Median time | Cost / investigation | vs. AWS DevOps Agent | vs. manual triage |
+|:---:|:---:|:---:|:---:|:---:|
+| **9 / 10 (90%)** | **~52 s** | **~$0.03** | **~10× cheaper**¹<br/>(~$0.03 vs ~$0.43) | **~1,000× cheaper**² |
+
 > *~$0.03 of compute replaces ~$50 of engineer toil — and costs a fraction of a managed cloud DevOps agent — while returning the answer in under a minute instead of half an hour.* Reproduce it with `make eval` → **[full benchmark & methodology](apps/documentation/benchmark.md)**.
 >
 > <sub>¹ vs. AWS DevOps Agent — its per-second rate applied to the same wall-clock time (~$0.43/investigation); verify against AWS's published pricing. ² Illustrative unit economics vs. ~20–40 min of on-call triage. Cost shown is the provider-dashboard actual; see [caveats](apps/documentation/benchmark.md#caveats-read-these-before-quoting-numbers).</sub>
