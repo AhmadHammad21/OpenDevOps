@@ -1,0 +1,18 @@
+{
+  "name": "ECS service won't stabilize — image tag doesn't exist (CannotPullContainerError)",
+  "cloud": "aws",
+  "demo": "demos/aws/m3_ecs_wont_stabilize.py",
+  "prompt": "the ECS service opendevops-demo-svc won't come up, why?",
+  "timeout_seconds": 300,
+  "propagation_seconds": 60,
+  "ground_truth": {
+    "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE"],
+    "services_affected": ["ECS"],
+    "evidence_keywords": ["CannotPullContainer", "image"],
+    "expected_tools_any_of": [
+      "list_ecs_clusters",
+      "describe_ecs_service",
+      "list_ecs_services"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "Lambda errors caused by DynamoDB throttling (cross-service root cause)",
+  "cloud": "aws",
+  "demo": "demos/aws/h1_lambda_dynamodb_throttle.py",
+  "prompt": "opendevops-demo-writer is throwing errors, find the root cause",
+  "timeout_seconds": 240,
+  "propagation_seconds": 30,
+  "ground_truth": {
+    "root_cause_category": ["DEPENDENCY_ISSUE", "RESOURCE_LIMIT"],
+    "services_affected": ["DynamoDB", "Lambda"],
+    "evidence_keywords": ["ProvisionedThroughputExceeded", "throttl"],
+    "expected_tools_any_of": [
+      "get_log_events",
+      "query_logs_insights",
+      "run_bash_command"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Lambda crashing with an unhandled KeyError",
+  "cloud": "aws",
+  "demo": "demos/aws/e2_lambda_crashing.py",
+  "prompt": "opendevops-demo-crashing has a high error rate, investigate",
+  "timeout_seconds": 180,
+  "propagation_seconds": 30,
+  "ground_truth": {
+    "root_cause_category": ["COMPONENT_FAILURE", "SYSTEM_CHANGE", "INPUT_ANOMALY"],
+    "services_affected": ["Lambda"],
+    "evidence_keywords": ["KeyError", "user_id"],
+    "expected_tools_any_of": [
+      "get_log_events",
+      "describe_log_groups",
+      "query_logs_insights",
+      "get_lambda_error_rate"
+    ]
+  }
+}

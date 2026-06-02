@@ -1,4 +1,4 @@
-.PHONY: dev ui migrate test lint frontend-dev frontend-build help
+.PHONY: dev ui migrate test lint frontend-dev frontend-build eval help
 
 BACKEND := apps/backend
 FRONTEND := apps/frontend
@@ -32,6 +32,12 @@ frontend-dev:
 frontend-build:
 	cd $(FRONTEND) && npm install && npm run build
 
+# ── Eval (integration; real cloud + real LLM spend) ────────────────────────────
+# Needs the agent dev server running (make dev) and AWS / Azure creds for the
+# scenarios you're running. See demos/eval/README.md.
+eval:
+	python demos/eval/run.py
+
 # ── Full stack (Docker Compose) ────────────────────────────────────────────────
 compose-up:
 	docker compose -f deployment/docker-compose/docker-compose.yml up --build
@@ -43,4 +49,5 @@ compose-down:
 help:
 	@echo "Backend:   make dev | ui | migrate | test | lint | lint-fix | install"
 	@echo "Frontend:  make frontend-dev | frontend-build"
+	@echo "Eval:      make eval     (integration — hits real cloud + LLM)"
 	@echo "Docker:    make compose-up | compose-down"

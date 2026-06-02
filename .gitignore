@@ -41,3 +41,6 @@ Thumbs.db
 
 # SQLite data directory (CHECKPOINT_BACKEND=sqlite)
 data/
+
+# Eval per-run output — per-machine artifacts, never check in
+demos/eval/results/

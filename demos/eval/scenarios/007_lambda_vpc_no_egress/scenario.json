@@ -1,0 +1,18 @@
+{
+  "name": "Lambda in a VPC times out — security group has no egress",
+  "cloud": "aws",
+  "demo": "demos/aws/h3_lambda_vpc_no_egress.py",
+  "prompt": "opendevops-demo-egress times out calling an external API, why?",
+  "timeout_seconds": 300,
+  "propagation_seconds": 30,
+  "ground_truth": {
+    "root_cause_category": ["DEPENDENCY_ISSUE", "COMPONENT_FAILURE", "SYSTEM_CHANGE"],
+    "services_affected": ["Lambda", "VPC"],
+    "evidence_keywords": ["egress", "security group"],
+    "expected_tools_any_of": [
+      "get_log_events",
+      "get_lambda_function_config",
+      "run_bash_command"
+    ]
+  }
+}

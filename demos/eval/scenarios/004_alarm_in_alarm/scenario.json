@@ -1,0 +1,18 @@
+{
+  "name": "CloudWatch alarm in ALARM state",
+  "cloud": "aws",
+  "demo": "demos/aws/e3_alarm_in_alarm.py",
+  "prompt": "the opendevops-demo-high-errors alarm is firing, what's going on?",
+  "timeout_seconds": 180,
+  "propagation_seconds": 30,
+  "ground_truth": {
+    "root_cause_category": ["INPUT_ANOMALY", "COMPONENT_FAILURE", "SYSTEM_CHANGE"],
+    "services_affected": ["CloudWatch", "Lambda"],
+    "evidence_keywords": ["alarm", "high-errors"],
+    "expected_tools_any_of": [
+      "get_alarms",
+      "get_alarm_history",
+      "get_metric_data"
+    ]
+  }
+}
