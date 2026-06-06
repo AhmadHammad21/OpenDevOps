@@ -6,7 +6,7 @@ from pathlib import Path
 
 import litellm
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -224,5 +224,10 @@ async def index():
 
 @app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
 async def spa_fallback(full_path: str):
-    """Serve index.html for all client-side routes so React Router works on refresh."""
+    """Serve root-level static files from the Vite build (favicon, logos, etc.),
+    falling back to index.html so React Router works on refresh."""
+    if full_path and _DIST.is_dir():
+        candidate = (_DIST / full_path).resolve()
+        if candidate.is_file() and candidate.is_relative_to(_DIST.resolve()):
+            return FileResponse(candidate)
     return _serve_index()
