@@ -76,7 +76,7 @@ export default function AlertDetailPage() {
   if (!alert) return null;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white dark:bg-[#09090B]">
+    <div className="flex-1 overflow-y-auto bg-white dark:bg-[#000000]">
       <div className="max-w-3xl mx-auto px-6 py-8">
 
         <button onClick={() => navigate('/monitoring')}
@@ -103,14 +103,14 @@ export default function AlertDetailPage() {
                   'text-xs font-bold px-2 py-0.5 rounded',
                   alert.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
                   alert.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                  'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
+                  'bg-gray-100 dark:bg-[#1E222B] text-gray-500 dark:text-[#71717A]'
                 )}>{alert.confidence}</span>
               )}
             </div>
             <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-[#71717A]">
               <span className="flex items-center gap-1"><Clock size={12} /> {new Date(alert.timestamp.includes('Z') || alert.timestamp.includes('+') ? alert.timestamp : alert.timestamp + 'Z').toLocaleString()}</span>
               {alert.trigger_source && (
-                <span className="flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#27272A] text-gray-600 dark:text-[#94A3B8]">
+                <span className="flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#1E222B] text-gray-600 dark:text-[#94A3B8]">
                   {alert.trigger_source === 'poller' ? '⏱ Poller' : '⚡ Event consumer'}
                 </span>
               )}
@@ -162,7 +162,7 @@ export default function AlertDetailPage() {
         {alert.notifications && alert.notifications.length > 0 && (
           <section className="mb-6">
             <h2 className="text-xs font-semibold text-gray-500 dark:text-[#71717A] uppercase tracking-wider mb-3">Notified via</h2>
-            <div className="bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3 space-y-2.5">
+            <div className="bg-gray-50 dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-xl px-4 py-3 space-y-2.5">
               {alert.notifications.map((n, i) => (
                 <NotificationRow key={i} n={n} />
               ))}

@@ -119,7 +119,7 @@ function AppLayout() {
   };
 
   return (
-    <div className="flex w-full h-screen overflow-hidden bg-gray-50 dark:bg-[#0F0F12]">
+    <div className="flex w-full h-screen overflow-hidden bg-gray-50 dark:bg-[#000000]">
       <Sidebar
         sessions={sessions}
         hasMore={hasMore}

@@ -34,11 +34,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex w-full h-screen items-center justify-center bg-gray-50 dark:bg-[#0F0F12]">
+    <div className="flex w-full h-screen items-center justify-center bg-gray-50 dark:bg-[#000000]">
       <div className="w-full max-w-[360px] mx-4">
         {/* Logo / title */}
         <div className="text-center mb-8">
-          <div className="text-[22px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">
+          <img src="/Emblem.svg" alt="" className="w-12 h-12 mx-auto mb-3 rounded-lg dark:hidden" />
+          <img src="/brand-mark.svg" alt="" className="w-12 h-12 mx-auto mb-3 hidden dark:block" />
+          <div className="text-[22px] font-bold text-gray-900 dark:text-[#E4E1EA] tracking-[-0.02em]">
             OpenDevOps
           </div>
           <div className="text-[14px] text-gray-500 dark:text-[#94A3B8] mt-1">
@@ -46,17 +48,17 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+        <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] overflow-hidden">
           {/* Mode tabs */}
-          <div className="flex border-b border-gray-200 dark:border-[#27272F]">
+          <div className="flex border-b border-gray-200 dark:border-[#1E222B]">
             {(['login', 'register'] as Mode[]).map(m => (
               <button
                 key={m}
                 onClick={() => { setMode(m); setError(''); }}
                 className={`flex-1 py-3 text-[14px] font-medium transition-colors ${
                   mode === m
-                    ? 'text-indigo-500 dark:text-[#818CF8] border-b-2 border-indigo-500 dark:border-[#818CF8] -mb-px'
-                    : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#F1F5F9]'
+                    ? 'text-indigo-500 dark:text-[#00A3FF] border-b-2 border-indigo-500 dark:border-[#00A3FF] -mb-px'
+                    : 'text-gray-500 dark:text-[#94A3B8] hover:text-gray-700 dark:hover:text-[#E4E1EA]'
                 }`}
               >
                 {m === 'login' ? 'Sign in' : 'Register'}
@@ -76,7 +78,7 @@ export default function LoginPage() {
                   onChange={e => setName(e.target.value)}
                   placeholder="Your name"
                   required
-                  className="w-full text-[14px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
+                  className="w-full text-[14px] text-gray-900 dark:text-[#E4E1EA] bg-white dark:bg-[#0A0C10] border border-gray-300 dark:border-[#2A2F3A] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#00A3FF] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
                 />
               </div>
             )}
@@ -90,7 +92,7 @@ export default function LoginPage() {
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
+                className="w-full text-[13px] text-gray-900 dark:text-[#E4E1EA] bg-white dark:bg-[#0A0C10] border border-gray-300 dark:border-[#2A2F3A] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#00A3FF] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
               />
             </div>
             <div>
@@ -104,7 +106,7 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 required
                 minLength={8}
-                className="w-full text-[13px] text-gray-900 dark:text-[#F1F5F9] bg-white dark:bg-[#18181C] border border-gray-300 dark:border-[#3F3F47] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
+                className="w-full text-[13px] text-gray-900 dark:text-[#E4E1EA] bg-white dark:bg-[#0A0C10] border border-gray-300 dark:border-[#2A2F3A] rounded-[6px] px-3 py-2 outline-none focus:border-indigo-500 dark:focus:border-[#00A3FF] focus:shadow-[0_0_0_3px_rgba(99,102,241,0.12)] dark:focus:shadow-[0_0_0_3px_rgba(129,140,248,0.12)] transition-all"
               />
             </div>
 
@@ -117,7 +119,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full py-2.5 text-[14px] font-medium text-white bg-indigo-500 dark:bg-[#818CF8] hover:bg-indigo-600 dark:hover:bg-[#6366F1] disabled:opacity-50 rounded-[6px] transition-colors shadow-[0_1px_2px_rgba(99,102,241,0.25)]"
+              className="w-full py-2.5 text-[14px] font-medium text-white bg-indigo-500 dark:bg-[#00A3FF] hover:bg-indigo-600 dark:hover:bg-[#0086D6] disabled:opacity-50 rounded-[6px] transition-colors shadow-[0_1px_2px_rgba(99,102,241,0.25)]"
             >
               {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>

@@ -35,7 +35,7 @@ const COMING_SOON_INTEGRATIONS = [
   { name: 'Datadog',   desc: 'Send metrics and traces',   iconKey: 'datadog' },
 ];
 
-const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#0F0F12] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#818CF8] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#818CF8]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#3F3F47]';
+const inputCls = 'w-full font-mono text-[12px] text-gray-700 dark:text-[#CBD5E1] bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#1E222B] rounded-md px-3 py-1.5 outline-none focus:border-indigo-500 dark:focus:border-[#00A3FF] focus:ring-1 focus:ring-indigo-500/20 dark:focus:ring-[#00A3FF]/20 transition-all placeholder:text-gray-300 dark:placeholder:text-[#2A2F3A]';
 
 export default function SettingsPage() {
   const { isAdmin }   = useAuth();
@@ -280,21 +280,21 @@ export default function SettingsPage() {
   const total  = Object.keys(perms).length;
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#0F0F12] min-h-0">
-      <div className="bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7 py-[14px]">
-        <div className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">Settings</div>
+    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-[#000000] min-h-0">
+      <div className="bg-white dark:bg-[#0A0C10] border-b border-gray-200 dark:border-[#1E222B] px-7 py-[14px]">
+        <div className="text-[16px] font-bold text-gray-900 dark:text-[#E4E1EA] tracking-[-0.02em]">Settings</div>
         <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mt-0.5">
-          View your agent configuration. Edit <code className="font-mono text-[12px] bg-gray-100 dark:bg-[#27272F] px-1 rounded">.env</code> and restart to apply environment changes.
+          View your agent configuration. Edit <code className="font-mono text-[12px] bg-gray-100 dark:bg-[#1E222B] px-1 rounded">.env</code> and restart to apply environment changes.
         </div>
       </div>
 
-      <div className="flex bg-white dark:bg-[#18181C] border-b border-gray-200 dark:border-[#27272F] px-7">
+      <div className="flex bg-white dark:bg-[#0A0C10] border-b border-gray-200 dark:border-[#1E222B] px-7">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-3.5 py-2.5 text-[14px] font-medium transition-colors border-b-2 -mb-px ${
               tab === t.id
-                ? 'text-indigo-500 dark:text-[#818CF8] border-indigo-500 dark:border-[#818CF8]'
-                : 'text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-700 dark:hover:text-[#F1F5F9]'
+                ? 'text-indigo-500 dark:text-[#00A3FF] border-indigo-500 dark:border-[#00A3FF]'
+                : 'text-gray-500 dark:text-[#94A3B8] border-transparent hover:text-gray-700 dark:hover:text-[#E4E1EA]'
             }`}
           >
             {t.label}
@@ -313,16 +313,16 @@ export default function SettingsPage() {
               <LlmBackendCard backend={data.llm_backend} />
             </div>
           )}
-          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
+          <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F]">
               <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Environment Variables</span>
             </div>
-            <div className="flex px-4 py-[7px] bg-gray-50 dark:bg-[#1E1E24] border-b border-gray-200 dark:border-[#27272F]">
+            <div className="flex px-4 py-[7px] bg-gray-50 dark:bg-[#15181F] border-b border-gray-200 dark:border-[#1E222B]">
               <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] flex-[0_0_220px]">Key</span>
               <span className="text-[10px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em] flex-1">Value</span>
             </div>
             {data ? data.env.map((v, i) => (
-              <div key={v.key} className={`flex items-center gap-2 px-4 py-[9px] ${i < data.env.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
+              <div key={v.key} className={`flex items-center gap-2 px-4 py-[9px] ${i < data.env.length - 1 ? 'border-b border-gray-200 dark:border-[#1E222B]' : ''}`}>
                 <div className="flex-[0_0_220px] flex items-center gap-1.5">
                   {v.secret && <Key size={11} className="text-gray-400 dark:text-[#64748B] shrink-0" />}
                   <span className="font-mono text-[13px] font-medium text-gray-700 dark:text-[#CBD5E1]">{v.key}</span>
@@ -331,7 +331,7 @@ export default function SettingsPage() {
                   {v.secret && !shown[v.key] ? '••••••••••••' : v.value}
                 </div>
                 {v.secret && (
-                  <button onClick={() => toggleShow(v.key)} className="p-[3px] rounded hover:bg-gray-100 dark:hover:bg-[#27272F] text-gray-400 dark:text-[#64748B] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-colors">
+                  <button onClick={() => toggleShow(v.key)} className="p-[3px] rounded hover:bg-gray-100 dark:hover:bg-[#1E222B] text-gray-400 dark:text-[#64748B] hover:text-gray-600 dark:hover:text-[#94A3B8] transition-colors">
                     {shown[v.key] ? <EyeOff size={13} /> : <Eye size={13} />}
                   </button>
                 )}
@@ -347,8 +347,8 @@ export default function SettingsPage() {
         {tab === 'agent' && (
           <div className="space-y-4">
             {/* LLM picker card */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">LLM</span>
                 {data?.llm_backend && (
                   <span className="text-[11px] font-mono text-gray-500 dark:text-[#94A3B8]">
@@ -395,7 +395,7 @@ export default function SettingsPage() {
                             <button
                               type="button"
                               onClick={() => onSelectProvider(llmSource)}
-                              className="text-[10px] text-indigo-500 dark:text-[#818CF8] hover:underline mt-1"
+                              className="text-[10px] text-indigo-500 dark:text-[#00A3FF] hover:underline mt-1"
                             >
                               ← back to curated list
                             </button>
@@ -423,7 +423,7 @@ export default function SettingsPage() {
                       <button
                         onClick={saveLlmPick}
                         disabled={llmSaving || !llmSource}
-                        className="text-[12px] font-medium px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-[#27272F] text-white transition-colors"
+                        className="text-[12px] font-medium px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-[#1E222B] text-white transition-colors"
                       >
                         {llmSaving ? 'Saving…' : 'Save'}
                       </button>
@@ -434,17 +434,17 @@ export default function SettingsPage() {
             </div>
 
             {/* Existing read-only agent settings */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F]">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Agent Configuration</span>
               </div>
               {data ? data.agent.map((f, i) => (
-                <div key={f.key} className={`flex items-center gap-4 px-4 py-[11px] ${i < data.agent.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
+                <div key={f.key} className={`flex items-center gap-4 px-4 py-[11px] ${i < data.agent.length - 1 ? 'border-b border-gray-200 dark:border-[#1E222B]' : ''}`}>
                   <div className="flex-[0_0_220px]">
                     <div className="text-[12px] font-medium text-gray-700 dark:text-[#CBD5E1]">{f.label}</div>
                     <div className="text-[11px] text-gray-400 dark:text-[#64748B] mt-0.5">{f.hint}</div>
                   </div>
-                  <span className="font-mono text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9]">{f.value}</span>
+                  <span className="font-mono text-[13px] font-medium text-gray-900 dark:text-[#E4E1EA]">{f.value}</span>
                 </div>
               )) : (
                 <div className="px-4 py-6 text-[13px] text-gray-400 dark:text-[#64748B] text-center">Loading…</div>
@@ -458,31 +458,31 @@ export default function SettingsPage() {
           <div className="space-y-4">
 
             {/* Slack — live integration */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Slack</span>
                 <span className={cn(
                   'text-[10px] font-semibold px-1.5 py-0.5 rounded',
                   slackConfigured
                     ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#1E222B]'
                 )}>
                   {slackConfigured ? 'Configured' : 'Not configured'}
                 </span>
               </div>
 
               <div className="px-[18px] py-[14px] flex items-start gap-3">
-                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#1E222B] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
                   <SlackIcon size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] mb-0.5">Slack Notifications</div>
+                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#E4E1EA] mb-0.5">Slack Notifications</div>
                   <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mb-3">
                     Sends a rich Block Kit message to your Slack channel after each investigation completes.
                   </div>
                   {!slackConfigured && (
-                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-2 font-mono">
-                      Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">SLACK_WEBHOOK_URL</span>=https://hooks.slack.com/… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart
+                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#15181F] border border-gray-200 dark:border-[#1E222B] rounded-md px-3 py-2 font-mono">
+                      Add <span className="text-indigo-500 dark:text-[#00A3FF] font-semibold">SLACK_WEBHOOK_URL</span>=https://hooks.slack.com/… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart
                     </div>
                   )}
                   {slackConfigured && (
@@ -502,31 +502,31 @@ export default function SettingsPage() {
             </div>
 
             {/* Telegram — live integration */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Telegram</span>
                 <span className={cn(
                   'text-[10px] font-semibold px-1.5 py-0.5 rounded',
                   telegramConfigured
                     ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                    : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#1E222B]'
                 )}>
                   {telegramConfigured ? 'Configured' : 'Not configured'}
                 </span>
               </div>
               <div className="px-[18px] py-[14px] flex items-start gap-3">
-                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
+                <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#1E222B] rounded-lg flex items-center justify-center shrink-0 mt-0.5">
                   <TelegramIcon size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9] mb-0.5">Telegram Notifications</div>
+                  <div className="text-[14px] font-medium text-gray-900 dark:text-[#E4E1EA] mb-0.5">Telegram Notifications</div>
                   <div className="text-[13px] text-gray-500 dark:text-[#94A3B8] mb-3">
                     Sends a formatted message to your Telegram bot after each investigation completes.
                   </div>
                   {!telegramConfigured && (
-                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-md px-3 py-2 font-mono space-y-1">
-                      <div>Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">TELEGRAM_BOT_TOKEN</span>=123456:ABC-… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file</div>
-                      <div>Add <span className="text-indigo-500 dark:text-[#818CF8] font-semibold">TELEGRAM_CHAT_ID</span>=-100… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart</div>
+                    <div className="text-[12px] text-gray-500 dark:text-[#94A3B8] bg-gray-50 dark:bg-[#15181F] border border-gray-200 dark:border-[#1E222B] rounded-md px-3 py-2 font-mono space-y-1">
+                      <div>Add <span className="text-indigo-500 dark:text-[#00A3FF] font-semibold">TELEGRAM_BOT_TOKEN</span>=123456:ABC-… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file</div>
+                      <div>Add <span className="text-indigo-500 dark:text-[#00A3FF] font-semibold">TELEGRAM_CHAT_ID</span>=-100… to your <span className="text-gray-700 dark:text-[#CBD5E1]">.env</span> file and restart</div>
                     </div>
                   )}
                   {telegramConfigured && (
@@ -546,17 +546,17 @@ export default function SettingsPage() {
             </div>
 
             {/* Coming soon integrations */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
               {COMING_SOON_INTEGRATIONS.map((intg, i) => (
-                <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < COMING_SOON_INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#27272F]' : ''}`}>
-                  <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#27272F] rounded-lg flex items-center justify-center shrink-0">
+                <div key={i} className={`flex items-center gap-3 px-[18px] py-[14px] ${i < COMING_SOON_INTEGRATIONS.length - 1 ? 'border-b border-gray-200 dark:border-[#1E222B]' : ''}`}>
+                  <div className="w-[34px] h-[34px] bg-gray-100 dark:bg-[#1E222B] rounded-lg flex items-center justify-center shrink-0">
                     <IntegrationIcon name={intg.iconKey} size={20} />
                   </div>
                   <div className="flex-1">
-                    <div className="text-[14px] font-medium text-gray-900 dark:text-[#F1F5F9]">{intg.name}</div>
+                    <div className="text-[14px] font-medium text-gray-900 dark:text-[#E4E1EA]">{intg.name}</div>
                     <div className="text-[13px] text-gray-500 dark:text-[#94A3B8]">{intg.desc}</div>
                   </div>
-                  <span className="text-[11px] font-medium text-gray-400 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F] px-2 py-[3px] rounded-full">
+                  <span className="text-[11px] font-medium text-gray-400 dark:text-[#64748B] bg-gray-100 dark:bg-[#1E222B] px-2 py-[3px] rounded-full">
                     Coming soon
                   </span>
                 </div>
@@ -564,7 +564,7 @@ export default function SettingsPage() {
             </div>
 
             <a href="https://openrouter.ai/models" target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-[13px] text-indigo-500 dark:text-[#818CF8] hover:text-indigo-600 dark:hover:text-[#6366F1] transition-colors">
+              className="inline-flex items-center gap-1.5 text-[13px] text-indigo-500 dark:text-[#00A3FF] hover:text-indigo-600 dark:hover:text-[#0086D6] transition-colors">
               Browse available models on OpenRouter <ExternalLink size={13} />
             </a>
           </div>
@@ -575,8 +575,8 @@ export default function SettingsPage() {
           <div className="space-y-5">
 
             {/* Config card */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Event Detection</span>
                 <button
                   onClick={saveAwsConfig}
@@ -587,7 +587,7 @@ export default function SettingsPage() {
                 </button>
               </div>
 
-              <div className="divide-y divide-gray-100 dark:divide-[#27272F]">
+              <div className="divide-y divide-gray-100 dark:divide-[#1E222B]">
                 {[
                   { label: 'SQS Queue URL', hint: 'Event consumer polls this queue for CloudWatch alarms', value: sqsUrl, set: setSqsUrl, placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789012/opendevops' },
                   { label: 'AWS Region',    hint: 'Region for SQS and EventBridge resources', value: awsRegion, set: setAwsRegion, placeholder: 'us-east-1' },
@@ -609,15 +609,15 @@ export default function SettingsPage() {
             </div>
 
             {/* Event Monitoring card */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Event Monitoring</span>
                   <span className={cn(
                     'flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded',
                     infraEnabled
                       ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                      : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#27272F]'
+                      : 'text-gray-500 dark:text-[#64748B] bg-gray-100 dark:bg-[#1E222B]'
                   )}>
                     <Radio size={9} />
                     {infraEnabled ? 'Enabled' : 'Disabled'}
@@ -662,13 +662,13 @@ export default function SettingsPage() {
             </div>
 
             {/* Permissions card */}
-            <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24] flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F] flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">AWS Permissions</span>
                 <button
                   onClick={checkPerms}
                   disabled={awsChecking}
-                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 text-gray-600 dark:text-[#94A3B8] border border-gray-200 dark:border-[#27272F] rounded-md hover:bg-gray-50 dark:hover:bg-[#27272F] disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 text-gray-600 dark:text-[#94A3B8] border border-gray-200 dark:border-[#1E222B] rounded-md hover:bg-gray-50 dark:hover:bg-[#1E222B] disabled:opacity-50 transition-colors"
                 >
                   {awsChecking
                     ? <><Loader2 size={11} className="animate-spin" /> Checking…</>
@@ -685,8 +685,8 @@ export default function SettingsPage() {
 
               {total > 0 && (
                 <>
-                  <div className="px-4 py-[9px] border-b border-gray-100 dark:border-[#27272F] flex items-center gap-3">
-                    <div className="flex-1 h-1.5 bg-gray-100 dark:bg-[#27272F] rounded-full overflow-hidden">
+                  <div className="px-4 py-[9px] border-b border-gray-100 dark:border-[#1E222B] flex items-center gap-3">
+                    <div className="flex-1 h-1.5 bg-gray-100 dark:bg-[#1E222B] rounded-full overflow-hidden">
                       <div
                         className="h-full bg-emerald-500 rounded-full transition-all duration-700"
                         style={{ width: `${(passed / total) * 100}%` }}
@@ -698,7 +698,7 @@ export default function SettingsPage() {
                   {Object.entries(perms).map(([svc, r], i) => (
                     <div key={svc} className={cn(
                       'flex items-center gap-3 px-4 py-[9px]',
-                      i < total - 1 ? 'border-b border-gray-100 dark:border-[#27272F]' : ''
+                      i < total - 1 ? 'border-b border-gray-100 dark:border-[#1E222B]' : ''
                     )}>
                       <div className="shrink-0">
                         {r.passed
@@ -726,8 +726,8 @@ export default function SettingsPage() {
 
         {/* Preferences tab */}
         {tab === 'preferences' && (
-          <div className="bg-white dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#27272F] bg-gray-50 dark:bg-[#1E1E24]">
+          <div className="bg-white dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-lg overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <div className="px-4 py-[11px] border-b border-gray-200 dark:border-[#1E222B] bg-gray-50 dark:bg-[#15181F]">
               <span className="text-[11px] font-semibold text-gray-400 dark:text-[#64748B] uppercase tracking-[0.07em]">Appearance</span>
             </div>
             <div className="flex items-center justify-between px-4 py-[14px]">
@@ -739,7 +739,7 @@ export default function SettingsPage() {
                 onClick={toggle}
                 title="Toggle dark mode"
                 className="relative w-9 h-5 rounded-full shrink-0 transition-colors duration-200"
-                style={{ background: theme === 'dark' ? '#818CF8' : '#E5E7EB' }}
+                style={{ background: theme === 'dark' ? '#00A3FF' : '#E5E7EB' }}
               >
                 <span
                   className="absolute top-[2px] w-4 h-4 rounded-full bg-white flex items-center justify-center text-[9px] transition-all duration-200"

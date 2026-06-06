@@ -5,6 +5,7 @@
 @layer base {
   html { height: 100%; }
   body { @apply bg-gray-50 text-gray-900 h-full overflow-hidden; -webkit-font-smoothing: antialiased; }
+  .dark body { @apply bg-black text-[#E4E1EA]; }
   #root { @apply h-full overflow-hidden; }
 }
 
@@ -32,7 +33,7 @@
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
-.dark ::-webkit-scrollbar-thumb { background: #3F3F47; border-radius: 9999px; }
+.dark ::-webkit-scrollbar-thumb { background: #2A2F3A; border-radius: 9999px; }
 
 /* Prose for agent messages — light theme */
 .prose-chat {
@@ -48,11 +49,11 @@
 
 /* Dark prose overrides */
 .dark .prose-chat {
-  @apply prose-headings:text-[#F1F5F9] prose-strong:text-[#F1F5F9];
-  @apply prose-code:text-[#818CF8] prose-code:bg-[#1E1B4B] prose-code:border-[#3730A3];
-  @apply prose-pre:bg-[#18181C] prose-pre:border-[#27272F];
+  @apply prose-headings:text-[#E4E1EA] prose-strong:text-[#E4E1EA];
+  @apply prose-code:text-[#00A3FF] prose-code:bg-[#04103A] prose-code:border-[#0E4FA6];
+  @apply prose-pre:bg-[#0A0C10] prose-pre:border-[#1E222B];
   @apply prose-blockquote:text-[#94A3B8];
-  @apply prose-a:text-[#818CF8];
-  @apply prose-th:bg-[#1E1E24];
+  @apply prose-a:text-[#00A3FF];
+  @apply prose-th:bg-[#15181F];
   color: #CBD5E1;
 }

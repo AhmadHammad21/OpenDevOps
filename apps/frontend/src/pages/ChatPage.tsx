@@ -176,16 +176,16 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
   if (!sessionId) return <Navigate to="/" replace />;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white dark:bg-[#0F0F12]">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white dark:bg-[#000000]">
       {/* Chat sub-header */}
-      <div className="px-5 py-2.5 border-b border-gray-200 dark:border-[#27272F] bg-white dark:bg-[#18181C] flex items-center gap-2.5 shrink-0">
-        <div className="w-[30px] h-[30px] bg-indigo-50 dark:bg-[#1E1B4B] rounded-lg flex items-center justify-center text-sm shrink-0 select-none">
+      <div className="px-5 py-2.5 border-b border-gray-200 dark:border-[#1E222B] bg-white dark:bg-[#0A0C10] flex items-center gap-2.5 shrink-0">
+        <div className="w-[30px] h-[30px] bg-indigo-50 dark:bg-[#04103A] rounded-lg flex items-center justify-center text-sm shrink-0 select-none">
           ⚡
         </div>
         <div>
-          <div className="text-[13px] font-semibold text-gray-900 dark:text-[#F1F5F9]">DevOps Agent</div>
-          <div className="text-[11px] text-emerald-500 dark:text-[#34D399] flex items-center gap-1">
-            <span className="w-[5px] h-[5px] rounded-full bg-emerald-500 dark:bg-[#34D399] inline-block" />
+          <div className="text-[13px] font-semibold text-gray-900 dark:text-[#E4E1EA]">DevOps Agent</div>
+          <div className="text-[11px] text-emerald-500 dark:text-[#00A3FF] flex items-center gap-1">
+            <span className="w-[5px] h-[5px] rounded-full bg-emerald-500 dark:bg-[#00A3FF] inline-block" />
             Active
           </div>
         </div>
@@ -218,7 +218,7 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
             <button
               key={i}
               onClick={() => send(q)}
-              className="text-[13px] px-3 py-1.5 rounded-full border border-indigo-200 dark:border-[#3730A3] bg-indigo-50 dark:bg-[#1E1B4B] text-indigo-600 dark:text-[#818CF8] hover:bg-indigo-100 dark:hover:bg-[#2D2B5C] transition-colors"
+              className="text-[13px] px-3 py-1.5 rounded-full border border-indigo-200 dark:border-[#0E4FA6] bg-indigo-50 dark:bg-[#04103A] text-indigo-600 dark:text-[#00A3FF] hover:bg-indigo-100 dark:hover:bg-[#071A57] transition-colors"
             >
               {q}
             </button>

@@ -15,7 +15,7 @@ const SOURCE_STYLE: Record<string, { color: string; bg: string; border: string }
   groq:                { color: 'text-blue-700 dark:text-blue-300',     bg: 'bg-blue-50 dark:bg-blue-500/10',     border: 'border-blue-200 dark:border-blue-500/20' },
   custom:              { color: 'text-indigo-700 dark:text-indigo-300', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'border-indigo-200 dark:border-indigo-500/20' },
   claude_code_no_auth: { color: 'text-amber-700 dark:text-amber-300',  bg: 'bg-amber-50 dark:bg-amber-500/10',  border: 'border-amber-200 dark:border-amber-500/20' },
-  default:             { color: 'text-gray-500 dark:text-[#71717A]',   bg: 'bg-gray-50 dark:bg-[#18181B]',      border: 'border-gray-200 dark:border-[#27272A]' },
+  default:             { color: 'text-gray-500 dark:text-[#71717A]',   bg: 'bg-gray-50 dark:bg-[#0A0C10]',      border: 'border-gray-200 dark:border-[#1E222B]' },
 };
 
 function StatusIcon({ configured, source }: { configured: boolean; source: string }) {

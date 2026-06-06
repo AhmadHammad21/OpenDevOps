@@ -19,10 +19,10 @@ export default function AgentMessage({ message }: Props) {
       )}
 
       <div className="flex flex-row gap-2.5 items-start max-w-[720px]">
-        <div className="w-[30px] h-[30px] bg-indigo-50 dark:bg-[#1E1B4B] rounded-lg flex items-center justify-center text-sm shrink-0 mt-0.5 select-none">
+        <div className="w-[30px] h-[30px] bg-indigo-50 dark:bg-[#04103A] rounded-lg flex items-center justify-center text-sm shrink-0 mt-0.5 select-none">
           ⚡
         </div>
-        <div className="px-3.5 py-2.5 rounded-[2px_10px_10px_10px] text-[16px] leading-relaxed break-words max-w-[660px] bg-gray-50 dark:bg-[#18181C] border border-gray-200 dark:border-[#27272F] text-gray-900 dark:text-[#CBD5E1]">
+        <div className="px-3.5 py-2.5 rounded-[2px_10px_10px_10px] text-[16px] leading-relaxed break-words max-w-[660px] bg-gray-50 dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] text-gray-900 dark:text-[#CBD5E1]">
           {message.error ? (
             <span className="text-red-500 flex items-center gap-1.5">
               <span>⚠</span> {message.error}

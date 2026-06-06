@@ -33,7 +33,7 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
 
   if (disabled) {
     return (
-      <div className="w-full flex items-center gap-2 px-3.5 py-[7px] text-[14px] font-medium text-gray-300 dark:text-[#3F3F47] cursor-not-allowed select-none relative">
+      <div className="w-full flex items-center gap-2 px-3.5 py-[7px] text-[14px] font-medium text-gray-300 dark:text-[#2A2F3A] cursor-not-allowed select-none relative">
         <span className="shrink-0">{icon}</span>
         <span className="flex-1">{label}</span>
       </div>
@@ -46,12 +46,12 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
       className={cn(
         'relative w-full flex items-center gap-2 px-3.5 py-[7px] text-[14px] font-medium transition-all duration-100',
         active
-          ? 'text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B]'
-          : 'text-gray-500 dark:text-[#94A3B8] hover:bg-gray-100 dark:hover:bg-[#27272F] hover:text-gray-700 dark:hover:text-[#F1F5F9]',
+          ? 'text-indigo-500 dark:text-[#00A3FF] bg-indigo-50 dark:bg-[#04103A]'
+          : 'text-gray-500 dark:text-[#94A3B8] hover:bg-gray-100 dark:hover:bg-[#1E222B] hover:text-gray-700 dark:hover:text-[#E4E1EA]',
       )}
     >
       {active && (
-        <span className="absolute left-0 inset-y-1 w-[3px] bg-indigo-500 dark:bg-[#818CF8] rounded-r" />
+        <span className="absolute left-0 inset-y-1 w-[3px] bg-indigo-500 dark:bg-[#00A3FF] rounded-r" />
       )}
       <span className="shrink-0">{icon}</span>
       <span className="flex-1">{label}</span>
@@ -60,7 +60,7 @@ function NavItem({ to, matchPrefix, icon, label, badge, badgeRed, disabled }: Na
           'text-[10px] font-semibold px-1.5 py-px rounded-full font-mono',
           badgeRed
             ? 'bg-red-50 dark:bg-[#2D1515] text-red-600 dark:text-[#F87171]'
-            : 'bg-indigo-50 dark:bg-[#1E1B4B] text-indigo-500 dark:text-[#818CF8]',
+            : 'bg-indigo-50 dark:bg-[#04103A] text-indigo-500 dark:text-[#00A3FF]',
         )}>
           {badge}
         </span>
@@ -149,17 +149,15 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
   const cancelRename = () => setRenamingId(null);
 
   return (
-    <aside className="w-[240px] shrink-0 bg-white dark:bg-[#18181C] border-r border-gray-200 dark:border-[#27272F] flex flex-col h-full overflow-hidden">
+    <aside className="w-[240px] shrink-0 bg-white dark:bg-[#0A0C10] border-r border-gray-200 dark:border-[#1E222B] flex flex-col h-full overflow-hidden">
 
       {/* Logo */}
-      <div className="px-3.5 py-[14px] border-b border-gray-200 dark:border-[#27272F] flex items-center gap-[9px] shrink-0">
-        <div className="w-7 h-7 bg-indigo-500 rounded-[7px] flex items-center justify-center shrink-0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
-          </svg>
-        </div>
-        <span className="text-[16px] font-bold text-gray-900 dark:text-[#F1F5F9] tracking-[-0.02em]">OpenDevOps</span>
-        <span className="text-[10px] text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B] border border-indigo-200 dark:border-[#3730A3] rounded px-1.5 py-px font-semibold tracking-[0.04em]">
+      <div className="px-3.5 py-[14px] border-b border-gray-200 dark:border-[#1E222B] flex items-center gap-[9px] shrink-0">
+        {/* Emblem swaps by theme; wordmark shown in both. */}
+        <img src="/Emblem.svg" alt="" className="w-7 h-7 shrink-0 dark:hidden" />
+        <img src="/brand-mark.svg" alt="" className="w-7 h-7 shrink-0 hidden dark:block" />
+        <span className="text-[16px] font-bold text-gray-900 dark:text-[#E4E1EA] tracking-[-0.02em]">OpenDevOps</span>
+        <span className="text-[10px] text-indigo-500 dark:text-[#00A3FF] bg-indigo-50 dark:bg-[#04103A] border border-indigo-200 dark:border-[#0E4FA6] rounded px-1.5 py-px font-semibold tracking-[0.04em]">
           BETA
         </span>
       </div>
@@ -180,7 +178,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
         </span>
         <button
           onClick={onNew}
-          className="text-gray-400 dark:text-[#64748B] hover:text-indigo-500 dark:hover:text-[#818CF8] transition-colors p-0.5 rounded"
+          className="text-gray-400 dark:text-[#64748B] hover:text-indigo-500 dark:hover:text-[#00A3FF] transition-colors p-0.5 rounded"
           title="New chat"
         >
           <Plus size={13} />
@@ -201,8 +199,8 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                 className={cn(
                   'group relative transition-all duration-100 border-l-2 select-none',
                   s.id === currentSessionId
-                    ? 'border-indigo-500 dark:border-[#818CF8] bg-indigo-50 dark:bg-[#1E1B4B]'
-                    : 'border-transparent hover:bg-gray-100 dark:hover:bg-[#27272F]',
+                    ? 'border-indigo-500 dark:border-[#00A3FF] bg-indigo-50 dark:bg-[#04103A]'
+                    : 'border-transparent hover:bg-gray-100 dark:hover:bg-[#1E222B]',
                 )}
               >
                 {renamingId === s.id ? (
@@ -217,7 +215,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                         if (e.key === 'Escape') cancelRename();
                       }}
                       onBlur={commitRename}
-                      className="w-full text-[14px] bg-white dark:bg-[#27272F] border border-indigo-400 dark:border-[#818CF8] rounded px-2 py-0.5 text-gray-900 dark:text-[#F1F5F9] outline-none"
+                      className="w-full text-[14px] bg-white dark:bg-[#1E222B] border border-indigo-400 dark:border-[#00A3FF] rounded px-2 py-0.5 text-gray-900 dark:text-[#E4E1EA] outline-none"
                     />
                   </div>
                 ) : (
@@ -229,7 +227,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                   >
                     <span className={cn(
                       'text-[14px] truncate',
-                      s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#F1F5F9]' : 'text-gray-700 dark:text-[#CBD5E1]',
+                      s.id === currentSessionId ? 'font-medium text-gray-900 dark:text-[#E4E1EA]' : 'text-gray-700 dark:text-[#CBD5E1]',
                     )}>
                       {s.title ?? 'Untitled session'}
                     </span>
@@ -246,7 +244,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
                       onClick={e => openMenu(e, s.id)}
                       className={cn(
                         'p-1 rounded transition-colors text-gray-400 dark:text-[#64748B]',
-                        'hover:text-gray-600 dark:hover:text-[#94A3B8] hover:bg-gray-200 dark:hover:bg-[#3F3F47]',
+                        'hover:text-gray-600 dark:hover:text-[#94A3B8] hover:bg-gray-200 dark:hover:bg-[#2A2F3A]',
                         'opacity-0 group-hover:opacity-100',
                         openMenuId === s.id && 'opacity-100',
                       )}
@@ -262,7 +260,7 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
             {hasMore && (
               <button
                 onClick={onLoadMore}
-                className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2 text-[12px] text-gray-400 dark:text-[#64748B] hover:text-indigo-500 dark:hover:text-[#818CF8] transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2 text-[12px] text-gray-400 dark:text-[#64748B] hover:text-indigo-500 dark:hover:text-[#00A3FF] transition-colors"
               >
                 <ChevronDown size={13} />
                 Load more
@@ -273,22 +271,22 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
       </div>
 
       {/* Bottom nav */}
-      <div className="border-t border-gray-200 dark:border-[#27272F] pt-1 shrink-0">
+      <div className="border-t border-gray-200 dark:border-[#1E222B] pt-1 shrink-0">
         {isAdmin && <NavItem to="/users" icon={<Users size={14} />} label="Team" />}
         <NavItem to="/settings" icon={<Settings size={14} />} label="Settings" />
       </div>
 
       {/* User footer */}
-      <div className="flex items-center gap-2 px-3.5 py-2.5 border-t border-gray-200 dark:border-[#27272F] shrink-0">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-t border-gray-200 dark:border-[#1E222B] shrink-0">
         <div
-          className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#27272F] rounded-md px-1 py-0.5 transition-colors"
+          className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1E222B] rounded-md px-1 py-0.5 transition-colors"
           onClick={() => navigate('/settings')}
         >
           <div className="w-[26px] h-[26px] rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-semibold shrink-0">
             {displayName.slice(0, 2).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium text-gray-900 dark:text-[#F1F5F9] truncate">{displayName}</div>
+            <div className="text-[13px] font-medium text-gray-900 dark:text-[#E4E1EA] truncate">{displayName}</div>
             <div className="text-[12px] text-gray-400 dark:text-[#64748B]">{displayRole}</div>
           </div>
         </div>
@@ -306,14 +304,14 @@ export default function Sidebar({ sessions, hasMore, currentSessionId, onNew, on
         <div
           ref={menuRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left - 140 }}
-          className="z-[9999] bg-white dark:bg-[#1E1E24] border border-gray-200 dark:border-[#27272F] rounded-lg shadow-lg py-1 min-w-[140px]"
+          className="z-[9999] bg-white dark:bg-[#15181F] border border-gray-200 dark:border-[#1E222B] rounded-lg shadow-lg py-1 min-w-[140px]"
         >
           <button
             onClick={() => {
               const session = sessions.find(s => s.id === openMenuId);
               if (session) startRename(session);
             }}
-            className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-gray-700 dark:text-[#CBD5E1] hover:bg-gray-100 dark:hover:bg-[#27272F] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-[7px] text-[14px] text-gray-700 dark:text-[#CBD5E1] hover:bg-gray-100 dark:hover:bg-[#1E222B] transition-colors"
           >
             <Pencil size={13} />
             Rename

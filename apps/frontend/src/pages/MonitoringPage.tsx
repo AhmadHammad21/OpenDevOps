@@ -125,7 +125,7 @@ export default function MonitoringPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white dark:bg-[#09090B]">
+    <div className="flex-1 overflow-y-auto bg-white dark:bg-[#000000]">
       <div className="max-w-4xl mx-auto px-6 py-8">
 
         {/* Header */}
@@ -151,7 +151,7 @@ export default function MonitoringPage() {
               </button>
             )}
             <button onClick={load}
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-[#A1A1AA] hover:text-gray-900 dark:hover:text-white px-3 py-1.5 border border-gray-200 dark:border-[#27272A] rounded-lg hover:bg-gray-50 dark:hover:bg-[#18181B] transition-colors">
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-[#A1A1AA] hover:text-gray-900 dark:hover:text-white px-3 py-1.5 border border-gray-200 dark:border-[#1E222B] rounded-lg hover:bg-gray-50 dark:hover:bg-[#0A0C10] transition-colors">
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
@@ -160,7 +160,7 @@ export default function MonitoringPage() {
         {/* Empty state */}
         {alerts.length === 0 && !loading && (
           <div className="text-center py-20">
-            <div className="w-14 h-14 bg-gray-100 dark:bg-[#18181B] rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-14 h-14 bg-gray-100 dark:bg-[#0A0C10] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Activity size={24} className="text-gray-400 dark:text-[#52525B]" />
             </div>
             <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">{emptyTitle}</h2>
@@ -182,7 +182,7 @@ export default function MonitoringPage() {
               {alerts.map(a => (
                 <div key={a.id}
                   onClick={() => navigate(`/monitoring/${a.id}`)}
-                  className="group rounded-xl border border-gray-200 dark:border-[#27272A] bg-white dark:bg-[#18181B] p-4 cursor-pointer transition-all hover:border-gray-300 dark:hover:border-[#3F3F46] hover:shadow-sm">
+                  className="group rounded-xl border border-gray-200 dark:border-[#1E222B] bg-white dark:bg-[#0A0C10] p-4 cursor-pointer transition-all hover:border-gray-300 dark:hover:border-[#2A2F3A] hover:shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className={cn(
                       'w-2.5 h-2.5 rounded-full shrink-0',
@@ -202,7 +202,7 @@ export default function MonitoringPage() {
                             'text-[10px] font-bold px-1.5 py-0.5 rounded',
                             a.confidence === 'HIGH' ? 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400' :
                             a.confidence === 'MEDIUM' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' :
-                            'bg-gray-100 dark:bg-[#27272A] text-gray-500 dark:text-[#71717A]'
+                            'bg-gray-100 dark:bg-[#1E222B] text-gray-500 dark:text-[#71717A]'
                           )}>{a.confidence}</span>
                         )}
                       </div>
@@ -221,7 +221,7 @@ export default function MonitoringPage() {
                       >
                         <MessageSquare size={11} /> {a.session_id ? 'View investigation' : 'Investigate'}
                       </button>
-                      <ChevronRight size={14} className="text-gray-300 dark:text-[#3F3F46] group-hover:text-gray-500 dark:group-hover:text-[#71717A] transition-colors" />
+                      <ChevronRight size={14} className="text-gray-300 dark:text-[#2A2F3A] group-hover:text-gray-500 dark:group-hover:text-[#71717A] transition-colors" />
                     </div>
                   </div>
                 </div>
