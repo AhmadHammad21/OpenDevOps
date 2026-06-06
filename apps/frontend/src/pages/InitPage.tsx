@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowLeft, Loader2, Terminal, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Loader2, Eye, EyeOff, CheckCircle, XCircle, AlertTriangle, ChevronRight, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
 import LlmBackendCard from '../components/LlmBackendCard';
 import type { LlmBackendInfo } from '../types';
 
-const inp = 'w-full text-base text-gray-900 dark:text-white bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A] rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-[#52525B]';
+const inp = 'w-full text-base text-gray-900 dark:text-white bg-gray-50 dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B] rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/10 transition-all placeholder:text-gray-400 dark:placeholder:text-[#52525B]';
 
 const AWS_REGIONS = [
   'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
@@ -178,11 +178,9 @@ export default function InitPage() {
   const hasPerms = Object.keys(perms).length > 0;
 
   return (
-    <div className="h-screen bg-white dark:bg-[#09090B] flex flex-col overflow-hidden">
+    <div className="h-screen bg-white dark:bg-[#000000] flex flex-col overflow-hidden">
       <header className="shrink-0 px-8 py-5 flex items-center gap-3">
-        <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center">
-          <Terminal size={16} className="text-white" />
-        </div>
+        <img src="/brand-mark.svg" alt="" className="w-9 h-9" />
         <span className="text-base font-semibold text-gray-900 dark:text-white">OpenDevOps</span>
       </header>
 
@@ -199,14 +197,14 @@ export default function InitPage() {
                     ? 'bg-indigo-500 text-white'
                     : step === s
                       ? 'bg-indigo-500 text-white ring-4 ring-indigo-500/20'
-                      : 'bg-gray-100 dark:bg-[#27272A] text-gray-400 dark:text-[#52525B]'
+                      : 'bg-gray-100 dark:bg-[#1E222B] text-gray-400 dark:text-[#52525B]'
                 )}>
                   {step > s ? <Check size={13} /> : s}
                 </div>
                 {i < 3 && (
                   <div className={cn(
                     'h-px w-8 transition-colors',
-                    step > s ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-[#27272A]'
+                    step > s ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-[#1E222B]'
                   )} />
                 )}
               </div>
@@ -267,9 +265,9 @@ export default function InitPage() {
                   <LlmBackendCard backend={llmBackend} />
                   {!llmBackend.configured && (
                     <p className="mt-2 text-xs text-gray-400 dark:text-[#52525B]">
-                      You can set <code className="bg-gray-100 dark:bg-[#27272A] px-1 rounded">LLM_MODEL</code> and an API key in <code className="bg-gray-100 dark:bg-[#27272A] px-1 rounded">.env</code>, or install{' '}
-                      <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#818CF8] hover:underline">Claude Code</a>{' '}
-                      for zero-config setup. See <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/llm_providers.md" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#818CF8] hover:underline">docs/llm_providers.md</a>.
+                      You can set <code className="bg-gray-100 dark:bg-[#1E222B] px-1 rounded">LLM_MODEL</code> and an API key in <code className="bg-gray-100 dark:bg-[#1E222B] px-1 rounded">.env</code>, or install{' '}
+                      <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#00A3FF] hover:underline">Claude Code</a>{' '}
+                      for zero-config setup. See <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/llm_providers.md" target="_blank" rel="noopener noreferrer" className="text-indigo-500 dark:text-[#00A3FF] hover:underline">docs/llm_providers.md</a>.
                     </p>
                   )}
                 </div>
@@ -326,7 +324,7 @@ export default function InitPage() {
                     </a>
                   </p>
                   <button onClick={finishWithoutInfra} disabled={loading}
-                    className="w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#27272A] border border-gray-200 dark:border-[#3F3F46] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#3F3F46] transition-colors">
+                    className="w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#1E222B] border border-gray-200 dark:border-[#2A2F3A] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#2A2F3A] transition-colors">
                     Go to dashboard anyway
                   </button>
                 </div>
@@ -345,7 +343,7 @@ export default function InitPage() {
                 Need to set up IAM permissions first? See{' '}
                 <a href="https://github.com/AhmadHammad21/OpenDevOps/blob/main/docs/iam_setup.md"
                    target="_blank" rel="noopener noreferrer"
-                   className="text-indigo-500 dark:text-[#818CF8] hover:underline">
+                   className="text-indigo-500 dark:text-[#00A3FF] hover:underline">
                   docs/iam_setup.md
                 </a>
                 {' '}for the exact policy JSON.
@@ -358,17 +356,17 @@ export default function InitPage() {
                 </button>
               ) : (
                 <>
-                  <div className="rounded-xl border border-gray-200 dark:border-[#27272A] overflow-hidden mb-6">
+                  <div className="rounded-xl border border-gray-200 dark:border-[#1E222B] overflow-hidden mb-6">
                     {Object.entries(SVC).map(([svc, info], i) => {
                       const r = perms[svc];
                       return (
                         <div key={svc} className={cn(
                           'flex items-center gap-3 px-4 py-3',
-                          i < Object.keys(SVC).length - 1 ? 'border-b border-gray-100 dark:border-[#27272A]' : ''
+                          i < Object.keys(SVC).length - 1 ? 'border-b border-gray-100 dark:border-[#1E222B]' : ''
                         )}>
                           <div className="shrink-0">
                             {!r
-                              ? <div className="w-[14px] h-[14px] rounded-full bg-gray-200 dark:bg-[#27272A]" />
+                              ? <div className="w-[14px] h-[14px] rounded-full bg-gray-200 dark:bg-[#1E222B]" />
                               : r.passed
                                 ? <CheckCircle size={14} className="text-emerald-500" />
                                 : r.passed === null
@@ -381,7 +379,7 @@ export default function InitPage() {
                               <span className="text-sm font-medium text-gray-900 dark:text-white">{info.label}</span>
                               <span className="text-xs text-gray-400 dark:text-[#52525B]">{info.desc}</span>
                               {info.required && (
-                                <span className="text-[10px] font-semibold text-indigo-500 dark:text-[#818CF8] bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded">Required</span>
+                                <span className="text-[10px] font-semibold text-indigo-500 dark:text-[#00A3FF] bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded">Required</span>
                               )}
                             </div>
                             {r && !r.passed && r.error && (
@@ -439,13 +437,13 @@ export default function InitPage() {
               {!infraDone ? (
                 <>
                   {/* Rule list preview */}
-                  <div className="rounded-xl border border-gray-200 dark:border-[#27272A] overflow-hidden mb-6">
+                  <div className="rounded-xl border border-gray-200 dark:border-[#1E222B] overflow-hidden mb-6">
                     {RULES.map((rule, i) => (
                       <div key={rule.name} className={cn(
                         'flex items-center gap-3 px-4 py-3',
-                        i < RULES.length - 1 ? 'border-b border-gray-100 dark:border-[#27272A]' : ''
+                        i < RULES.length - 1 ? 'border-b border-gray-100 dark:border-[#1E222B]' : ''
                       )}>
-                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 dark:bg-[#818CF8] shrink-0" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 dark:bg-[#00A3FF] shrink-0" />
                         <div>
                           <span className="text-sm text-gray-900 dark:text-white">{rule.name}</span>
                           <span className="text-xs text-gray-400 dark:text-[#52525B] ml-2">{rule.src}</span>
@@ -476,7 +474,7 @@ export default function InitPage() {
                   </button>
 
                   {showSkipDisclaimer && (
-                    <div className="mt-3 p-4 rounded-xl bg-gray-50 dark:bg-[#18181B] border border-gray-200 dark:border-[#27272A]">
+                    <div className="mt-3 p-4 rounded-xl bg-gray-50 dark:bg-[#0A0C10] border border-gray-200 dark:border-[#1E222B]">
                       <p className="text-sm font-semibold text-gray-700 dark:text-[#D4D4D8] mb-2">Without event monitoring:</p>
                       <ul className="space-y-1 mb-3">
                         {[
@@ -494,7 +492,7 @@ export default function InitPage() {
                         You can enable this anytime from <span className="font-medium text-gray-600 dark:text-[#A1A1AA]">Settings → AWS Configuration</span>.
                       </p>
                       <button onClick={finishWithoutInfra} disabled={loading}
-                        className="mt-3 w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#27272A] border border-gray-200 dark:border-[#3F3F46] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#3F3F46] transition-colors">
+                        className="mt-3 w-full text-sm font-medium text-gray-700 dark:text-[#D4D4D8] bg-white dark:bg-[#1E222B] border border-gray-200 dark:border-[#2A2F3A] rounded-lg py-2.5 hover:bg-gray-50 dark:hover:bg-[#2A2F3A] transition-colors">
                         Go to dashboard anyway
                       </button>
                     </div>
@@ -514,11 +512,11 @@ export default function InitPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-gray-200 dark:border-[#27272A] overflow-hidden mb-8">
+                  <div className="rounded-xl border border-gray-200 dark:border-[#1E222B] overflow-hidden mb-8">
                     {RULES.map((rule, i) => (
                       <div key={rule.name} className={cn(
                         'flex items-center gap-3 px-4 py-3',
-                        i < RULES.length - 1 ? 'border-b border-gray-100 dark:border-[#27272A]' : ''
+                        i < RULES.length - 1 ? 'border-b border-gray-100 dark:border-[#1E222B]' : ''
                       )}>
                         <CheckCircle size={13} className="text-emerald-500 shrink-0" />
                         <span className="text-sm text-gray-900 dark:text-white">{rule.name}</span>
