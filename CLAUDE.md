@@ -130,7 +130,7 @@ Everything below is built and working in the codebase:
 
 ### API
 - FastAPI SSE endpoint at `POST /chat`; streams `token`, `tool_status`, `tool_call`, `error`, `done`, `cancelled` events.
-- SPA fallback: `GET /{full_path:path}` returns `apps/frontend/dist/index.html` so React Router works on refresh.
+- SPA fallback: `GET /{full_path:path}` first serves a matching root-level file from `apps/frontend/dist/` (favicon, logos, and any other `public/` asset Vite copies to the build root), and otherwise returns `index.html` so React Router works on refresh. Vite's hashed JS/CSS is served separately via the `/assets` mount. **Don't narrow this back to "always index.html"** — root-level `public/` assets (e.g. `/favicon.svg`, `/Emblem.svg`) would then be served as HTML and render as broken images.
 - All routes that could conflict with React Router paths use the `/api/` prefix: `/api/settings`, `/api/users`, `/api/history`, `/api/monitoring`, `/api/init`.
 - Auth: optional JWT (HS256 via python-jose + bcrypt). Disabled when `JWT_SECRET` is unset — `get_current_user()` returns `None` in that case, meaning all routes are public.
 
