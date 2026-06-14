@@ -2,6 +2,9 @@
 .env
 .env.local
 
+# Claude Code (local agent tooling — skills, settings)
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]
