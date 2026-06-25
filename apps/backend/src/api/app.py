@@ -23,6 +23,7 @@ from api.routers import (  # noqa: E402
     evidence,
     history,
     integrations,
+    inventory,
     monitoring,
     sessions,
     settings,
@@ -195,6 +196,7 @@ app.include_router(settings.router)
 app.include_router(integrations.router)
 app.include_router(init_router.router)
 app.include_router(monitoring.router)
+app.include_router(inventory.router)
 
 _DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 if not _DIST.is_dir():

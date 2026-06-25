@@ -24,21 +24,33 @@ def _c(s, service: str, region: str):
     return s.client(service, region_name=region)
 
 
+# Declarative source of truth for the per-service read-permission probe. Each entry is
+# (label, boto3 service, read-only operation, kwargs). check_permissions() iterates this,
+# and the published tool/permission inventory introspects it — keep them in sync by
+# adding probes here only, never by hardcoding calls inline.
+PERMISSION_PROBES: tuple[tuple[str, str, str, dict], ...] = (
+    ("cloudwatch", "cloudwatch", "describe_alarms", {"MaxRecords": 1}),
+    ("cloudtrail", "cloudtrail", "lookup_events", {"MaxResults": 1}),
+    ("ecs", "ecs", "list_clusters", {"maxResults": 1}),
+    ("lambda", "lambda", "list_functions", {"MaxItems": 1}),
+    ("ec2", "ec2", "describe_instances", {"MaxResults": 5}),
+    ("rds", "rds", "describe_db_instances", {}),
+    ("iam", "sts", "get_caller_identity", {}),
+    ("sqs", "sqs", "list_queues", {"MaxResults": 1}),
+    ("events", "events", "list_rules", {"Limit": 1}),
+)
+
+
 def check_permissions(region: str | None = None) -> dict[str, dict]:
     """Run one lightweight read call per service. Returns {service: {passed, error}}."""
     s = _session()
     region = region or resolve_region()
 
     results: dict[str, dict] = {
-        "cloudwatch": _check(lambda: _c(s, "cloudwatch", region).describe_alarms(MaxRecords=1)),
-        "cloudtrail": _check(lambda: _c(s, "cloudtrail", region).lookup_events(MaxResults=1)),
-        "ecs": _check(lambda: _c(s, "ecs", region).list_clusters(maxResults=1)),
-        "lambda": _check(lambda: _c(s, "lambda", region).list_functions(MaxItems=1)),
-        "ec2": _check(lambda: _c(s, "ec2", region).describe_instances(MaxResults=5)),
-        "rds": _check(lambda: _c(s, "rds", region).describe_db_instances()),
-        "iam": _check(lambda: _c(s, "sts", region).get_caller_identity()),
-        "sqs": _check(lambda: _c(s, "sqs", region).list_queues(MaxResults=1)),
-        "events": _check(lambda: _c(s, "events", region).list_rules(Limit=1)),
+        label: _check(
+            lambda svc=svc, op=op, kwargs=kwargs: getattr(_c(s, svc, region), op)(**kwargs)
+        )
+        for label, svc, op, kwargs in PERMISSION_PROBES
     }
 
     for svc, r in results.items():

@@ -43,7 +43,7 @@ On a **reproducible 10-incident suite** (real AWS + Azure resources, scored agai
 |  | **OpenDevOps** | **AWS DevOps Agent / Q Developer** |
 |---|---|---|
 | **LLM** | Any (LiteLLM, Claude Code, Ollama) | Bedrock-managed only |
-| **Cloud coverage** | AWS + Azure (more coming) | AWS only |
+| **Cloud coverage** | AWS (structured tools + CLI) + Azure (CLI + skills) | AWS only |
 | **Data location** | Your DB / VPC | AWS-managed, not portable |
 | **Customization** | Open source — modify anything | Closed product |
 | **Pricing** | LLM at retail (or $0 via Ollama / Claude Code) | Per-investigation + Bedrock markup |
@@ -51,11 +51,23 @@ On a **reproducible 10-incident suite** (real AWS + Azure resources, scored agai
 
 **When AWS is the better pick:** if you're 100% AWS, never plan to leave, and want zero infrastructure to run, Amazon Q Developer's native Console integration and AWS-only signals (Trusted Advisor, AWS Config, Compute Optimizer) are hard to beat. OpenDevOps is for everyone else.
 
+### Cloud coverage — honest tiers
+
+Multi-cloud means different things per provider. Here is exactly where each cloud stands today (numbers are introspected from the code and published in the [tool inventory](apps/documentation/tool_inventory.md)):
+
+| Cloud | Structured SDK tools | CLI investigation (`bash` tool) | Runbook skills | Event-driven + polling | Status |
+|---|---|---|---|---|---|
+| **AWS** | 20 (CloudWatch, CloudTrail, ECS, Lambda, EC2, RDS, IAM) | `aws` (read-only verbs) | ✅ | ✅ EventBridge → SQS + metric poller | **Complete** |
+| **Azure** | 0 | `az` + `kubectl` (AKS) | ✅ 4 (AKS, App Service, Monitor/KQL, VM) | ❌ | **CLI + skills** |
+| **GCP** | 0 | — | — | ❌ | **Not implemented** (stub returns no tools) |
+
+AWS is the complete path (structured tools **and** CLI). Azure is investigated CLI-first through the read-only `az`/`kubectl` allowlist plus runbook skills — there are **no** structured Azure SDK tools and **no** autonomous detection loop. GCP is a stub: the provider loads and returns zero tools.
+
 ## What's inside
 
 - **LangChain DeepAgents** as the agent framework — planning, tool orchestration, and session memory out of the box
-- **21 read-only AWS tools** across CloudWatch (6), CloudTrail (2), ECS (4), Lambda (4), EC2 (2), RDS (2), IAM (1), plus bash escape hatch, cross-session history analytics, skills, and `submit_investigation` — plain Python functions, schemas inferred automatically
-- **Azure support (CLI-first)** — investigates Azure through the read-only `az` CLI + `kubectl` (for AKS) and a set of Azure runbook skills (AKS debugging, App Service errors, Azure Monitor/KQL, VM diagnostics) — no separate SDK tools needed. Read-only; connect via a service principal or `az login` — see [apps/documentation/azure_setup.md](apps/documentation/azure_setup.md)
+- **20 read-only AWS tools** across CloudWatch (6), CloudTrail (1), ECS (4), Lambda (3), EC2 (2), RDS (2), IAM (2), plus bash escape hatch, cross-session history analytics, skills, and `submit_investigation` — plain Python functions, schemas inferred automatically. The complete, always-current list (with parameters, the bash allowlist, and the AWS permission matrix) is published as a trust artifact — see [apps/documentation/tool_inventory.md](apps/documentation/tool_inventory.md) or the read-only `GET /api/inventory` endpoint
+- **Azure support (CLI-first)** — investigates Azure through the read-only `az` CLI + `kubectl` (for AKS) and a set of Azure runbook skills (AKS debugging, App Service errors, Azure Monitor/KQL, VM diagnostics) — **no structured SDK tools and no event-driven/polling loop** (those are AWS-only). Read-only; connect via a service principal or `az login` — see [apps/documentation/azure_setup.md](apps/documentation/azure_setup.md)
 - **Sandboxed bash execution tool** — agent can run whitelisted read-only AWS CLI (`aws`), Azure CLI (`az`), kubectl, and docker commands as a last resort when the structured tools fall short; every command validated against an allowlist before execution; never uses `shell=True`; hard 30-second timeout
   - Includes **CloudWatch Logs Insights** (`query_logs_insights`) — full query language support: `fields`, `filter`, `stats`, `sort`, `limit`; results include scanned MB
 - **Streaming responses** — FastAPI SSE endpoint streams agent tokens in real time as the LLM reasons; tool calls appear as they complete

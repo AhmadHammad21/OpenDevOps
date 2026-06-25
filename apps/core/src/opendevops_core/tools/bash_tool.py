@@ -82,6 +82,11 @@ _KUBECTL_FLAGS_WITH_VALUE: frozenset[str] = frozenset(
 
 _DOCKER_FLAGS_WITH_VALUE: frozenset[str] = frozenset({"-H", "--host", "--context", "--config"})
 
+# Read-only subcommands allowed per binary (the single source of truth — the published
+# tool/permission inventory introspects these, so add verbs here only).
+_KUBECTL_SUBCOMMANDS: frozenset[str] = frozenset({"get", "describe", "logs"})
+_DOCKER_SUBCOMMANDS: frozenset[str] = frozenset({"ps", "logs", "inspect"})
+
 # Azure CLI read-only verbs (the verb is the LAST positional token of the command path,
 # e.g. "az aks show" → "show", "az aks get-credentials" → "get", "az monitor metrics list" → "list").
 _AZ_READONLY_VERBS: frozenset[str] = frozenset(
@@ -194,11 +199,11 @@ def _allowed(command: str, tokens: list[str]) -> bool:
 
     if binary == "kubectl":
         subcommand = _find_subcommand(tokens, 1, _KUBECTL_FLAGS_WITH_VALUE)
-        return subcommand in {"get", "describe", "logs"}
+        return subcommand in _KUBECTL_SUBCOMMANDS
 
     if binary == "docker":
         subcommand = _find_subcommand(tokens, 1, _DOCKER_FLAGS_WITH_VALUE)
-        return subcommand in {"ps", "logs", "inspect"}
+        return subcommand in _DOCKER_SUBCOMMANDS
 
     return False
 
