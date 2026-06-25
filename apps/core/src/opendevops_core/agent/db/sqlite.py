@@ -526,6 +526,33 @@ class SQLiteBackend(DatabaseBackend):
             result.append(item)
         return result
 
+    async def get_evidence(self, session_id: str, org_id: str | None = None) -> dict:
+        # org_id ignored — SQLite is single-tenant (see upsert_session note).
+        session = await self._fetchone(
+            "SELECT is_deleted, aws_region FROM sessions WHERE id = ?", session_id
+        )
+        if session is None or session.get("is_deleted"):
+            return {"aws_region": None, "tool_calls": []}
+        rows = await self._fetchall(
+            "SELECT id, tool_name, args, result, error, created_at FROM tool_calls "
+            "WHERE session_id = ? ORDER BY created_at ASC",
+            session_id,
+        )
+        tool_calls = [
+            {
+                "id": r["id"],
+                "tool_name": r["tool_name"],
+                "args": json.loads(r["args"]) if isinstance(r["args"], str) else r["args"],
+                "result": (
+                    json.loads(r["result"]) if isinstance(r["result"], str) else r["result"]
+                ),
+                "error": r["error"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+        return {"aws_region": session.get("aws_region"), "tool_calls": tool_calls}
+
     async def delete_session(self, session_id: str) -> None:
         await self._exec(
             "UPDATE sessions SET is_deleted = 1, "

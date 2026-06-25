@@ -65,6 +65,7 @@ On a **reproducible 10-incident suite** (real AWS + Azure resources, scored agai
 - **AWS Configuration settings tab** — admin-only editable tab in Settings for SQS Queue URL and AWS Region; shared org-wide via database-backed app config; includes an inline IAM permission checker per service
 - **Web UI** — React + Vite SPA served by FastAPI:
   - **Chat page** — streaming responses, collapsible tool call inspector, cost/latency card, stop button; supports `?prompt=` deeplink for pre-seeded investigations from the Monitoring dashboard
+    - **Replayable evidence pack** — an Evidence button opens the investigation's ranked hypotheses, each with cited evidence linked to the supporting tool call, the exact query/command that ran, and a deterministic AWS-console deeplink; copy-to-clipboard and JSON export. Served read-only from `GET /api/sessions/{id}/evidence` — see [apps/documentation/evidence_pack.md](apps/documentation/evidence_pack.md)
   - **Session history sidebar** — lists all past conversations; click any to resume with full tool call inspector and cost card restored; new chat and delete (soft) buttons
   - **Monitoring page** — live incident feed from event-driven detection; alert detail with investigate deeplink
   - **Dashboard** — session counts, tool call stats, cost/latency, context saved, activity chart, service breakdown, root cause distribution, recent sessions

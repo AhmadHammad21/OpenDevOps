@@ -220,6 +220,25 @@ class MemoryBackend(DatabaseBackend):
             result.append(item)
         return result
 
+    async def get_evidence(self, session_id: str, org_id: str | None = None) -> dict:
+        session = self._sessions.get(session_id)
+        if session is None or session.get("is_deleted"):
+            return {"aws_region": None, "tool_calls": []}
+        if org_id is not None and session.get("org_id") != org_id:
+            return {"aws_region": None, "tool_calls": []}
+        tool_calls = [
+            {
+                "id": tc["id"],
+                "tool_name": tc["tool_name"],
+                "args": tc["args"],
+                "result": tc["result"],
+                "error": tc["error"],
+                "created_at": tc["created_at"],
+            }
+            for tc in self._tool_calls.get(session_id, [])
+        ]
+        return {"aws_region": session.get("aws_region"), "tool_calls": tool_calls}
+
     async def delete_session(self, session_id: str) -> None:
         if session_id in self._sessions:
             self._sessions[session_id]["is_deleted"] = True

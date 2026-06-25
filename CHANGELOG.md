@@ -30,6 +30,21 @@ Notable changes to OpenDevOps Agent (open-source core + backend).
   (`None` = unscoped — OSS behavior unchanged).
 - `CREDENTIALS_ENCRYPTION_KEY` (Fernet) for encrypting stored account secrets.
 
+### Added — Replayable evidence pack & ranked hypotheses
+- **Evidence pack endpoint** — read-only `GET /api/sessions/{id}/evidence` returns the
+  investigation's ranked hypotheses, each with cited evidence linked to the supporting tool
+  call, the exact query/command that ran, and a deterministic AWS-console deeplink. Reads the
+  conclusion from the persisted `submit_investigation` tool call (the `findings` table stays
+  an unwritten placeholder). Pure builder + console-deeplink encoder live in
+  `opendevops_core/agent/evidence.py`; `db.get_evidence()` added to the `DatabaseBackend` ABC
+  (default + all three backends). Frontend `EvidencePanel` renders grouped hypotheses + replay
+  cards with copy-to-clipboard and JSON export. See `apps/documentation/evidence_pack.md`.
+- **Ranked hypotheses conclusion schema** — `submit_investigation` now emits
+  `hypotheses: list[dict]` (`{hypothesis, evidence, confidence}`) alongside the legacy
+  `root_cause_summary` + flat `evidence[]` (preserved for backward compatibility). Migration
+  `015` adds `findings.hypotheses JSONB` (postgres only). The builder falls back to one
+  synthetic hypothesis when `hypotheses` is absent so pre-existing investigations still render.
+
 ### Changed
 - **README** reframed as multi-cloud (AWS + Azure) with links to both setup guides.
 - **`demos/`** reorganized into `demos/aws/` + `demos/azure/` with a top-level index.

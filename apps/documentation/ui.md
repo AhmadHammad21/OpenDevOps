@@ -34,6 +34,13 @@ and see the full arguments and result JSON.
 - Total cost for the turn
 - Latency in milliseconds
 
+**Evidence panel** — an **Evidence** button in the chat header (shown once the session
+has messages) opens a slide-over panel rendering the session's replayable evidence pack
+(`GET /api/sessions/{id}/evidence`). It groups the investigation's ranked hypotheses, each
+with its cited evidence linked to the supporting tool call, the verbatim query/command that
+ran, and a deterministic AWS-console deeplink. Replay cards offer copy-to-clipboard and a
+full JSON export. See [evidence_pack.md](evidence_pack.md).
+
 **Session continuity** — the session ID is stored in the URL. Refreshing the page
 or sharing the URL resumes the same conversation from where it left off (SQLite/Postgres
 backends only — memory backend loses history on restart).

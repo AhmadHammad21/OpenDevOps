@@ -86,6 +86,13 @@ class DatabaseBackend(ABC):
     @abstractmethod
     async def get_messages(self, session_id: str, org_id: str | None = None) -> list[dict]: ...
 
+    async def get_evidence(self, session_id: str, org_id: str | None = None) -> dict:
+        """Return the raw material for a session's evidence pack:
+        ``{"aws_region": str | None, "tool_calls": [...]}`` where each tool call carries
+        ``id``, ``tool_name``, ``args``, ``result``, ``error`` and ``created_at`` ordered
+        oldest-first. Read-only. Default returns empty — every backend overrides it."""
+        return {"aws_region": None, "tool_calls": []}
+
     @abstractmethod
     async def delete_session(self, session_id: str) -> None: ...
 

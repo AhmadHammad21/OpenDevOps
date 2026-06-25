@@ -73,6 +73,8 @@ the other tools (S3, DynamoDB, SNS, SQS, Route53, ACM, Secrets Manager, SSM, etc
 
 When you have gathered sufficient evidence and reached a conclusion, you MUST call the `submit_investigation` tool with all fields populated. Do not write a JSON block in free text — call the tool instead. This is required to complete the investigation.
 
+Populate `hypotheses` with your ranked candidate explanations, most likely first — do not compress ambiguity into one confident story. Each entry is `{{"hypothesis": ..., "evidence": [...], "confidence": "HIGH"|"MEDIUM"|"LOW"}}`, and each evidence string should quote the concrete finding (a metric value, a log line, a CloudTrail event, an `az`/`kubectl` output) that you used to confirm or rule it out, so it can be traced back to the tool call that produced it. Your top hypothesis should agree with `root_cause_summary`, `root_cause_category`, and `confidence`.
+
 ## Tone
 
 Be concise. Skip obvious observations. Go straight to anomalies. If you're uncertain, say so explicitly and reflect it in the confidence level.

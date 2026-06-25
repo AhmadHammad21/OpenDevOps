@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus } from 'lucide-react';
+import { Plus, FlaskConical } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import UserMessage from '../components/UserMessage';
 import AgentMessage from '../components/AgentMessage';
 import InputArea from '../components/InputArea';
+import EvidencePanel from '../components/EvidencePanel';
 import { fetchMessages, getAuthToken } from '../lib/api';
 import type { Message, AgentMessage as AgentMsg, MessageRecord } from '../types';
 
@@ -41,6 +42,7 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
   const [messages,          setMessages]          = useState<Message[]>([]);
   const [busy,              setBusy]              = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [showEvidence,      setShowEvidence]      = useState(false);
   const abortRef                                  = useRef<AbortController | null>(null);
   const bottomRef                                 = useRef<HTMLDivElement>(null);
   const autoPromptFired                           = useRef(false);
@@ -189,14 +191,29 @@ export default function ChatPage({ onSessionsChange, onNew }: Props) {
             Active
           </div>
         </div>
-        <button
-          onClick={onNew}
-          className="ml-auto flex items-center gap-1.5 px-2.5 py-[5px] bg-indigo-500 hover:bg-indigo-600 text-white text-[12px] font-medium rounded-[5px] transition-colors"
-        >
-          <Plus size={12} />
-          New chat
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={() => setShowEvidence(true)}
+              className="flex items-center gap-1.5 px-2.5 py-[5px] border border-gray-200 dark:border-[#1E222B] text-gray-700 dark:text-[#CBD5E1] hover:bg-gray-100 dark:hover:bg-[#15181F] text-[12px] font-medium rounded-[5px] transition-colors"
+            >
+              <FlaskConical size={12} />
+              Evidence
+            </button>
+          )}
+          <button
+            onClick={onNew}
+            className="flex items-center gap-1.5 px-2.5 py-[5px] bg-indigo-500 hover:bg-indigo-600 text-white text-[12px] font-medium rounded-[5px] transition-colors"
+          >
+            <Plus size={12} />
+            New chat
+          </button>
+        </div>
       </div>
+
+      {showEvidence && sessionId && (
+        <EvidencePanel sessionId={sessionId} onClose={() => setShowEvidence(false)} />
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-[18px] min-h-0">
