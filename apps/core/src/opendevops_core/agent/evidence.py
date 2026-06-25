@@ -14,9 +14,7 @@ import urllib.parse
 from typing import Any
 
 # Characters the AWS console leaves un-escaped inside its hash-object string tokens.
-_CONSOLE_SAFE = set(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._"
-)
+_CONSOLE_SAFE = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._")
 
 # Map a tool name to the AWS service it belongs to, for grouping/labels.
 _SERVICE_BY_TOOL: dict[str, str] = {
@@ -117,10 +115,7 @@ def console_deeplink(tool_name: str, args: dict, region: str | None) -> str | No
             "isLiveTail": False,
             "source": [lg] if lg else [],
         }
-        return (
-            f"{_cw_base(region)}logsV2:logs-insights$3FqueryDetail$3D"
-            + _console_obj(detail)
-        )
+        return f"{_cw_base(region)}logsV2:logs-insights$3FqueryDetail$3D" + _console_obj(detail)
 
     if tool_name in ("get_alarms", "get_alarm_history"):
         name = args.get("alarm_name")
