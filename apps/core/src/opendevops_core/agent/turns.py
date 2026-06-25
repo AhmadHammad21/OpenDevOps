@@ -19,18 +19,27 @@ _FALLBACK_PRICING: dict[str, dict[str, float]] = {
 }
 
 
-def calc_cost(model: str, input_tok: int, output_tok: int) -> float | None:
+def calc_cost(model: str, input_tok: int, output_tok: int, reasoning_tok: int = 0) -> float | None:
+    # Reasoning/thinking tokens are billed at the output rate. Per the LangChain
+    # usage_metadata standard, output_token_details.reasoning is a *subset* of
+    # output_tokens — but some providers (e.g. Gemini 2.5 via OpenRouter) violate
+    # this and report reasoning *outside* output_tokens, which undercounted cost
+    # (issue #59). Detect that case: if reasoning exceeds the reported output
+    # count, the provider did not fold it in, so add it to the billable output.
+    billable_output = output_tok + reasoning_tok if reasoning_tok > output_tok else output_tok
     try:
         import litellm
 
         info = litellm.model_cost.get(model)
         if info:
-            return input_tok * info.get("input_cost_per_token", 0) + output_tok * info.get(
+            return input_tok * info.get("input_cost_per_token", 0) + billable_output * info.get(
                 "output_cost_per_token", 0
             )
         fallback = _FALLBACK_PRICING.get(model)
         if fallback:
-            return (input_tok / 1e6) * fallback["input"] + (output_tok / 1e6) * fallback["output"]
+            return (input_tok / 1e6) * fallback["input"] + (billable_output / 1e6) * fallback[
+                "output"
+            ]
         return None
     except Exception:
         return None
@@ -80,6 +89,7 @@ async def save_turn(
             usage.get("model", ""),
             usage.get("input_tokens", 0),
             usage.get("output_tokens", 0),
+            usage.get("reasoning_tokens", 0),
         )
         await db.save_usage_event(
             session_id,
