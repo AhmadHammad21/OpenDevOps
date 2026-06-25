@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-OpenDevOps Agent is an open-source AWS incident investigation tool powered by any LLM via LiteLLM. It runs a LangGraph ReAct loop (via DeepAgents) that calls 27 tools — 21 structured boto3 AWS tools plus bash, history analytics, skills, and a structured final-answer tool — then streams results to a React/Vite chat UI over SSE. Auth, multi-user RBAC, event-driven incident detection (EventBridge → SQS), and proactive anomaly polling are all built in and optional.
+OpenDevOps Agent is an open-source AWS incident investigation tool powered by any LLM via LiteLLM. It runs a LangGraph ReAct loop (via DeepAgents) that calls 26 tools — 20 structured boto3 AWS tools plus bash, history analytics, skills, and a structured final-answer tool — then streams results to a React/Vite chat UI over SSE. Auth, multi-user RBAC, event-driven incident detection (EventBridge → SQS), and proactive anomaly polling are all built in and optional.
 
 ---
 
@@ -48,7 +48,7 @@ to core are live without republishing.
 - **New env var:** if core reads it, add the Pydantic field to `CoreSettings` in `apps/core/src/opendevops_core/config.py`; if it's web/auth-only, add it to `Settings(CoreSettings)` in `apps/backend/src/config/appsettings.py`. Either way mirror it in `.env.example` (with a comment). Never read env vars directly — always go through `settings`.
 - **New DB column or table:** add a new numbered migration. Core-domain schema (tables core code reads/writes) goes in `apps/core/src/opendevops_core/migrations/` (e.g. `014_name.sql`); OSS-app-only schema goes in `apps/backend/migrations/`. The runner applies core-then-app, tracked in the `schema_migrations(source, version)` ledger. Never add columns inline in Python code.
 - **New tool:** add it to `ALL_TOOLS` in `apps/core/src/opendevops_core/agent/core.py`. Tool functions must be plain synchronous Python functions — DeepAgents infers the JSON schema from type hints and docstrings.
-- **Published tool/permission inventory:** the trust artifact (read-only `GET /api/inventory` + the generated `apps/documentation/tool_inventory.md`) is built **by introspection** in `opendevops_core.agent.inventory.build_inventory` — it never hand-maintains a list. Its sources of truth are `ALL_TOOLS`, the bash allowlist frozensets in `tools/bash_tool.py` (`_AWS_READONLY_VERBS`, `_AZ_READONLY_VERBS`, `_KUBECTL_SUBCOMMANDS`, `_DOCKER_SUBCOMMANDS`, blocked flags), and `providers/aws/permissions.py:PERMISSION_PROBES`. After changing any of those, regenerate the doc: `cd apps/backend && uv run python scripts/gen_tool_inventory.py`. Never edit `tool_inventory.md` by hand. Note: the introspected counts are **26 total tools / 20 structured AWS tools** (CloudWatch 6, CloudTrail 1, ECS 4, Lambda 3, EC2 2, RDS 2, IAM 2) — the "27 / 21" figures elsewhere in this file are stale; trust the inventory.
+- **Published tool/permission inventory:** the trust artifact (read-only `GET /api/inventory` + the generated `apps/documentation/tool_inventory.md`) is built **by introspection** in `opendevops_core.agent.inventory.build_inventory` — it never hand-maintains a list. Its sources of truth are `ALL_TOOLS`, the bash allowlist frozensets in `tools/bash_tool.py` (`_AWS_READONLY_VERBS`, `_AZ_READONLY_VERBS`, `_KUBECTL_SUBCOMMANDS`, `_DOCKER_SUBCOMMANDS`, blocked flags), and `providers/aws/permissions.py:PERMISSION_PROBES`. After changing any of those, regenerate the doc: `cd apps/backend && uv run python scripts/gen_tool_inventory.py`. Never edit `tool_inventory.md` by hand. Note: the introspected counts are **26 total tools / 20 structured AWS tools** (CloudWatch 6, CloudTrail 1, ECS 4, Lambda 3, EC2 2, RDS 2, IAM 2) — trust the inventory as the source of truth.
 - **New API route that matches a React Router path:** prefix it with `/api/` to avoid the SPA fallback conflict. The `/{full_path:path}` catch-all in `apps/backend/src/api/app.py` intercepts any GET that matches a registered FastAPI route first.
 - **New skill:** drop a `SKILL.md` file into `apps/core/src/opendevops_core/skills/<name>/SKILL.md`. It is picked up automatically at startup (and bundled into the core wheel) — no code changes needed. Use the frontmatter format (`name`, `description`) from the existing `lambda-throttling` skill.
 - **Docs sync:** if a feature has a corresponding file in `apps/documentation/`, update it when the feature changes. The `apps/documentation/` folder is the public documentation source.
@@ -104,14 +104,14 @@ Everything below is built and working in the codebase:
 
 ### Agent & Tools
 - **Framework:** DeepAgents (`create_deep_agent`) wrapping a LangGraph ReAct loop. `ChatLiteLLM` as the model interface — supports OpenRouter, Anthropic, OpenAI, Groq, Ollama, and any OpenAI-compatible endpoint via a single `LLM_MODEL` env var.
-- **27 tools total** registered in `ALL_TOOLS` in `apps/core/src/opendevops_core/agent/core.py`:
+- **26 tools total** registered in `ALL_TOOLS` in `apps/core/src/opendevops_core/agent/core.py`:
   - CloudWatch (6): `get_alarms`, `get_alarm_history`, `get_metric_data`, `get_log_events`, `describe_log_groups`, `query_logs_insights`
-  - CloudTrail (2): trail events + event lookup
+  - CloudTrail (1): event lookup
   - ECS (4): clusters, services, service detail, tasks
-  - Lambda (4): list, config, error rate, concurrent executions
+  - Lambda (3): list, config, error rate
   - EC2 (2): list instances, instance details
   - RDS (2): list DBs, DB details
-  - IAM (1): describe role + policies
+  - IAM (2): caller identity + describe role policies
   - Bash (1): `run_bash_command` — allowlisted read-only `aws`, `kubectl`, `docker` commands; never `shell=True`; 30s hard timeout
   - History (2): `get_investigation_history`, `search_past_investigations`
   - Skills (2): `list_skills`, `use_skill`
