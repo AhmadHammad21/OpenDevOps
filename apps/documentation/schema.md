@@ -133,7 +133,7 @@ Top-level tenant for multi-org / SaaS support. Table exists in the schema but is
 Per-org named AWS connection configs for multi-account support. Table exists but not yet wired up.
 
 ### `findings` *(future — Phase 2)*
-Structured root-cause analysis rows extracted from agent final answers. Table exists but not yet populated.
+Structured root-cause analysis rows extracted from agent final answers. Table exists but not yet populated. Migration `015` adds a `hypotheses JSONB` column (default `[]`) for the ranked-hypotheses conclusion schema; the replayable evidence pack currently reads the conclusion straight from `tool_calls` (the `submit_investigation` row) rather than from this table.
 
 ### `api_keys` *(future — Phase 3)*
 Hashed API keys for programmatic access. Table exists but not yet implemented.

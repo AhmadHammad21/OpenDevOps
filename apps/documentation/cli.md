@@ -40,15 +40,19 @@ uv run devops-agent investigate "ECS tasks keep crashing" --json
 **Output (Rich panel):**
 - Root cause category and summary
 - Confidence level (HIGH / MEDIUM / LOW)
+- Ranked hypotheses (most likely first, each with its own cited evidence and confidence)
 - Evidence list
 - Mitigation steps
 - Validation steps
 - Services affected
 - Recommended follow-up
 
-**JSON output fields:** `root_cause_category`, `root_cause_summary`, `evidence`,
-`mitigation_steps`, `validation_steps`, `confidence`, `services_affected`,
+**JSON output fields:** `root_cause_category`, `root_cause_summary`, `hypotheses`,
+`evidence`, `mitigation_steps`, `validation_steps`, `confidence`, `services_affected`,
 `recommended_follow_up`, `tool_calls_made`.
+
+`hypotheses` is a list of `{"hypothesis", "evidence": [...], "confidence"}` objects; the
+flat `evidence` field is kept for backward compatibility.
 
 ---
 
