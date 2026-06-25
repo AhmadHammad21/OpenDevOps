@@ -1,4 +1,4 @@
-import type { Session, MessageRecord, HistoryStats, SearchResult, User, Alert, ServiceStatus } from '../types';
+import type { Session, MessageRecord, HistoryStats, SearchResult, User, Alert, ServiceStatus, EvidencePack } from '../types';
 
 export function getAuthToken(): string | null {
   return localStorage.getItem('auth-token');
@@ -27,6 +27,12 @@ export async function fetchMessages(sessionId: string): Promise<MessageRecord[]>
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
+export async function fetchEvidence(sessionId: string): Promise<EvidencePack> {
+  const res = await apiFetch(`/api/sessions/${sessionId}/evidence`);
+  if (!res.ok) throw new Error('Failed to load evidence');
+  return res.json() as Promise<EvidencePack>;
 }
 
 export async function renameSession(sessionId: string, title: string): Promise<void> {

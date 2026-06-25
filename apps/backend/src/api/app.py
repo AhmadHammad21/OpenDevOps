@@ -20,6 +20,7 @@ from api.routers import (  # noqa: E402
     auth,
     chat,
     dashboard,
+    evidence,
     history,
     integrations,
     monitoring,
@@ -185,6 +186,7 @@ app = FastAPI(
 
 app.include_router(chat.router)
 app.include_router(sessions.router)
+app.include_router(evidence.router)
 app.include_router(dashboard.router)
 app.include_router(history.router)
 app.include_router(auth.router)

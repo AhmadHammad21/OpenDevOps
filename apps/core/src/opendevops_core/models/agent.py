@@ -37,6 +37,9 @@ class Finding(BaseModel):
 class InvestigationResult(BaseModel):
     root_cause_category: RootCauseCategory = RootCauseCategory.UNKNOWN
     root_cause_summary: str = ""
+    # Ranked hypotheses (most likely first), each with its own cited evidence and
+    # confidence. The flat `evidence` below is retained for backward compatibility.
+    hypotheses: list[Finding] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     mitigation_steps: list[str] = Field(default_factory=list)
     validation_steps: list[str] = Field(default_factory=list)

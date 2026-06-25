@@ -319,6 +319,33 @@ class PostgresBackend(DatabaseBackend):
             result.append(item)
         return result
 
+    async def get_evidence(self, session_id: str, org_id: str | None = None) -> dict:
+        uid = uuid.UUID(session_id)
+        session = await self._fetchrow(
+            "SELECT is_deleted, org_id, aws_region FROM sessions WHERE id = %s", uid
+        )
+        if session is None or session.get("is_deleted"):
+            return {"aws_region": None, "tool_calls": []}
+        if org_id is not None and str(session.get("org_id")) != str(org_id):
+            return {"aws_region": None, "tool_calls": []}
+        rows = await self._fetchall(
+            "SELECT id, tool_name, args, result, error, created_at FROM tool_calls "
+            "WHERE session_id = %s ORDER BY created_at ASC",
+            uid,
+        )
+        tool_calls = [
+            {
+                "id": str(r["id"]),
+                "tool_name": r["tool_name"],
+                "args": r["args"],
+                "result": r["result"],
+                "error": r["error"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+        return {"aws_region": session.get("aws_region"), "tool_calls": tool_calls}
+
     async def delete_session(self, session_id: str) -> None:
         await self._exec(
             "UPDATE sessions SET is_deleted = TRUE, deleted_at = NOW() WHERE id = %s",

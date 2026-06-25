@@ -59,6 +59,43 @@ export interface AgentMessage {
 
 export type Message = UserMessage | AgentMessage;
 
+// ── Replayable evidence pack ────────────────────────────────────────────────
+
+export interface EvidenceToolCall {
+  id: string;
+  index: number;
+  tool: string;
+  service: string;
+  args: unknown;
+  result: unknown;
+  error: string | null;
+  command: string | null;
+  console_url: string | null;
+  created_at: string | null;
+}
+
+export interface EvidenceItem {
+  text: string;
+  tool_call_id: string | null;
+}
+
+export interface EvidenceHypothesis {
+  hypothesis: string;
+  confidence: string;
+  evidence: EvidenceItem[];
+}
+
+export interface EvidencePack {
+  session_id: string;
+  aws_region: string | null;
+  has_conclusion: boolean;
+  root_cause_category: string | null;
+  root_cause_summary: string;
+  confidence: string | null;
+  hypotheses: EvidenceHypothesis[];
+  tool_calls: EvidenceToolCall[];
+}
+
 export interface HistoryAlarm {
   alarm_name: string;
   session_count: number;
