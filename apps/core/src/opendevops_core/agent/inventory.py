@@ -12,6 +12,7 @@ Consumed by the read-only ``/api/inventory`` endpoint and the documentation gene
 
 from __future__ import annotations
 
+import functools
 import inspect
 import types
 from typing import Any
@@ -115,6 +116,10 @@ def _provider_capabilities() -> list[dict[str, Any]]:
 
     active = settings.cloud_provider
     rows: list[dict[str, Any]] = []
+    # structured_tools is introspected from each provider's tools(), but cli_access and
+    # event_driven_and_polling are manually maintained booleans — those capabilities aren't
+    # trivially introspectable, so update them by hand if a provider gains CLI access or an
+    # event/polling loop.
     for provider, cli, event_driven in (
         (AwsProvider(), True, True),
         (AzureProvider(), True, False),
@@ -132,8 +137,14 @@ def _provider_capabilities() -> list[dict[str, Any]]:
     return rows
 
 
+@functools.lru_cache(maxsize=1)
 def build_inventory() -> dict[str, Any]:
-    """Assemble the full, introspected tool/permission inventory."""
+    """Assemble the full, introspected tool/permission inventory.
+
+    Memoized for the process lifetime: every source (``ALL_TOOLS``, the bash allowlist
+    constants, ``PERMISSION_PROBES``, the active provider, and each provider's ``tools()``)
+    is fixed at import/config time, so the inventory is immutable per process. Caching also
+    keeps the Azure/GCP ``tools()`` stub warnings from firing on every ``/api/inventory`` hit."""
     from opendevops_core.agent.core import ALL_TOOLS
     from opendevops_core.providers import get_active_provider
 
