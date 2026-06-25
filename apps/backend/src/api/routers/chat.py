@@ -304,12 +304,10 @@ async def _stream_chat(session_id: str, user_message: str):
         usage["input_tokens"]  = _field(usage_meta, "input_tokens", 0) or 0
         usage["output_tokens"] = _field(usage_meta, "output_tokens", 0) or 0
         # Capture reasoning tokens (gpt-oss, o1-family, Gemini thinking) for visibility
-        # in the cost card and downstream analysis. We intentionally do NOT add them
-        # to output_tokens for the cost calc here: providers differ on whether
-        # output_tokens already includes reasoning (gpt-oss: YES — 53 total includes
-        # 38 reasoning; Gemini: NO — but reasoning is also missing from the metadata,
-        # which is the actual undercount bug). Per-provider normalization is tracked
-        # in issue #59.
+        # in the cost card and downstream analysis. calc_cost folds them into the
+        # billable output only when the provider reports them *outside* output_tokens
+        # (issue #59) — gpt-oss already includes reasoning in output_tokens, so it is
+        # not double-counted; Gemini reports them separately, so they are added.
         details = _field(usage_meta, "output_token_details", None) or {}
         reasoning = _field(details, "reasoning", 0) or 0
         if reasoning and reasoning > 0:
@@ -318,6 +316,7 @@ async def _stream_chat(session_id: str, user_message: str):
         usage["model"],
         usage.get("input_tokens", 0),
         usage.get("output_tokens", 0),
+        usage.get("reasoning_tokens", 0),
     )
     if cost is not None:
         usage["cost_usd"] = cost
