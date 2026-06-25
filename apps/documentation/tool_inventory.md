@@ -259,6 +259,7 @@ Submit the final structured investigation result. Call this exactly once when yo
 |---|---|---|
 | `root_cause_category` | `Literal['SYSTEM_CHANGE', 'INPUT_ANOMALY', 'RESOURCE_LIMIT', 'COMPONENT_FAILURE', 'DEPENDENCY_ISSUE', 'UNKNOWN']` | required |
 | `root_cause_summary` | `str` | required |
+| `hypotheses` | `list[dict]` | required |
 | `evidence` | `list[str]` | required |
 | `mitigation_steps` | `list[str]` | required |
 | `validation_steps` | `list[str]` | required |
